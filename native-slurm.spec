@@ -227,10 +227,16 @@ helpful interface to SLURM through Perl.
 %package devel
 Summary: Development package for SLURM
 Group: Development/System
-Requires: slurm
+Requires: slurm-libs
 %description devel
 Development package for SLURM.  This package includes the header files
 and static libraries for the SLURM API.
+
+%package libs
+Summary: SLURM libraries
+Group: Development/System
+%description libs
+SLURM libraries, for building and running programs using the SLURM API.
 
 %if %{slurm_with auth_none}
 %package auth-none
@@ -632,7 +638,6 @@ rm -rf $RPM_BUILD_ROOT
 %ifos aix5.3
 %{_sbindir}/srun
 %endif
-%{_libdir}/*.so*
 %{_libdir}/slurm/src/*
 %{_mandir}/man1/*
 %{_mandir}/man5/acct_gather.*
@@ -677,6 +682,12 @@ rm -rf $RPM_BUILD_ROOT
 %{_libdir}/libslurmdb.la
 %{_mandir}/man3/slurm_*
 #%{_mandir}/man3/slurmdb_*
+#############################################################################
+
+%files libs 
+%defattr(-,root,root)
+%dir %attr(0755,root,root)
+%{_libdir}/*.so*
 #############################################################################
 
 %if %{slurm_with auth_none}
@@ -894,11 +905,13 @@ rm -rf $RPM_BUILD_ROOT
 #fi
 
 %post
+if [ $1 = 1 ]; then
+    [ -x /sbin/chkconfig ] && /sbin/chkconfig --add slurm
+fi
+
+%post libs
 if [ -x /sbin/ldconfig ]; then
     /sbin/ldconfig %{_libdir}
-    if [ $1 = 1 ]; then
-	[ -x /sbin/chkconfig ] && /sbin/chkconfig --add slurm
-    fi
 fi
 
 %post slurmdbd
@@ -930,7 +943,7 @@ if [ "$1" = 0 ]; then
     fi
 fi
 
-%postun
+%postun libs
 if [ "$1" = 0 ]; then
     if [ -x /sbin/ldconfig ]; then
 	/sbin/ldconfig %{_libdir}
