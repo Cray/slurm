@@ -133,7 +133,7 @@ am__uninstall_files_from_dir = { \
   }
 am__installdirs = "$(DESTDIR)$(pkglibdir)"
 LTLIBRARIES = $(pkglib_LTLIBRARIES)
-task_cray_la_LIBADD =
+task_cray_la_DEPENDENCIES =
 am_task_cray_la_OBJECTS = task_cray.lo
 task_cray_la_OBJECTS = $(am_task_cray_la_OBJECTS)
 task_cray_la_LINK = $(LIBTOOL) --tag=CC $(AM_LIBTOOLFLAGS) \
@@ -189,6 +189,8 @@ CHECK_LIBS = @CHECK_LIBS@
 CMD_LDFLAGS = @CMD_LDFLAGS@
 CPP = @CPP@
 CPPFLAGS = @CPPFLAGS@
+CRAY_CPPFLAGS = @CRAY_CPPFLAGS@
+CRAY_LDFLAGS = @CRAY_LDFLAGS@
 CXX = @CXX@
 CXXCPP = @CXXCPP@
 CXXDEPMODE = @CXXDEPMODE@
@@ -399,6 +401,7 @@ pkglib_LTLIBRARIES = task_cray.la
 # Null task plugin.
 task_cray_la_SOURCES = task_cray.c
 task_cray_la_LDFLAGS = $(SO_LDFLAGS) $(PLUGIN_FLAGS)
+@HAVE_REAL_CRAY_TRUE@task_cray_la_LIBADD = -ljob
 all: all-am
 
 .SUFFIXES:

@@ -90,6 +90,7 @@ extern char *default_plugstack;
 #define DEFAULT_JOB_COMP_TYPE       "jobcomp/none"
 #define DEFAULT_JOB_COMP_LOC        "/var/log/slurm_jobcomp.log"
 #define DEFAULT_JOB_COMP_DB         "slurm_jobcomp_db"
+#define DEFAULT_JOB_CONTAINER_PLUGIN "job_container/none"
 #define DEFAULT_KEEP_ALIVE_TIME     ((uint16_t) NO_VAL)
 #define DEFAULT_KILL_ON_BAD_EXIT    0
 #define DEFAULT_KILL_TREE           0
@@ -99,7 +100,7 @@ extern char *default_plugstack;
 #  define DEFAULT_LAUNCH_TYPE         "launch/runjob"
 #elif defined HAVE_LIBNRT
 #  define DEFAULT_LAUNCH_TYPE         "launch/poe"
-#elif defined HAVE_REAL_CRAY
+#elif defined HAVE_ALPS_CRAY && defined HAVE_REAL_CRAY
 #  define DEFAULT_LAUNCH_TYPE         "launch/aprun"
 #else
 #  define DEFAULT_LAUNCH_TYPE         "launch/slurm"
@@ -142,7 +143,9 @@ extern char *default_plugstack;
 #define DEFAULT_SCHEDTYPE           "sched/backfill"
 #ifdef HAVE_BG	/* Blue Gene specific default configuration parameters */
 #  define DEFAULT_SELECT_TYPE       "select/bluegene"
-#elif defined HAVE_CRAY
+#elif defined HAVE_ALPS_CRAY
+#  define DEFAULT_SELECT_TYPE       "select/alps"
+#elif defined HAVE_REAL_CRAY
 #  define DEFAULT_SELECT_TYPE       "select/cray"
 #else
 #  define DEFAULT_SELECT_TYPE       "select/linear"
@@ -164,7 +167,7 @@ extern char *default_plugstack;
 #define DEFAULT_SWITCH_TYPE         "switch/none"
 #define DEFAULT_TASK_PLUGIN         "task/none"
 #define DEFAULT_TMP_FS              "/tmp"
-#if defined HAVE_3D && !defined HAVE_CRAY
+#if defined HAVE_3D && !defined HAVE_ALPS_CRAY
 #  define DEFAULT_TOPOLOGY_PLUGIN     "topology/3d_torus"
 #else
 #  define DEFAULT_TOPOLOGY_PLUGIN     "topology/none"

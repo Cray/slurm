@@ -7,6 +7,15 @@ documents those changes that are of interest to users and admins.
  -- Add task pointer to the task_post_term() function in task plugins. The
     terminating task's PID is available in task->pid.
  -- Move select/cray to select/alps
+ -- Defer sending SIGKILL signal to processes while core dump in progress.
+ -- Added JobContainerPlugin configuration parameter and plugin infrastructure.
+
+* Changes in Slurm 2.6.1
+========================
+ -- slurmdbd - Allow job derived ec and comments to be modified by non-root
+    users.
+ -- Fix issue with job name being truncated to 24 chars when sending a mail
+    message.
 
 * Changes in Slurm 2.6.0
 ========================
@@ -17,6 +26,14 @@ documents those changes that are of interest to users and admins.
     allocating cores or sockets.
  -- Requeue batch job if it's node reboots (used to abort the job).
  -- Enlarge maximum size of srun's hostlist file.
+ -- IPMI - Fix first poll to get correct consumed_energy for a step.
+ -- Correction to job state recovery logic that could result in assert failure.
+ -- Record partial step accounting record if allocated nodes fail abnormally.
+ -- Accounting - fix issue where PrivateData=jobs or users could potentially
+    show information to users that had no associations on the system.
+ -- Make PrivateData in slurmdbd.conf case insensitive.
+ -- sacct/sstat - Add format option ConsumedEnergyRaw to print full energy
+    values.
 
 * Changes in Slurm 2.6.0rc2
 ===========================
