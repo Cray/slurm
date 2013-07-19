@@ -29,7 +29,7 @@
 #    slurm_with    builds option by default unless --without is specified
 #    slurm_without builds option iff --with specified
 #
-%define _prefix /usr/local
+%define _prefix /opt/slurm/%{version} 
 %define _slurm_sysconfdir %{_prefix}/etc/slurm
 %define _mandir %{_prefix}/share/man
 %define _infodir %{_prefix}/share/info
@@ -99,8 +99,8 @@
 %endif
 
 Name: slurm
-Version: 2.6.0
-Release: 0pre4
+Version: 13.12.0
+Release: 0pre1
 
 Summary: Simple Linux Utility for Resource Management
 
