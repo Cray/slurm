@@ -1,5 +1,5 @@
 /*****************************************************************************\
- *  job_container_cray.c - Define job container management functions for
+ *  job_container_cncu.c - Define job container management functions for
  *                         Cray systems
  *****************************************************************************
  *  Copyright (C) 2013 SchedMD LLC
@@ -39,10 +39,15 @@
 #  include "config.h"
 #endif
 
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+
 #include <job.h>	/* Cray's job module component */
 
 #include "slurm/slurm_errno.h"
 #include "src/common/slurm_xlator.h"
+#include "src/slurmd/common/proctrack.h"
 
 #define _DEBUG	0
 
@@ -77,16 +82,16 @@
  * as 100 or 1000.  Various SLURM versions will likely require a certain
  * minimum version for their plugins as this API matures.
  */
-const char plugin_name[]        = "job_container cray plugin";
-const char plugin_type[]        = "job_container/cray";
+const char plugin_name[]        = "job_container cncu plugin";
+const char plugin_type[]        = "job_container/cncu";
 const uint32_t plugin_version   = 101;
 
-#if _DEBUG
 #define JOB_BUF_SIZE 128
 
 static uint32_t *job_id_array = NULL;
 static uint32_t  job_id_count = 0;
 static pthread_mutex_t context_lock = PTHREAD_MUTEX_INITIALIZER;
+static char *state_dir = NULL;
 
 static int _save_state(char *dir_name)
 {
@@ -179,6 +184,7 @@ static int _restore_state(char *dir_name)
 	return error_code;
 }
 
+#if _DEBUG
 static void _stat_reservation(char *type, rid_t resv_id)
 {
 	struct job_resv_stat buf;
@@ -220,7 +226,6 @@ extern int fini(void)
 
 extern int container_p_restore(char *dir_name, bool recover)
 {
-#if _DEBUG
 	int i;
 
 	slurm_mutex_lock(&context_lock);
@@ -238,7 +243,7 @@ extern int container_p_restore(char *dir_name, bool recover)
 			job_id_array[i] = 0;
 		}
 	}
-#endif
+
 	xfree(state_dir);
 	state_dir = xstrdup(dir_name);
 	return SLURM_SUCCESS;
@@ -248,8 +253,6 @@ extern int container_p_create(uint32_t job_id)
 {
 	rid_t resv_id = job_id;
 	int rc;
-
-#if _DEBUG
 	int i, empty = -1, found = -1;
 	bool job_id_change = false;
 	info("%s: creating(%u)", plugin_type, job_id);
@@ -278,7 +281,7 @@ extern int container_p_create(uint32_t job_id)
 	if (job_id_change)
 		_save_state(state_dir);
 	slurm_mutex_unlock(&context_lock);
-#endif
+
 	rc = job_create_reservation(resv_id, CREATE_FLAGS);
 	if ((rc == 0) || (errno == EEXIST)) {
 		if ((rc != 0) && (errno == EEXIST)) {
@@ -294,14 +297,15 @@ extern int container_p_create(uint32_t job_id)
 	return SLURM_ERROR;
 }
 
-extern int container_p_add(uint32_t job_id, uint64_t cont_id)
+/* Add proctrack container (PAGG) to a job container */
+extern int container_p_add_cont(uint32_t job_id, uint64_t cont_id)
 {
-	jid_t cjob_id = cont_id
+	jid_t cjob_id = cont_id;
 	rid_t resv_id = job_id;
 	int rc;
 
 #if _DEBUG
-	info("%s: adding(%u.%"PRIu64")", plugin_type, job_id, cont_id);
+	info("%s: adding cont(%u.%"PRIu64")", plugin_type, job_id, cont_id);
 #endif
 	rc = job_attach_reservation(cjob_id, resv_id, ADD_FLAGS);
 	if ((rc != 0) && (errno == ENOENT)) {	/* Log and retry */
@@ -320,12 +324,28 @@ extern int container_p_add(uint32_t job_id, uint64_t cont_id)
 	return SLURM_ERROR;
 }
 
+/* Add a process to a job container, create the proctrack container to add */
+extern int container_p_add_pid(uint32_t job_id, pid_t pid, uid_t uid)
+{
+	stepd_step_rec_t job;
+
+#if _DEBUG
+	info("%s: adding pid(%u.%u)", plugin_type, job_id, (uint32_t) pid);
+#endif
+	memset(&job, 0, sizeof(stepd_step_rec_t));
+	job.jmgr_pid = pid;
+	job.uid = uid;
+	if (slurm_container_create(&job) != SLURM_SUCCESS) {
+		error("%s: slurm_container_create job(%u)", plugin_type,job_id);
+		return SLURM_ERROR;
+	}
+	return container_p_add_cont(job_id, job.cont_id);
+}
+
 extern int container_p_delete(uint32_t job_id)
 {
 	rid_t resv_id = job_id;
 	int rc;
-
-#if _DEBUG
 	int i, found = -1;
 	bool job_id_change = false;
 
@@ -343,13 +363,13 @@ extern int container_p_delete(uint32_t job_id)
 	if (job_id_change)
 		_save_state(state_dir);
 	slurm_mutex_unlock(&context_lock);
-#endif
+
 	rc = job_end_reservation(resv_id, DELETE_FLAGS);
 	if (rc == 0)
 		return SLURM_SUCCESS;
 
-	error("%s: end(%u): %m", plugin_type, job_id);
 	if ((errno == ENOENT) || (errno == EINPROGRESS) || (errno == EALREADY))
 		return SLURM_SUCCESS;	/* Not fatal error */
+	error("%s: delete(%u): %m", plugin_type, job_id);
 	return SLURM_ERROR;
 }

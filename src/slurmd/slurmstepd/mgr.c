@@ -227,7 +227,7 @@ mgr_launch_tasks_setup(launch_tasks_request_msg_t *msg, slurm_addr_t *cli,
 {
 	stepd_step_rec_t *job = NULL;
 
-	if (!(job = job_create(msg))) {
+	if (!(job = stepd_step_rec_create(msg))) {
 		/* We want to send back to the slurmd the reason we
 		   failed so keep track of it since errno could be
 		   reset in _send_launch_failure.
@@ -364,8 +364,8 @@ mgr_launch_batch_job_setup(batch_job_launch_msg_t *msg, slurm_addr_t *cli)
 {
 	stepd_step_rec_t *job = NULL;
 
-	if (!(job = job_batch_job_create(msg))) {
-		error("job_batch_job_create() failed: %m");
+	if (!(job = batch_stepd_step_rec_create(msg))) {
+		error("batch_stepd_step_rec_create() failed: %m");
 		return NULL;
 	}
 
@@ -933,8 +933,6 @@ job_manager(stepd_step_rec_t *job)
 		rc = ESLURMD_SETUP_ENVIRONMENT_ERROR;
 		goto fail1;
 	}
-	if (container_g_add(job->jobid, job->cont_id) != SLURM_SUCCESS)
-		error("container_g_add: %m");
 
 #ifdef HAVE_ALPS_CRAY
 	/*
@@ -1551,6 +1549,8 @@ _fork_all_tasks(stepd_step_rec_t *job, bool *io_initialized)
 		}
 	}
 //	jobacct_gather_set_proctrack_container_id(job->cont_id);
+	if (container_g_add_cont(job->jobid, job->cont_id) != SLURM_SUCCESS)
+		error("container_g_add_cont(%u): %m", job->jobid);
 
 	/*
 	 * Now it's ok to unblock the tasks, so they may call exec.
@@ -2416,12 +2416,6 @@ _run_script_as_user(const char *name, const char *path, stepd_step_rec_t *job,
 		return -1;
 	}
 
-	if ((job->cont_id == 0) &&
-	    (slurm_container_create(job) != SLURM_SUCCESS))
-		error("slurm_container_create: %m");
-	if (container_g_add(job->jobid, job->cont_id) != SLURM_SUCCESS)
-		error("container_g_add: %m");
-
 	if ((ei = fork_child_with_wait_info(0)) == NULL) {
 		error ("executing %s: fork: %m", name);
 		return -1;
@@ -2463,8 +2457,9 @@ _run_script_as_user(const char *name, const char *path, stepd_step_rec_t *job,
 		exit(127);
 	}
 
-	if (slurm_container_add(job, cpid) != SLURM_SUCCESS)
-		error("slurm_container_add: %m");
+	if ((job->jobid != 0) &&	/* Ignore system processes */
+	    (container_g_add_pid(job->jobid, cpid, job->uid) != SLURM_SUCCESS))
+		error("container_g_add_pid: %m");
 
 	if (exec_wait_signal_child (ei) < 0)
 		error ("run_script_as_user: Failed to wakeup %s", name);
