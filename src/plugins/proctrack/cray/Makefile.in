@@ -15,7 +15,7 @@
 
 @SET_MAKE@
 
-# Makefile for job_container/cray plugin
+# Makefile for proctrack/cray plugin
 
 VPATH = @srcdir@
 am__make_dryrun = \
@@ -54,7 +54,7 @@ POST_UNINSTALL = :
 build_triplet = @build@
 host_triplet = @host@
 target_triplet = @target@
-subdir = src/plugins/job_container/cray
+subdir = src/plugins/proctrack/cray
 DIST_COMMON = $(srcdir)/Makefile.am $(srcdir)/Makefile.in
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/auxdir/acx_pthread.m4 \
@@ -133,14 +133,12 @@ am__uninstall_files_from_dir = { \
   }
 am__installdirs = "$(DESTDIR)$(pkglibdir)"
 LTLIBRARIES = $(pkglib_LTLIBRARIES)
-job_container_cray_la_DEPENDENCIES =
-am_job_container_cray_la_OBJECTS = job_container_cray.lo
-job_container_cray_la_OBJECTS = $(am_job_container_cray_la_OBJECTS)
-job_container_cray_la_LINK = $(LIBTOOL) --tag=CC $(AM_LIBTOOLFLAGS) \
+proctrack_cray_la_LIBADD =
+am_proctrack_cray_la_OBJECTS = proctrack_cray.lo
+proctrack_cray_la_OBJECTS = $(am_proctrack_cray_la_OBJECTS)
+proctrack_cray_la_LINK = $(LIBTOOL) --tag=CC $(AM_LIBTOOLFLAGS) \
 	$(LIBTOOLFLAGS) --mode=link $(CCLD) $(AM_CFLAGS) $(CFLAGS) \
-	$(job_container_cray_la_LDFLAGS) $(LDFLAGS) -o $@
-@HAVE_REAL_CRAY_TRUE@am_job_container_cray_la_rpath = -rpath \
-@HAVE_REAL_CRAY_TRUE@	$(pkglibdir)
+	$(proctrack_cray_la_LDFLAGS) $(LDFLAGS) -o $@
 DEFAULT_INCLUDES = -I.@am__isrc@ -I$(top_builddir) -I$(top_builddir)/slurm
 depcomp = $(SHELL) $(top_srcdir)/auxdir/depcomp
 am__depfiles_maybe = depfiles
@@ -154,8 +152,8 @@ CCLD = $(CC)
 LINK = $(LIBTOOL) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) \
 	--mode=link $(CCLD) $(AM_CFLAGS) $(CFLAGS) $(AM_LDFLAGS) \
 	$(LDFLAGS) -o $@
-SOURCES = $(job_container_cray_la_SOURCES)
-DIST_SOURCES = $(job_container_cray_la_SOURCES)
+SOURCES = $(proctrack_cray_la_SOURCES)
+DIST_SOURCES = $(proctrack_cray_la_SOURCES)
 am__can_run_installinfo = \
   case $$AM_UPDATE_INFO_DIR in \
     n|no|NO) false;; \
@@ -396,15 +394,11 @@ top_build_prefix = @top_build_prefix@
 top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
 AUTOMAKE_OPTIONS = foreign
-PLUGIN_FLAGS = -module -avoid-version --export-dynamic
-AM_CPPFLAGS = -I$(top_srcdir) -I$(top_srcdir)/src/common $(CRAY_JOB_CPPFLAGS)
-@HAVE_REAL_CRAY_TRUE@CRAY_JOB = job_container_cray.la
-pkglib_LTLIBRARIES = $(CRAY_JOB)
-
-# job_container/cray plugin.
-job_container_cray_la_SOURCES = job_container_cray.c
-job_container_cray_la_LDFLAGS = $(SO_LDFLAGS) $(PLUGIN_FLAGS) $(CRAY_JOB_LDFLAGS)
-job_container_cray_la_LIBADD = $(CRAY_JOB_LIBS)
+PLUGIN_FLAGS = - -module -avoid-version --export-dynamic
+AM_CPPFLAGS = -I$(top_srcdir) -I$(top_srcdir)/src/common
+pkglib_LTLIBRARIES = proctrack_cray.la
+proctrack_cray_la_SOURCES = proctrack_cray.c
+proctrack_cray_la_LDFLAGS = $(SO_LDFLAGS) $(PLUGIN_FLAGS) $(OTHER_FLAGS)
 all: all-am
 
 .SUFFIXES:
@@ -418,9 +412,9 @@ $(srcdir)/Makefile.in: @MAINTAINER_MODE_TRUE@ $(srcdir)/Makefile.am  $(am__confi
 	      exit 1;; \
 	  esac; \
 	done; \
-	echo ' cd $(top_srcdir) && $(AUTOMAKE) --foreign src/plugins/job_container/cray/Makefile'; \
+	echo ' cd $(top_srcdir) && $(AUTOMAKE) --foreign src/plugins/proctrack/cray/Makefile'; \
 	$(am__cd) $(top_srcdir) && \
-	  $(AUTOMAKE) --foreign src/plugins/job_container/cray/Makefile
+	  $(AUTOMAKE) --foreign src/plugins/proctrack/cray/Makefile
 .PRECIOUS: Makefile
 Makefile: $(srcdir)/Makefile.in $(top_builddir)/config.status
 	@case '$?' in \
@@ -471,8 +465,8 @@ clean-pkglibLTLIBRARIES:
 	  echo "rm -f \"$${dir}/so_locations\""; \
 	  rm -f "$${dir}/so_locations"; \
 	done
-job_container_cray.la: $(job_container_cray_la_OBJECTS) $(job_container_cray_la_DEPENDENCIES) $(EXTRA_job_container_cray_la_DEPENDENCIES) 
-	$(job_container_cray_la_LINK) $(am_job_container_cray_la_rpath) $(job_container_cray_la_OBJECTS) $(job_container_cray_la_LIBADD) $(LIBS)
+proctrack_cray.la: $(proctrack_cray_la_OBJECTS) $(proctrack_cray_la_DEPENDENCIES) $(EXTRA_proctrack_cray_la_DEPENDENCIES) 
+	$(proctrack_cray_la_LINK) -rpath $(pkglibdir) $(proctrack_cray_la_OBJECTS) $(proctrack_cray_la_LIBADD) $(LIBS)
 
 mostlyclean-compile:
 	-rm -f *.$(OBJEXT)
@@ -480,7 +474,7 @@ mostlyclean-compile:
 distclean-compile:
 	-rm -f *.tab.c
 
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/job_container_cray.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/proctrack_cray.Plo@am__quote@
 
 .c.o:
 @am__fastdepCC_TRUE@	$(COMPILE) -MT $@ -MD -MP -MF $(DEPDIR)/$*.Tpo -c -o $@ $<
@@ -715,6 +709,8 @@ uninstall-am: uninstall-pkglibLTLIBRARIES
 	mostlyclean-generic mostlyclean-libtool pdf pdf-am ps ps-am \
 	tags uninstall uninstall-am uninstall-pkglibLTLIBRARIES
 
+# Don't need to add -ljob because we dlopen the .so to avoid
+#  symbol collisions with slurm functions
 
 # Tell versions [3.59,3.63) of GNU make to not export all variables.
 # Otherwise a system limit (for SysV at least) may be exceeded.

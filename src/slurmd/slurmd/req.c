@@ -156,7 +156,7 @@ static void _rpc_terminate_tasks(slurm_msg_t *);
 static void _rpc_timelimit(slurm_msg_t *);
 static void _rpc_reattach_tasks(slurm_msg_t *);
 static void _rpc_signal_job(slurm_msg_t *);
-static void _rpc_suspend_job(slurm_msg_t *msg, int version);
+static void _rpc_suspend_job(slurm_msg_t *msg);
 static void _rpc_terminate_job(slurm_msg_t *);
 static void _rpc_update_time(slurm_msg_t *);
 static void _rpc_shutdown(slurm_msg_t *msg);
@@ -309,17 +309,9 @@ slurmd_req(slurm_msg_t *msg)
 		_rpc_signal_job(msg);
 		slurm_free_signal_job_msg(msg->data);
 		break;
-	case REQUEST_SUSPEND:
-/* FIXME: This logic supports a version 2.4 slurmctld talking with a
- * version 2.5 slurmd. Remove in version 2.6 */
-		debug2("Processing RPC: REQUEST_SUSPEND");
-		_rpc_suspend_job(msg, 1);
-		last_slurmctld_msg = time(NULL);
-		slurm_free_suspend_msg(msg->data);
-		break;
 	case REQUEST_SUSPEND_INT:
 		debug2("Processing RPC: REQUEST_SUSPEND_INT");
-		_rpc_suspend_job(msg, 2);
+		_rpc_suspend_job(msg);
 		last_slurmctld_msg = time(NULL);
 		slurm_free_suspend_int_msg(msg->data);
 		break;
@@ -427,6 +419,7 @@ slurmd_req(slurm_msg_t *msg)
 		_rpc_forward_data(msg);
 		slurm_free_forward_data_msg(msg->data);
 		break;
+	case REQUEST_SUSPEND:	/* Defunct, see REQUEST_SUSPEND_INT */
 	default:
 		error("slurmd_req: invalid request msg type %d",
 		      msg->msg_type);
@@ -763,16 +756,20 @@ _forkexec_slurmstepd(slurmd_step_type_t type, void *req,
 			error("close write to_stepd in grandchild: %m");
 		if (close(to_slurmd[0]) < 0)
 			error("close read to_slurmd in parent: %m");
+
+		(void) close(STDIN_FILENO); /* ignore return */
 		if (dup2(to_stepd[0], STDIN_FILENO) == -1) {
 			error("dup2 over STDIN_FILENO: %m");
 			exit(1);
 		}
 		fd_set_close_on_exec(to_stepd[0]);
+		(void) close(STDOUT_FILENO); /* ignore return */
 		if (dup2(to_slurmd[1], STDOUT_FILENO) == -1) {
 			error("dup2 over STDOUT_FILENO: %m");
 			exit(1);
 		}
 		fd_set_close_on_exec(to_slurmd[1]);
+		(void) close(STDERR_FILENO); /* ignore return */
 		if (dup2(devnull, STDERR_FILENO) == -1) {
 			error("dup2 /dev/null to STDERR_FILENO: %m");
 			exit(1);
@@ -1073,11 +1070,11 @@ _rpc_launch_tasks(slurm_msg_t *msg)
 #ifndef HAVE_FRONT_END
 	if (first_job_run) {
 		int rc;
+		if (container_g_create(req->job_id))
+			error("container_g_create(%u): %m", req->job_id);
 		rc =  _run_prolog(req->job_id, req->uid, NULL,
 				  req->spank_job_env, req->spank_job_env_size,
 				  req->complete_nodelist);
-		if (container_g_create(req->job_id))
-			error("container_g_create(%u): %m", req->job_id);
 		if (rc) {
 			int term_sig, exit_status;
 			if (WIFSIGNALED(rc)) {
@@ -1408,11 +1405,11 @@ _rpc_batch_job(slurm_msg_t *msg, bool new_msg)
 		resv_id = select_g_select_jobinfo_xstrdup(req->select_jobinfo,
 							  SELECT_PRINT_RESV_ID);
 #endif
+		if (container_g_create(req->job_id))
+			error("container_g_create(%u): %m", req->job_id);
 		rc = _run_prolog(req->job_id, req->uid, resv_id,
 				 req->spank_job_env, req->spank_job_env_size,
 				 req->nodes);
-		if (container_g_create(req->job_id))
-			error("container_g_create(%u): %m", req->job_id);
 		xfree(resv_id);
 		if (rc) {
 			int term_sig, exit_status;
@@ -2004,7 +2001,7 @@ _rpc_health_check(slurm_msg_t *msg)
 	if ((rc == SLURM_SUCCESS) && (conf->health_check_program)) {
 		char *env[1] = { NULL };
 		rc = run_script("health_check", conf->health_check_program,
-				0, 60, env);
+				0, 60, env, 0);
 	}
 
 	/* Take this opportunity to enforce any job memory limits */
@@ -2730,9 +2727,6 @@ _valid_sbcast_cred(file_bcast_msg_t *req, uid_t req_uid, uint16_t block_no,
 static int
 _rpc_file_bcast(slurm_msg_t *msg)
 {
-#ifdef HAVE_REAL_CRAY
-	slurmd_job_t job;
-#endif
 	file_bcast_msg_t *req = msg->data;
 	int fd, flags, offset, inx, rc;
 	int ngroups = 16;
@@ -2782,25 +2776,13 @@ _rpc_file_bcast(slurm_msg_t *msg)
 		error("sbcast: fork failure");
 		return errno;
 	} else if (child > 0) {
+		if (container_g_add_pid(job_id, child, req_uid) !=
+		    SLURM_SUCCESS)
+			error("container_g_add_pid(%u): %m", job_id);
 		waitpid(child, &rc, 0);
 		xfree(groups);
 		return WEXITSTATUS(rc);
 	}
-
-#ifdef HAVE_REAL_CRAY
-	/* Cray systems require files be created within the job's container */
-	setpgrp();
-	job.cont_id = 0;
-	job.jmgr_pid = getpid();
-	job.pgid = getpgid(job.jmgr_pid);
-	job.uid = req_uid;
-	if ((rc = slurm_container_create(&job))) {
-		error("sbcast: slurm_container_create(%u): %m", job_id);
-		return rc;
-	}
-	slurm_container_add(&job, job.jmgr_pid);
-	container_g_add(job_id, job.cont_id);
-#endif
 
 	/* The child actually performs the I/O and exits with
 	 * a return code, do not return! */
@@ -3163,7 +3145,7 @@ _job_still_running(uint32_t job_id)
 }
 
 /*
- * Wait until all job steps are in SLURMD_JOB_COMPLETE state.
+ * Wait until all job steps are in SLURMSTEPD_NOT_RUNNING state.
  * This indicates that interconnect_postfini has completed and
  * freed the switch windows (as needed only for Federation switch).
  */
@@ -3415,7 +3397,7 @@ _unlock_suspend_job(uint32_t jobid)
  * each job step belonging to a given job allocation.
  */
 static void
-_rpc_suspend_job(slurm_msg_t *msg, int version)
+_rpc_suspend_job(slurm_msg_t *msg)
 {
 	suspend_int_msg_t *req = msg->data;
 	uid_t req_uid = g_slurm_auth_get_uid(msg->auth_cred, NULL);
@@ -3426,7 +3408,7 @@ _rpc_suspend_job(slurm_msg_t *msg, int version)
 	int first_time, rc = SLURM_SUCCESS;
 
 	if ((req->op != SUSPEND_JOB) && (req->op != RESUME_JOB)) {
-		error("REQUEST_SUSPEND: bad op code %u", req->op);
+		error("REQUEST_SUSPEND_INT: bad op code %u", req->op);
 		rc = ESLURM_NOT_SUPPORTED;
 	}
 
@@ -3475,7 +3457,7 @@ _rpc_suspend_job(slurm_msg_t *msg, int version)
 		sleep(1);
 	}
 
-	if ((version > 0) && (req->op == SUSPEND_JOB) && (req->indf_susp))
+	if ((req->op == SUSPEND_JOB) && (req->indf_susp))
 		interconnect_suspend(req->switch_info, 5);
 
 	/* Release or reclaim resources bound to these tasks (task affinity) */
@@ -3548,7 +3530,7 @@ _rpc_suspend_job(slurm_msg_t *msg, int version)
 	list_iterator_destroy(i);
 	list_destroy(steps);
 
-	if ((version > 0) && (req->op == RESUME_JOB) && (req->indf_susp))
+	if ((req->op == RESUME_JOB) && (req->indf_susp))
 		interconnect_resume(req->switch_info, 5);
 
 	_unlock_suspend_job(req->job_id);
@@ -4280,14 +4262,14 @@ _destroy_env(char **env)
 }
 
 static int
-run_spank_job_script (const char *mode, char **env)
+_run_spank_job_script (const char *mode, char **env, uint32_t job_id, uid_t uid)
 {
 	pid_t cpid;
 	int status = 0;
 	int pfds[2];
 
 	if (pipe (pfds) < 0) {
-		error ("run_spank_job_script: pipe: %m");
+		error ("_run_spank_job_script: pipe: %m");
 		return (-1);
 	}
 
@@ -4318,6 +4300,8 @@ run_spank_job_script (const char *mode, char **env)
 		exit (127);
 	}
 
+	if (container_g_add_pid(job_id, cpid, getuid()) != SLURM_SUCCESS)
+		error("container_g_add_pid(%u): %m", job_id);
 	close (pfds[0]);
 
 	if (_send_slurmd_conf_lite (pfds[1], conf) < 0)
@@ -4344,7 +4328,7 @@ run_spank_job_script (const char *mode, char **env)
 }
 
 static int _run_job_script(const char *name, const char *path,
-		uint32_t jobid, int timeout, char **env)
+			   uint32_t jobid, int timeout, char **env, uid_t uid)
 {
 	int status, rc;
 	/*
@@ -4353,8 +4337,8 @@ static int _run_job_script(const char *name, const char *path,
 	 *   If both "script" mechanisms fail, prefer to return the "real"
 	 *   prolog/epilog status.
 	 */
-	status = run_spank_job_script(name, env);
-	if ((rc = run_script(name, path, jobid, timeout, env)))
+	status = _run_spank_job_script(name, env, jobid, uid);
+	if ((rc = run_script(name, path, jobid, timeout, env, uid)))
 		status = rc;
 	return (status);
 }
@@ -4376,7 +4360,7 @@ _run_prolog(uint32_t jobid, uid_t uid, char *resv_id,
 	slurm_mutex_unlock(&conf->config_mutex);
 	_add_job_running_prolog(jobid);
 
-	rc = _run_job_script("prolog", my_prolog, jobid, -1, my_env);
+	rc = _run_job_script("prolog", my_prolog, jobid, -1, my_env, uid);
 	_remove_job_running_prolog(jobid);
 	xfree(my_prolog);
 	_destroy_env(my_env);
@@ -4452,7 +4436,7 @@ _run_prolog(uint32_t jobid, uid_t uid, char *resv_id,
 	timer_struct.timer_cond  = &timer_cond;
 	timer_struct.timer_mutex = &timer_mutex;
 	pthread_create(&timer_id, &timer_attr, &_prolog_timer, &timer_struct);
-	rc = _run_job_script("prolog", my_prolog, jobid, -1, my_env);
+	rc = _run_job_script("prolog", my_prolog, jobid, -1, my_env, uid);
 	slurm_mutex_lock(&timer_mutex);
 	prolog_fini = true;
 	pthread_cond_broadcast(&timer_cond);
@@ -4491,7 +4475,8 @@ _run_epilog(uint32_t jobid, uid_t uid, char *resv_id,
 	slurm_mutex_unlock(&conf->config_mutex);
 
 	_wait_for_job_running_prolog(jobid);
-	error_code = _run_job_script("epilog", my_epilog, jobid, -1, my_env);
+	error_code = _run_job_script("epilog", my_epilog, jobid, -1, my_env,
+				     uid);
 	xfree(my_epilog);
 	_destroy_env(my_env);
 
