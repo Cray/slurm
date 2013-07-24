@@ -917,12 +917,16 @@ static int _parse_partitionname(void **dest, slurm_parser_enum_t type,
 	char *tmp = NULL;
 	static s_p_options_t _partition_options[] = {
 		{"AllocNodes", S_P_STRING},
+		{"AllowAccounts",S_P_STRING},
 		{"AllowGroups", S_P_STRING},
+		{"AllowQos", S_P_STRING},
 		{"Alternate", S_P_STRING},
 		{"DefMemPerCPU", S_P_UINT32},
 		{"DefMemPerNode", S_P_UINT32},
 		{"Default", S_P_BOOLEAN}, /* YES or NO */
 		{"DefaultTime", S_P_STRING},
+		{"DenyAccounts", S_P_STRING},
+		{"DenyQos", S_P_STRING},
 		{"DisableRootJobs", S_P_BOOLEAN}, /* YES or NO */
 		{"GraceTime", S_P_UINT32},
 		{"Hidden", S_P_BOOLEAN}, /* YES or NO */
@@ -962,21 +966,43 @@ static int _parse_partitionname(void **dest, slurm_parser_enum_t type,
 
 		p->name = xstrdup(value);
 
+		if (!s_p_get_string(&p->allow_accounts, "AllowAccounts",tbl))
+			s_p_get_string(&p->allow_accounts, "AllowAccounts", dflt);
+		if (p->allow_accounts &&
+		    (strcasecmp(p->allow_accounts, "ALL") == 0))
+			xfree(p->allow_accounts);
+
 		if (!s_p_get_string(&p->allow_groups, "AllowGroups", tbl))
 			s_p_get_string(&p->allow_groups, "AllowGroups", dflt);
-		if (p->allow_groups && strcasecmp(p->allow_groups, "ALL")==0) {
+		if (p->allow_groups &&
+		    (strcasecmp(p->allow_groups, "ALL") == 0))
 			xfree(p->allow_groups);
-			p->allow_groups = NULL; /* NULL means allow all */
+
+		if (!s_p_get_string(&p->allow_qos, "AllowQos", tbl))
+			s_p_get_string(&p->allow_qos, "AllowQos", dflt);
+		if (p->allow_qos && (strcasecmp(p->allow_qos, "ALL") == 0))
+			xfree(p->allow_qos);
+
+		if (!s_p_get_string(&p->deny_accounts, "DenyAccounts", tbl))
+			s_p_get_string(&p->deny_accounts, "DenyAccounts", dflt);
+		if (p->allow_accounts && p->deny_accounts) {
+			error("Both AllowAccounts and DenyAccounts are "
+			      "defined, DenyAccounts will be ignored");
+		}
+
+		if (!s_p_get_string(&p->deny_qos, "DenyQos", tbl))
+			s_p_get_string(&p->deny_qos, "DenyQos", dflt);
+		if (p->allow_qos && p->deny_qos) {
+			error("Both AllowQos and DenyQos are defined, "
+			      "DenyQos will be ignored");
 		}
 
 		if (!s_p_get_string(&p->allow_alloc_nodes, "AllocNodes", tbl)) {
 			s_p_get_string(&p->allow_alloc_nodes, "AllocNodes",
 				       dflt);
 			if (p->allow_alloc_nodes &&
-			    (strcasecmp(p->allow_alloc_nodes, "ALL") == 0)) {
-				/* NULL means to allow all submit notes */
+			    (strcasecmp(p->allow_alloc_nodes, "ALL") == 0))
 				xfree(p->allow_alloc_nodes);
-			}
 		}
 
 		if (!s_p_get_string(&p->alternate, "Alternate", tbl))
@@ -1205,7 +1231,11 @@ static void _destroy_partitionname(void *ptr)
 	slurm_conf_partition_t *p = (slurm_conf_partition_t *)ptr;
 
 	xfree(p->allow_alloc_nodes);
+	xfree(p->allow_accounts);
 	xfree(p->allow_groups);
+	xfree(p->allow_qos);
+	xfree(p->deny_accounts);
+	xfree(p->deny_qos);
 	xfree(p->alternate);
 	xfree(p->name);
 	xfree(p->nodes);
@@ -2076,6 +2106,7 @@ free_slurm_conf (slurm_ctl_conf_t *ctl_conf_ptr, bool purge_node_hash)
 	xfree (ctl_conf_ptr->ext_sensors_type);
 	xfree (ctl_conf_ptr->gres_plugins);
 	xfree (ctl_conf_ptr->health_check_program);
+	xfree (ctl_conf_ptr->job_acct_gather_freq);
 	xfree (ctl_conf_ptr->job_acct_gather_type);
 	xfree (ctl_conf_ptr->job_ckpt_dir);
 	xfree (ctl_conf_ptr->job_comp_host);
@@ -2194,8 +2225,8 @@ init_slurm_conf (slurm_ctl_conf_t *ctl_conf_ptr)
 	ctl_conf_ptr->health_check_interval	= 0;
 	xfree(ctl_conf_ptr->health_check_program);
 	ctl_conf_ptr->inactive_limit		= (uint16_t) NO_VAL;
-	xfree (ctl_conf_ptr->job_acct_gather_type);
 	xfree (ctl_conf_ptr->job_acct_gather_freq);
+	xfree (ctl_conf_ptr->job_acct_gather_type);
 	xfree (ctl_conf_ptr->job_ckpt_dir);
 	xfree (ctl_conf_ptr->job_comp_loc);
 	xfree (ctl_conf_ptr->job_comp_pass);
@@ -3302,9 +3333,15 @@ _validate_and_set_defaults(slurm_ctl_conf_t *conf, s_p_hashtbl_t *hashtbl)
 			conf->proctrack_type =
 				xstrdup(DEFAULT_PROCTRACK_TYPE);
 	}
+#ifdef HAVE_NATIVE_CRAY
+	if (strcmp(conf->proctrack_type, "proctrack/cray"))
+		fatal("On a native Cray ProctrackType=proctrack/cray "
+		      "is required");
+#else
 #ifdef HAVE_REAL_CRAY
 	if (strcmp(conf->proctrack_type, "proctrack/sgi_job"))
 		fatal("On Cray ProctrackType=proctrack/sgi_job is required");
+#endif
 #endif
 	if ((!strcmp(conf->switch_type, "switch/elan"))
 	    && (!strcmp(conf->proctrack_type,"proctrack/linuxproc")))
@@ -3803,6 +3840,11 @@ extern char * debug_flags2str(uint32_t debug_flags)
 			xstrcat(rc, ",");
 		xstrcat(rc, "Filesystem");
 	}
+	if (debug_flags & DEBUG_FLAG_JOB_CONT) {
+		if (rc)
+			xstrcat(rc, ",");
+		xstrcat(rc, "JobContainer");
+	}
 	if (debug_flags & DEBUG_FLAG_NO_CONF_HASH) {
 		if (rc)
 			xstrcat(rc, ",");
@@ -3903,6 +3945,8 @@ extern uint32_t debug_str2flags(char *debug_flags)
 			rc |= DEBUG_FLAG_INFINIBAND;
 		else if (strcasecmp(tok, "Filesystem") == 0)
 			rc |= DEBUG_FLAG_FILESYSTEM;
+		else if (strcasecmp(tok, "JobContainer") == 0)
+			rc |= DEBUG_FLAG_JOB_CONT;
 		else if (strcasecmp(tok, "NO_CONF_HASH") == 0)
 			rc |= DEBUG_FLAG_NO_CONF_HASH;
 		else if (strcasecmp(tok, "NoRealTime") == 0)

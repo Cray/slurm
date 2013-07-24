@@ -1,5 +1,5 @@
 /*****************************************************************************\
- *  job_container_cray.c - Define job container management functions for
+ *  job_container_cncu.c - Define job container management functions for
  *                         Cray systems
  *****************************************************************************
  *  Copyright (C) 2013 SchedMD LLC
@@ -38,14 +38,24 @@
 #ifdef HAVE_CONFIG_H
 #  include "config.h"
 #endif
-#include <fcntl.h>
-#include <sys/stat.h>
+
 #include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+
+#ifdef HAVE_REAL_CRAY
+#include <job.h>	/* Cray's job module component */
+#endif
 
 #include "slurm/slurm_errno.h"
 #include "src/common/slurm_xlator.h"
+#include "src/slurmd/common/proctrack.h"
 
-#define _DEBUG	0
+#define ADD_FLAGS	0
+#define CREATE_FLAGS	0
+#define DELETE_FLAGS	0
+
+#define JOB_BUF_SIZE 128
 
 /*
  * These variables are required by the generic plugin interface.  If they
@@ -74,18 +84,15 @@
  * as 100 or 1000.  Various SLURM versions will likely require a certain
  * minimum version for their plugins as this API matures.
  */
-const char plugin_name[]        = "job_container cray plugin";
-const char plugin_type[]        = "job_container/cray";
+const char plugin_name[]        = "job_container cncu plugin";
+const char plugin_type[]        = "job_container/cncu";
 const uint32_t plugin_version   = 101;
-
-char *state_dir = NULL;		/* state save directory */
-
-#if _DEBUG
-#define JOB_BUF_SIZE 128
 
 static uint32_t *job_id_array = NULL;
 static uint32_t  job_id_count = 0;
 static pthread_mutex_t context_lock = PTHREAD_MUTEX_INITIALIZER;
+static char *state_dir = NULL;
+static bool enable_debug = false;
 
 static int _save_state(char *dir_name)
 {
@@ -177,7 +184,40 @@ static int _restore_state(char *dir_name)
 
 	return error_code;
 }
+
+#ifdef HAVE_REAL_CRAY
+static void _stat_reservation(char *type, rid_t resv_id)
+{
+	struct job_resv_stat buf;
+
+	if (job_stat_reservation(resv_id, &buf)) {
+		error("%s: stat(%"PRIu64"): %m", plugin_type, resv_id);
+	} else {
+		info("%s: %s/stat(%"PRIu64"): flags=%d "
+		     "num_jobs=%d num_files=%d num_ipc_objs=%d",
+		     plugin_type, type, resv_id, buf.flags, buf.num_jobs,
+		     buf.num_files, buf.num_ipc_objs);
+	}
+}
 #endif
+
+static bool _get_debug_flag(void)
+{
+	if (slurm_get_debug_flags() & DEBUG_FLAG_JOB_CONT)
+		return true;
+	return false;
+}
+
+extern void container_p_reconfig(void)
+{
+	bool new_debug_flag = _get_debug_flag();
+
+	if (enable_debug != new_debug_flag) {
+		debug("%s: JobContainer DebugFlag changed to %d",
+		      plugin_name, (int) new_debug_flag);
+	}
+	enable_debug = new_debug_flag;
+}
 
 /*
  * init() is called when the plugin is loaded, before any other functions
@@ -185,11 +225,12 @@ static int _restore_state(char *dir_name)
  */
 extern int init(void)
 {
-#if _DEBUG
-	info("%s loaded", plugin_name);
-#else
-	debug("%s loaded", plugin_name);
-#endif
+	enable_debug = _get_debug_flag();
+	if (enable_debug)
+		info("%s loaded", plugin_name);
+	else
+		debug("%s loaded", plugin_name);
+
 	return SLURM_SUCCESS;
 }
 
@@ -205,7 +246,6 @@ extern int fini(void)
 
 extern int container_p_restore(char *dir_name, bool recover)
 {
-#if _DEBUG
 	int i;
 
 	slurm_mutex_lock(&context_lock);
@@ -214,16 +254,15 @@ extern int container_p_restore(char *dir_name, bool recover)
 	for (i = 0; i < job_id_count; i++) {
 		if (job_id_array[i] == 0)
 			continue;
-		if (recover) {
-			info("%s: recovered job(%u)",
-			     plugin_type, job_id_array[i]);
-		} else {
-			info("%s: purging job(%u)",
-			     plugin_type, job_id_array[i]);
+		if (enable_debug)
+			info("%s: %s job(%u)",
+			     plugin_type,
+			     recover ? "recovered" : "purging",
+			     job_id_array[i]);
+		if (!recover)
 			job_id_array[i] = 0;
-		}
 	}
-#endif
+
 	xfree(state_dir);
 	state_dir = xstrdup(dir_name);
 	return SLURM_SUCCESS;
@@ -231,11 +270,15 @@ extern int container_p_restore(char *dir_name, bool recover)
 
 extern int container_p_create(uint32_t job_id)
 {
-#if _DEBUG
+#ifdef HAVE_REAL_CRAY
+	rid_t resv_id = job_id;
+	int rc;
+#endif
 	int i, empty = -1, found = -1;
 	bool job_id_change = false;
-	info("%s: creating(%u)", plugin_type, job_id);
 
+	if (enable_debug)
+		info("%s: creating(%u)", plugin_type, job_id);
 	slurm_mutex_lock(&context_lock);
 	for (i = 0; i < job_id_count; i++) {
 		if (job_id_array[i] == 0) {
@@ -260,27 +303,93 @@ extern int container_p_create(uint32_t job_id)
 	if (job_id_change)
 		_save_state(state_dir);
 	slurm_mutex_unlock(&context_lock);
-#endif
+
+#ifdef HAVE_REAL_CRAY
+	rc = job_create_reservation(resv_id, CREATE_FLAGS);
+	if ((rc == 0) || (errno == EEXIST)) {
+		if ((rc != 0) && (errno == EEXIST)) {
+			error("%s: create(%u): Reservation already exists",
+			      plugin_type, job_id);
+		}
+		if (enable_debug)
+			_stat_reservation("create", resv_id);
+		return SLURM_SUCCESS;
+	}
+#else
 	return SLURM_SUCCESS;
+#endif
+	error("%s: create(%u): %m", plugin_type, job_id);
+	return SLURM_ERROR;
 }
 
-extern int container_p_add(uint32_t job_id, uint64_t cont_id)
+/* Add proctrack container (PAGG) to a job container */
+extern int container_p_add_cont(uint32_t job_id, uint64_t cont_id)
 {
-#if _DEBUG
-	/* This is called from slurmstepd, so the job_id_array is NULL here.
-	 * The array is only set by slurmstepd */
-	info("%s: adding(%u.%"PRIu64")", plugin_type, job_id, cont_id);
+#ifdef HAVE_REAL_CRAY
+	jid_t cjob_id = cont_id;
+	rid_t resv_id = job_id;
+	int rc;
 #endif
+
+	if (enable_debug) {
+		info("%s: adding cont(%u.%"PRIu64")",
+		     plugin_type, job_id, cont_id);
+	}
+
+#ifdef HAVE_REAL_CRAY
+	rc = job_attach_reservation(cjob_id, resv_id, ADD_FLAGS);
+	if ((rc != 0) && (errno == ENOENT)) {	/* Log and retry */
+		error("%s: add(%u.%"PRIu64"): No reservation found",
+		      plugin_type, job_id, cont_id);
+		rc = job_create_reservation(resv_id, CREATE_FLAGS);
+		rc = job_attach_reservation(cjob_id, resv_id, ADD_FLAGS);
+	}
+
+	if (rc == 0) {
+		if (enable_debug)
+			_stat_reservation("add", resv_id);
+		return SLURM_SUCCESS;
+	}
+#else
 	return SLURM_SUCCESS;
+#endif
+	error("%s: add(%u.%"PRIu64"): %m", plugin_type, job_id, cont_id);
+	return SLURM_ERROR;
+}
+
+/* Add a process to a job container, create the proctrack container to add */
+extern int container_p_add_pid(uint32_t job_id, pid_t pid, uid_t uid)
+{
+	stepd_step_rec_t job;
+
+	if (enable_debug) {
+		info("%s: adding pid(%u.%u)",
+		     plugin_type, job_id, (uint32_t) pid);
+	}
+	memset(&job, 0, sizeof(stepd_step_rec_t));
+	job.jmgr_pid = pid;
+	job.uid = uid;
+	if (proctrack_g_create(&job) != SLURM_SUCCESS) {
+		error("%s: proctrack_g_create job(%u)", plugin_type,job_id);
+		return SLURM_ERROR;
+	}
+
+	proctrack_g_add(&job, pid);
+
+	return container_p_add_cont(job_id, job.cont_id);
 }
 
 extern int container_p_delete(uint32_t job_id)
 {
-#if _DEBUG
+#ifdef HAVE_REAL_CRAY
+	rid_t resv_id = job_id;
+#endif
+	int rc = 0;
 	int i, found = -1;
 	bool job_id_change = false;
 
-	info("%s: deleting(%u)", plugin_type, job_id);
+	if (enable_debug)
+		info("%s: deleting(%u)", plugin_type, job_id);
 	slurm_mutex_lock(&context_lock);
 	for (i = 0; i < job_id_count; i++) {
 		if (job_id_array[i] == job_id) {
@@ -294,6 +403,14 @@ extern int container_p_delete(uint32_t job_id)
 	if (job_id_change)
 		_save_state(state_dir);
 	slurm_mutex_unlock(&context_lock);
+#ifdef HAVE_REAL_CRAY
+	rc = job_end_reservation(resv_id, DELETE_FLAGS);
 #endif
-	return SLURM_SUCCESS;
+	if (rc == 0)
+		return SLURM_SUCCESS;
+
+	if ((errno == ENOENT) || (errno == EINPROGRESS) || (errno == EALREADY))
+		return SLURM_SUCCESS;	/* Not fatal error */
+	error("%s: delete(%u): %m", plugin_type, job_id);
+	return SLURM_ERROR;
 }

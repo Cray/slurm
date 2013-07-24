@@ -73,24 +73,24 @@
 #include "src/slurmd/slurmstepd/step_terminate_monitor.h"
 
 static void *_handle_accept(void *arg);
-static int _handle_request(int fd, slurmd_job_t *job, uid_t uid, gid_t gid);
-static int _handle_state(int fd, slurmd_job_t *job);
-static int _handle_info(int fd, slurmd_job_t *job);
-static int _handle_signal_task_local(int fd, slurmd_job_t *job, uid_t uid);
-static int _handle_signal_container(int fd, slurmd_job_t *job, uid_t uid);
-static int _handle_checkpoint_tasks(int fd, slurmd_job_t *job, uid_t uid);
-static int _handle_attach(int fd, slurmd_job_t *job, uid_t uid);
-static int _handle_pid_in_container(int fd, slurmd_job_t *job);
-static int _handle_daemon_pid(int fd, slurmd_job_t *job);
-static int _handle_notify_job(int fd, slurmd_job_t *job, uid_t uid);
-static int _handle_suspend(int fd, slurmd_job_t *job, uid_t uid);
-static int _handle_resume(int fd, slurmd_job_t *job, uid_t uid);
-static int _handle_terminate(int fd, slurmd_job_t *job, uid_t uid);
-static int _handle_completion(int fd, slurmd_job_t *job, uid_t uid);
-static int _handle_stat_jobacct(int fd, slurmd_job_t *job, uid_t uid);
-static int _handle_task_info(int fd, slurmd_job_t *job);
-static int _handle_list_pids(int fd, slurmd_job_t *job);
-static int _handle_reconfig(int fd, slurmd_job_t *job, uid_t uid);
+static int _handle_request(int fd, stepd_step_rec_t *job, uid_t uid, gid_t gid);
+static int _handle_state(int fd, stepd_step_rec_t *job);
+static int _handle_info(int fd, stepd_step_rec_t *job);
+static int _handle_signal_task_local(int fd, stepd_step_rec_t *job, uid_t uid);
+static int _handle_signal_container(int fd, stepd_step_rec_t *job, uid_t uid);
+static int _handle_checkpoint_tasks(int fd, stepd_step_rec_t *job, uid_t uid);
+static int _handle_attach(int fd, stepd_step_rec_t *job, uid_t uid);
+static int _handle_pid_in_container(int fd, stepd_step_rec_t *job);
+static int _handle_daemon_pid(int fd, stepd_step_rec_t *job);
+static int _handle_notify_job(int fd, stepd_step_rec_t *job, uid_t uid);
+static int _handle_suspend(int fd, stepd_step_rec_t *job, uid_t uid);
+static int _handle_resume(int fd, stepd_step_rec_t *job, uid_t uid);
+static int _handle_terminate(int fd, stepd_step_rec_t *job, uid_t uid);
+static int _handle_completion(int fd, stepd_step_rec_t *job, uid_t uid);
+static int _handle_stat_jobacct(int fd, stepd_step_rec_t *job, uid_t uid);
+static int _handle_task_info(int fd, stepd_step_rec_t *job);
+static int _handle_list_pids(int fd, stepd_step_rec_t *job);
+static int _handle_reconfig(int fd, stepd_step_rec_t *job, uid_t uid);
 static bool _msg_socket_readable(eio_obj_t *obj);
 static int _msg_socket_accept(eio_obj_t *obj, List objs);
 
@@ -105,7 +105,7 @@ static bool suspended = false;
 
 struct request_params {
 	int fd;
-	slurmd_job_t *job;
+	stepd_step_rec_t *job;
 };
 
 static pthread_mutex_t message_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -216,7 +216,7 @@ _domain_socket_destroy(int fd)
 static void *
 _msg_thr_internal(void *job_arg)
 {
-	slurmd_job_t *job = (slurmd_job_t *) job_arg;
+	stepd_step_rec_t *job = (stepd_step_rec_t *) job_arg;
 
 	debug("Message thread started pid = %lu", (unsigned long) getpid());
 	eio_handle_mainloop(job->msg_handle);
@@ -226,7 +226,7 @@ _msg_thr_internal(void *job_arg)
 }
 
 int
-msg_thr_create(slurmd_job_t *job)
+msg_thr_create(stepd_step_rec_t *job)
 {
 	int fd;
 	eio_obj_t *eio_obj;
@@ -304,7 +304,7 @@ _msg_socket_readable(eio_obj_t *obj)
 static int
 _msg_socket_accept(eio_obj_t *obj, List objs)
 {
-	slurmd_job_t *job = (slurmd_job_t *)obj->arg;
+	stepd_step_rec_t *job = (stepd_step_rec_t *)obj->arg;
 	int fd;
 	struct sockaddr_un addr;
 	int len = sizeof(addr);
@@ -372,7 +372,7 @@ _handle_accept(void *arg)
 {
 	/*struct request_params *param = (struct request_params *)arg;*/
 	int fd = ((struct request_params *)arg)->fd;
-	slurmd_job_t *job = ((struct request_params *)arg)->job;
+	stepd_step_rec_t *job = ((struct request_params *)arg)->job;
 	int req;
 	int len;
 	Buf buffer;
@@ -450,7 +450,7 @@ rwfail:
 
 
 int
-_handle_request(int fd, slurmd_job_t *job, uid_t uid, gid_t gid)
+_handle_request(int fd, stepd_step_rec_t *job, uid_t uid, gid_t gid)
 {
 	int rc = 0;
 	int req;
@@ -551,7 +551,7 @@ _handle_request(int fd, slurmd_job_t *job, uid_t uid, gid_t gid)
 }
 
 static int
-_handle_state(int fd, slurmd_job_t *job)
+_handle_state(int fd, stepd_step_rec_t *job)
 {
 	safe_write(fd, &job->state, sizeof(slurmstepd_state_t));
 
@@ -561,7 +561,7 @@ rwfail:
 }
 
 static int
-_handle_info(int fd, slurmd_job_t *job)
+_handle_info(int fd, stepd_step_rec_t *job)
 {
 	uint16_t protocol_version = SLURM_PROTOCOL_VERSION;
 
@@ -585,19 +585,17 @@ rwfail:
 }
 
 static int
-_handle_signal_task_local(int fd, slurmd_job_t *job, uid_t uid)
+_handle_signal_task_local(int fd, stepd_step_rec_t *job, uid_t uid)
 {
 	int rc = SLURM_SUCCESS;
 	int signal;
 	int ltaskid; /* local task index */
 
-	debug("_handle_signal_task_local for job %u.%u",
-	      job->jobid, job->stepid);
-
 	safe_read(fd, &signal, sizeof(int));
 	safe_read(fd, &ltaskid, sizeof(int));
+	debug("_handle_signal_task_local for step=%u.%u uid=%d signal=%d",
+	      job->jobid, job->stepid, (int) uid, signal);
 
-	debug3("  uid = %d", uid);
 	if (uid != job->uid && !_slurm_authorized_user(uid)) {
 		debug("kill req from uid %ld for job %u.%u owned by uid %ld",
 		      (long)uid, job->jobid, job->stepid, (long)job->uid);
@@ -660,7 +658,7 @@ rwfail:
 }
 
 static int
-_handle_signal_container(int fd, slurmd_job_t *job, uid_t uid)
+_handle_signal_container(int fd, stepd_step_rec_t *job, uid_t uid)
 {
 	int rc = SLURM_SUCCESS;
 	int errnum = 0;
@@ -669,14 +667,11 @@ _handle_signal_container(int fd, slurmd_job_t *job, uid_t uid)
 	char *ptr = NULL;
 	int target_node_id = 0;
 
-	debug("_handle_signal_container for job %u.%u",
-	      job->jobid, job->stepid);
-
 	safe_read(fd, &sig, sizeof(int));
-
-	debug3("  uid = %d", uid);
+	debug("_handle_signal_container for step=%u.%u uid=%d signal=%d",
+	      job->jobid, job->stepid, (int) uid, sig);
 	if ((uid != job->uid) && !_slurm_authorized_user(uid)) {
-		debug("signal container req from uid %ld for job %u.%u "
+		error("signal container req from uid %ld for step=%u.%u "
 		      "owned by uid %ld",
 		      (long)uid, job->jobid, job->stepid, (long)job->uid);
 		rc = -1;
@@ -761,7 +756,7 @@ _handle_signal_container(int fd, slurmd_job_t *job, uid_t uid)
 	/*
 	 * Signal the container
 	 */
-	if (slurm_container_signal(job->cont_id, sig) < 0) {
+	if (proctrack_g_signal(job->cont_id, sig) < 0) {
 		rc = -1;
 		errnum = errno;
 		verbose("Error sending signal %d to %u.%u: %m",
@@ -782,7 +777,7 @@ rwfail:
 }
 
 static int
-_handle_checkpoint_tasks(int fd, slurmd_job_t *job, uid_t uid)
+_handle_checkpoint_tasks(int fd, stepd_step_rec_t *job, uid_t uid)
 {
 	int rc = SLURM_SUCCESS;
 	time_t timestamp;
@@ -865,7 +860,7 @@ rwfail:
 }
 
 static int
-_handle_notify_job(int fd, slurmd_job_t *job, uid_t uid)
+_handle_notify_job(int fd, stepd_step_rec_t *job, uid_t uid)
 {
 	int rc = SLURM_SUCCESS;
 	int len;
@@ -901,16 +896,15 @@ rwfail:
 }
 
 static int
-_handle_terminate(int fd, slurmd_job_t *job, uid_t uid)
+_handle_terminate(int fd, stepd_step_rec_t *job, uid_t uid)
 {
 	int rc = SLURM_SUCCESS;
 	int errnum = 0;
 
-	debug("_handle_terminate for job %u.%u",
-	      job->jobid, job->stepid);
+	debug("_handle_terminate for step=%u.%u uid=%d",
+	      job->jobid, job->stepid, uid);
 	step_terminate_monitor_start(job->jobid, job->stepid);
 
-	debug3("  uid = %d", uid);
 	if (uid != job->uid && !_slurm_authorized_user(uid)) {
 		debug("terminate req from uid %ld for job %u.%u "
 		      "owned by uid %ld",
@@ -940,7 +934,7 @@ _handle_terminate(int fd, slurmd_job_t *job, uid_t uid)
 		      job->jobid, job->stepid);
 	}
 
-	if (slurm_container_signal(job->cont_id, SIGKILL) < 0) {
+	if (proctrack_g_signal(job->cont_id, SIGKILL) < 0) {
 		rc = -1;
 		errnum = errno;
 		verbose("Error sending SIGKILL signal to %u.%u: %m",
@@ -961,7 +955,7 @@ rwfail:
 }
 
 static int
-_handle_attach(int fd, slurmd_job_t *job, uid_t uid)
+_handle_attach(int fd, stepd_step_rec_t *job, uid_t uid)
 {
 	srun_info_t *srun;
 	int rc = SLURM_SUCCESS;
@@ -1042,7 +1036,7 @@ rwfail:
 }
 
 static int
-_handle_pid_in_container(int fd, slurmd_job_t *job)
+_handle_pid_in_container(int fd, stepd_step_rec_t *job)
 {
 	bool rc = false;
 	pid_t pid;
@@ -1052,7 +1046,7 @@ _handle_pid_in_container(int fd, slurmd_job_t *job)
 
 	safe_read(fd, &pid, sizeof(pid_t));
 
-	rc = slurm_container_has_pid(job->cont_id, pid);
+	rc = proctrack_g_has_pid(job->cont_id, pid);
 
 	/* Send the return code */
 	safe_write(fd, &rc, sizeof(bool));
@@ -1064,7 +1058,7 @@ rwfail:
 }
 
 static int
-_handle_daemon_pid(int fd, slurmd_job_t *job)
+_handle_daemon_pid(int fd, stepd_step_rec_t *job)
 {
 	safe_write(fd, &job->jmgr_pid, sizeof(pid_t));
 
@@ -1074,14 +1068,14 @@ rwfail:
 }
 
 static int
-_handle_suspend(int fd, slurmd_job_t *job, uid_t uid)
+_handle_suspend(int fd, stepd_step_rec_t *job, uid_t uid)
 {
 	static int launch_poe = -1;
 	int rc = SLURM_SUCCESS;
 	int errnum = 0;
 
-	debug("_handle_suspend for job %u.%u", job->jobid, job->stepid);
-	debug3("  uid = %d", uid);
+	debug("_handle_suspend for step=%u.%u uid=%d",
+	      job->jobid, job->stepid, (int) uid);
 	if (!_slurm_authorized_user(uid)) {
 		debug("job step suspend request from uid %ld for job %u.%u ",
 		      (long)uid, job->jobid, job->stepid);
@@ -1130,14 +1124,14 @@ _handle_suspend(int fd, slurmd_job_t *job, uid_t uid)
 		if (launch_poe == 0) {
 			/* IBM MPI seens to periodically hang upon receipt
 			 * of SIGTSTP. */
-			if (slurm_container_signal(job->cont_id, SIGTSTP) < 0) {
+			if (proctrack_g_signal(job->cont_id, SIGTSTP) < 0) {
 				verbose("Error suspending %u.%u (SIGTSTP): %m",
 					job->jobid, job->stepid);
 			} else
 				sleep(2);
 		}
 
-		if (slurm_container_signal(job->cont_id, SIGSTOP) < 0) {
+		if (proctrack_g_signal(job->cont_id, SIGSTOP) < 0) {
 			verbose("Error suspending %u.%u (SIGSTOP): %m",
 				job->jobid, job->stepid);
 		} else {
@@ -1161,7 +1155,7 @@ rwfail:
 }
 
 static int
-_handle_resume(int fd, slurmd_job_t *job, uid_t uid)
+_handle_resume(int fd, stepd_step_rec_t *job, uid_t uid)
 {
 	int rc = SLURM_SUCCESS;
 	int errnum = 0;
@@ -1197,7 +1191,7 @@ _handle_resume(int fd, slurmd_job_t *job, uid_t uid)
 		pthread_mutex_unlock(&suspend_mutex);
 		goto done;
 	} else {
-		if (slurm_container_signal(job->cont_id, SIGCONT) < 0) {
+		if (proctrack_g_signal(job->cont_id, SIGCONT) < 0) {
 			verbose("Error resuming %u.%u: %m",
 				job->jobid, job->stepid);
 		} else {
@@ -1221,7 +1215,7 @@ rwfail:
 }
 
 static int
-_handle_completion(int fd, slurmd_job_t *job, uid_t uid)
+_handle_completion(int fd, stepd_step_rec_t *job, uid_t uid)
 {
 	int rc = SLURM_SUCCESS;
 	int errnum = 0;
@@ -1330,7 +1324,7 @@ rwfail:	if (lock_set) {
 }
 
 static int
-_handle_stat_jobacct(int fd, slurmd_job_t *job, uid_t uid)
+_handle_stat_jobacct(int fd, stepd_step_rec_t *job, uid_t uid)
 {
 	jobacctinfo_t *jobacct = NULL;
 	jobacctinfo_t *temp_jobacct = NULL;
@@ -1370,10 +1364,10 @@ rwfail:
 
 /* We don't check the uid in this function, anyone may list the task info. */
 static int
-_handle_task_info(int fd, slurmd_job_t *job)
+_handle_task_info(int fd, stepd_step_rec_t *job)
 {
 	int i;
-	slurmd_task_info_t *task;
+	stepd_step_task_info_t *task;
 
 	debug("_handle_task_info for job %u.%u", job->jobid, job->stepid);
 
@@ -1394,7 +1388,7 @@ rwfail:
 
 /* We don't check the uid in this function, anyone may list the task info. */
 static int
-_handle_list_pids(int fd, slurmd_job_t *job)
+_handle_list_pids(int fd, stepd_step_rec_t *job)
 {
 	int i;
 	pid_t *pids = NULL;
@@ -1402,7 +1396,7 @@ _handle_list_pids(int fd, slurmd_job_t *job)
 	uint32_t pid;
 
 	debug("_handle_list_pids for job %u.%u", job->jobid, job->stepid);
-	slurm_container_get_pids(job->cont_id, &pids, &npids);
+	proctrack_g_get_pids(job->cont_id, &pids, &npids);
 	safe_write(fd, &npids, sizeof(uint32_t));
 	for (i = 0; i < npids; i++) {
 		pid = (uint32_t)pids[i];
@@ -1419,7 +1413,7 @@ rwfail:
 }
 
 static int
-_handle_reconfig(int fd, slurmd_job_t *job, uid_t uid)
+_handle_reconfig(int fd, stepd_step_rec_t *job, uid_t uid)
 {
 	int rc = SLURM_SUCCESS;
 	int errnum = 0;

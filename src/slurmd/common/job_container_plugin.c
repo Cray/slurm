@@ -48,9 +48,11 @@
 
 typedef struct job_container_ops {
 	int	(*container_p_create)	(uint32_t job_id);
-	int	(*container_p_add)	(uint32_t job_id, uint64_t cont_id);
+	int	(*container_p_add_cont)	(uint32_t job_id, uint64_t cont_id);
+	int	(*container_p_add_pid)	(uint32_t job_id, pid_t pid, uid_t uid);
 	int	(*container_p_delete)	(uint32_t job_id);
 	int	(*container_p_restore)	(char *dir_name, bool recover);
+	void	(*container_p_reconfig)	(void);
 
 } job_container_ops_t;
 
@@ -59,9 +61,11 @@ typedef struct job_container_ops {
  */
 static const char *syms[] = {
 	"container_p_create",
-	"container_p_add",
+	"container_p_add_cont",
+	"container_p_add_pid",
 	"container_p_delete",
 	"container_p_restore",
+	"container_p_reconfig",
 };
 
 static job_container_ops_t	*ops = NULL;
@@ -188,9 +192,10 @@ extern int container_g_create(uint32_t job_id)
 	return rc;
 }
 
-/* Add a PAGG to the specified job's container
- * The PAGG will be the job's cont_id returned by proctrack/sgi_job */
-extern int container_g_add(uint32_t job_id, uint64_t cont_id)
+/* Add a process to the specified job's container.
+ * A proctrack containter will be generated containing the process
+ * before container_g_add_cont() is called (see below). */
+extern int container_g_add_pid(uint32_t job_id, pid_t pid, uid_t uid)
 {
 	int i, rc = SLURM_SUCCESS;
 
@@ -200,7 +205,26 @@ extern int container_g_add(uint32_t job_id, uint64_t cont_id)
 	slurm_mutex_lock(&g_container_context_lock);
 	for (i = 0; ((i < g_container_context_num) && (rc == SLURM_SUCCESS));
 	     i++) {
-		rc = (*(ops[i].container_p_add))(job_id, cont_id);
+		rc = (*(ops[i].container_p_add_pid))(job_id, pid, uid);
+	}
+	slurm_mutex_unlock(&g_container_context_lock);
+
+	return rc;
+}
+
+/* Add a proctrack container (PAGG) to the specified job's container
+ * The PAGG will be the job's cont_id returned by proctrack/sgi_job */
+extern int container_g_add_cont(uint32_t job_id, uint64_t cont_id)
+{
+	int i, rc = SLURM_SUCCESS;
+
+	if (job_container_init())
+		return SLURM_ERROR;
+
+	slurm_mutex_lock(&g_container_context_lock);
+	for (i = 0; ((i < g_container_context_num) && (rc == SLURM_SUCCESS));
+	     i++) {
+		rc = (*(ops[i].container_p_add_cont))(job_id, cont_id);
 	}
 	slurm_mutex_unlock(&g_container_context_lock);
 
@@ -242,3 +266,20 @@ extern int container_g_restore(char * dir_name, bool recover)
 
 	return rc;
 }
+
+/* Note change in configuration (e.g. "DebugFlag=JobContainer" set) */
+extern void container_g_reconfig(void)
+{
+	int i;
+
+	(void) job_container_init();
+
+	slurm_mutex_lock(&g_container_context_lock);
+	for (i = 0; i < g_container_context_num;i++) {
+		(*(ops[i].container_p_reconfig))();
+	}
+	slurm_mutex_unlock(&g_container_context_lock);
+
+	return;
+}
+

@@ -217,11 +217,15 @@ static void _internal_step_complete(
 	if (!terminated) {
 		/* These operations are not needed for
 		 * terminated jobs */
+		step_ptr->state = JOB_COMPLETING;
+
 		select_g_step_finish(step_ptr);
-		_step_dealloc_lps(step_ptr);
-		gres_plugin_step_dealloc(step_ptr->gres_list,
-					 job_ptr->gres_list, job_ptr->job_id,
-					 step_ptr->step_id);
+#ifndef HAVE_NATIVE_CRAY
+		/* On a native cray this is ran after the NHC is
+		   called which could take up to 3 minutes.
+		*/
+		post_job_step(step_ptr);
+#endif
 	}
 }
 
@@ -241,6 +245,15 @@ extern void delete_step_records (struct job_record *job_ptr)
 
 	last_job_update = time(NULL);
 	while ((step_ptr = (struct step_record *) list_next (step_iterator))) {
+		uint16_t cleaning = 0;
+		select_g_select_jobinfo_get(job_ptr->select_jobinfo,
+					    SELECT_JOBDATA_CLEANING,
+					    &cleaning);
+		if (cleaning)
+			continue;      /* Step hasn't finished yet it
+					* will be removed when it
+					* does complete. */
+
 		_internal_step_complete(job_ptr, step_ptr, true);
 		list_remove (step_iterator);
 		_free_step_rec(step_ptr);
@@ -259,7 +272,7 @@ static void _free_step_rec(struct step_record *step_ptr)
 	if (step_ptr->switch_job) {
 		switch_g_job_step_complete(step_ptr->switch_job,
 					   step_ptr->step_layout->node_list);
-		switch_free_jobinfo (step_ptr->switch_job);
+		switch_g_free_jobinfo (step_ptr->switch_job);
 	}
 	resv_port_free(step_ptr);
 	checkpoint_free_jobinfo (step_ptr->check_job);
@@ -626,7 +639,6 @@ int job_step_complete(uint32_t job_id, uint32_t step_id, uid_t uid,
 {
 	struct job_record *job_ptr;
 	struct step_record *step_ptr;
-	int error_code;
 
 	job_ptr = find_job_record(job_id);
 	if (job_ptr == NULL) {
@@ -647,13 +659,7 @@ int job_step_complete(uint32_t job_id, uint32_t step_id, uid_t uid,
 	_internal_step_complete(job_ptr, step_ptr, false);
 
 	last_job_update = time(NULL);
-	error_code = delete_step_record(job_ptr, step_id);
-	if (error_code == ENOENT) {
-		info("job_step_complete step %u.%u not found", job_id,
-		     step_id);
-		return ESLURM_ALREADY_DONE;
-	}
-	_wake_pending_steps(job_ptr);
+
 	return SLURM_SUCCESS;
 }
 
@@ -1281,7 +1287,7 @@ _pick_step_nodes (struct job_record  *job_ptr,
 		step_iterator = list_iterator_create(job_ptr->step_list);
 		while ((step_p = (struct step_record *)
 			list_next(step_iterator))) {
-			if (step_p->state != JOB_RUNNING)
+			if (step_p->state < JOB_RUNNING)
 				continue;
 			bit_or(nodes_idle, step_p->step_node_bitmap);
 			if (slurm_get_debug_flags() & DEBUG_FLAG_STEPS) {
@@ -2271,10 +2277,10 @@ step_create(job_step_create_request_msg_t *step_specs,
 			}
 		}
 
-		if (switch_alloc_jobinfo (&step_ptr->switch_job) < 0)
-			fatal ("step_create: switch_alloc_jobinfo error");
+		if (switch_g_alloc_jobinfo (&step_ptr->switch_job) < 0)
+			fatal ("step_create: switch_g_alloc_jobinfo error");
 
-		if (switch_build_jobinfo(step_ptr->switch_job,
+		if (switch_g_build_jobinfo(step_ptr->switch_job,
 					 step_ptr->step_layout,
 					 step_ptr->network) < 0) {
 			delete_step_record (job_ptr, step_ptr->step_id);
@@ -2977,7 +2983,7 @@ extern int step_partial_comp(step_complete_msg_t *req, uid_t uid,
 			switch_g_job_step_complete(
 				step_ptr->switch_job,
 				step_ptr->step_layout->node_list);
-			switch_free_jobinfo (step_ptr->switch_job);
+			switch_g_free_jobinfo (step_ptr->switch_job);
 			step_ptr->switch_job = NULL;
 		}
 	} else if (switch_g_part_comp() && step_ptr->switch_job) {
@@ -3212,7 +3218,7 @@ extern void dump_job_step_state(struct job_record *job_ptr,
 	if (!step_ptr->batch_step) {
 		pack_slurm_step_layout(step_ptr->step_layout, buffer,
 				       SLURM_PROTOCOL_VERSION);
-		switch_pack_jobinfo(step_ptr->switch_job, buffer);
+		switch_g_pack_jobinfo(step_ptr->switch_job, buffer);
 	}
 	checkpoint_pack_jobinfo(step_ptr->check_job, buffer,
 				SLURM_PROTOCOL_VERSION);
@@ -3293,8 +3299,8 @@ extern int load_step_state(struct job_record *job_ptr, Buf buffer,
 			if (unpack_slurm_step_layout(&step_layout, buffer,
 						     protocol_version))
 				goto unpack_error;
-			switch_alloc_jobinfo(&switch_tmp);
-			if (switch_unpack_jobinfo(switch_tmp, buffer))
+			switch_g_alloc_jobinfo(&switch_tmp);
+			if (switch_g_unpack_jobinfo(switch_tmp, buffer))
 				goto unpack_error;
 		}
 		checkpoint_alloc_jobinfo(&check_tmp);
@@ -3350,8 +3356,8 @@ extern int load_step_state(struct job_record *job_ptr, Buf buffer,
 			if (unpack_slurm_step_layout(&step_layout, buffer,
 						     protocol_version))
 				goto unpack_error;
-			switch_alloc_jobinfo(&switch_tmp);
-			if (switch_unpack_jobinfo(switch_tmp, buffer))
+			switch_g_alloc_jobinfo(&switch_tmp);
+			if (switch_g_unpack_jobinfo(switch_tmp, buffer))
 				goto unpack_error;
 		}
 		checkpoint_alloc_jobinfo(&check_tmp);
@@ -3472,7 +3478,7 @@ unpack_error:
 	xfree(bit_fmt);
 	xfree(core_job);
 	if (switch_tmp)
-		switch_free_jobinfo(switch_tmp);
+		switch_g_free_jobinfo(switch_tmp);
 	slurm_step_layout_destroy(step_layout);
 	select_g_select_jobinfo_free(select_jobinfo);
 	return SLURM_FAILURE;
@@ -3860,7 +3866,7 @@ extern void rebuild_step_bitmaps(struct job_record *job_ptr,
 	step_iterator = list_iterator_create(job_ptr->step_list);
 	while ((step_ptr = (struct step_record *)
 			   list_next (step_iterator))) {
-		if (step_ptr->state != JOB_RUNNING)
+		if (step_ptr->state < JOB_RUNNING)
 			continue;
 		gres_plugin_step_state_rebase(step_ptr->gres_list,
 					orig_job_node_bitmap,
@@ -3903,4 +3909,28 @@ extern void rebuild_step_bitmaps(struct job_record *job_ptr,
 		bit_free(orig_step_core_bitmap);
 	}
 	list_iterator_destroy (step_iterator);
+}
+
+extern int post_job_step(struct step_record *step_ptr)
+{
+	struct job_record *job_ptr = step_ptr->job_ptr;
+	int error_code;
+
+	_step_dealloc_lps(step_ptr);
+	gres_plugin_step_dealloc(step_ptr->gres_list,
+				 job_ptr->gres_list, job_ptr->job_id,
+				 step_ptr->step_id);
+
+	last_job_update = time(NULL);
+	step_ptr->state = JOB_COMPLETE;
+
+	error_code = delete_step_record(job_ptr, step_ptr->step_id);
+	if (error_code == ENOENT) {
+		info("remove_job_step step %u.%u not found", job_ptr->job_id,
+		     step_ptr->step_id);
+		return ESLURM_ALREADY_DONE;
+	}
+	_wake_pending_steps(job_ptr);
+
+	return SLURM_SUCCESS;
 }
