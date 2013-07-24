@@ -530,7 +530,7 @@ AC_CONFIG_FILES([Makefile
 		 src/plugins/jobcomp/mysql/Makefile
 		 src/plugins/jobcomp/pgsql/Makefile
 		 src/plugins/job_container/Makefile
-		 src/plugins/job_container/cray/Makefile
+		 src/plugins/job_container/cncu/Makefile
 		 src/plugins/job_container/none/Makefile
 		 src/plugins/job_submit/Makefile
 		 src/plugins/job_submit/all_partitions/Makefile
@@ -554,6 +554,7 @@ AC_CONFIG_FILES([Makefile
 		 src/plugins/priority/multifactor/Makefile
 		 src/plugins/proctrack/Makefile
 		 src/plugins/proctrack/aix/Makefile
+		 src/plugins/proctrack/cray/Makefile
 		 src/plugins/proctrack/cgroup/Makefile
 		 src/plugins/proctrack/pgid/Makefile
 		 src/plugins/proctrack/linuxproc/Makefile

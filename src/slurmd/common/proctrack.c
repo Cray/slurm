@@ -61,8 +61,8 @@
 /*  TAG(                        slurm_proctrack_ops_t                    )  */
 /* ************************************************************************ */
 typedef struct slurm_proctrack_ops {
-	int              (*create)    (slurmd_job_t * job);
-	int              (*add)       (slurmd_job_t * job, pid_t pid);
+	int              (*create)    (stepd_step_rec_t * job);
+	int              (*add)       (stepd_step_rec_t * job, pid_t pid);
 	int              (*signal)    (uint64_t id, int signal);
 	int              (*destroy)   (uint64_t id);
 	uint64_t         (*find_cont) (pid_t pid);
@@ -75,14 +75,14 @@ typedef struct slurm_proctrack_ops {
  * Must be synchronized with slurm_proctrack_ops_t above.
  */
 static const char *syms[] = {
-	"slurm_container_plugin_create",
-	"slurm_container_plugin_add",
-	"slurm_container_plugin_signal",
-	"slurm_container_plugin_destroy",
-	"slurm_container_plugin_find",
-	"slurm_container_plugin_has_pid",
-	"slurm_container_plugin_wait",
-	"slurm_container_plugin_get_pids"
+	"proctrack_p_plugin_create",
+	"proctrack_p_plugin_add",
+	"proctrack_p_plugin_signal",
+	"proctrack_p_plugin_destroy",
+	"proctrack_p_plugin_find",
+	"proctrack_p_plugin_has_pid",
+	"proctrack_p_plugin_wait",
+	"proctrack_p_plugin_get_pids"
 };
 
 static slurm_proctrack_ops_t ops;
@@ -145,13 +145,13 @@ extern int slurm_proctrack_fini(void)
 
 /*
  * Create a container
- * job IN - slurmd_job_t structure
+ * job IN - stepd_step_rec_t structure
  * job->cont_id OUT - Plugin must fill in job->cont_id either here
- *                    or in slurm_container_add()
+ *                    or in proctrack_g_add()
  *
  * Returns a SLURM errno.
  */
-extern int slurm_container_create(slurmd_job_t * job)
+extern int proctrack_g_create(stepd_step_rec_t * job)
 {
 	if (slurm_proctrack_init() < 0)
 		return 0;
@@ -161,14 +161,14 @@ extern int slurm_container_create(slurmd_job_t * job)
 
 /*
  * Add a process to the specified container
- * job IN - slurmd_job_t structure
+ * job IN - stepd_step_rec_t structure
  * pid IN      - process ID to be added to the container
  * job->cont_id OUT - Plugin must fill in job->cont_id either here
- *                    or in slurm_container_create()
+ *                    or in proctrack_g_create()
  *
  * Returns a SLURM errno.
  */
-extern int slurm_container_add(slurmd_job_t * job, pid_t pid)
+extern int proctrack_g_add(stepd_step_rec_t * job, pid_t pid)
 {
 	if (slurm_proctrack_init() < 0)
 		return SLURM_ERROR;
@@ -198,23 +198,23 @@ static bool _test_core_dumping(char* stat_fname)
 	char *str_ptr, *proc_stat;
 	int proc_fd, proc_stat_size = BUF_SIZE;
 	bool dumping_results = false;
-	
+
 	proc_stat = (char *) xmalloc(proc_stat_size);
 	proc_fd = open(stat_fname, O_RDONLY, 0);
-	if (proc_fd == -1) 
+	if (proc_fd == -1)
 		return false;  /* process is now gone */
 	while ((num = read(proc_fd, proc_stat, proc_stat_size)) > 0) {
 		if (num < (proc_stat_size-1))
 			break;
 		proc_stat_size += BUF_SIZE;
 		xrealloc(proc_stat, proc_stat_size);
-		if (lseek(proc_fd, (off_t) 0, SEEK_SET) != 0) 
+		if (lseek(proc_fd, (off_t) 0, SEEK_SET) != 0)
 			break;
 	}
 	close(proc_fd);
 
 	/* split into "PID (cmd" and "<rest>" */
-	str_ptr = (char *)strrchr(proc_stat, ')'); 
+	str_ptr = (char *)strrchr(proc_stat, ')');
 	*str_ptr = '\0';		/* replace trailing ')' with NULL */
 	/* parse these two strings separately, skipping the leading "(". */
 	memset (cmd, 0, sizeof(cmd));
@@ -232,11 +232,11 @@ static bool _test_core_dumping(char* stat_fname)
 		"%lu %lu %lu %*d %d",
 		state,
 		&ppid, &pgrp, &session, &tty, &tpgid,
-		&flags, &min_flt, &cmin_flt, &maj_flt, &cmaj_flt, &utime, &stime, 
+		&flags, &min_flt, &cmin_flt, &maj_flt, &cmaj_flt, &utime, &stime,
 		&cutime, &cstime, &priority, &nice, &timeout, &it_real_value,
 		&start_time, &vsize,
 		&resident_set_size,
-		&resident_set_size_rlim, &start_code, &end_code, 
+		&resident_set_size_rlim, &start_code, &end_code,
 		&start_stack, &kstk_esp, &kstk_eip,
 /*		&signal, &blocked, &sig_ignore, &sig_catch, */ /* can't use */
 		&w_chan, &n_swap, &sn_swap /* , &Exit_signal  */, &l_proc);
@@ -264,7 +264,7 @@ static void *_sig_agent(void *args)
 		int i, npids = 0, hung_pids = 0;
 		char *stat_fname = NULL;
 
-		if (slurm_container_get_pids(agent_arg_ptr->cont_id, &pids,
+		if (proctrack_g_get_pids(agent_arg_ptr->cont_id, &pids,
 					     &npids) == SLURM_SUCCESS) {
 			hung_pids = 0;
 			for (i = 0; i < npids; i++) {
@@ -311,13 +311,13 @@ static void _spawn_signal_thread(uint64_t cont_id, int signal)
 
 /*
  * Signal all processes within a container
- * cont_id IN - container ID as returned by slurm_container_create()
+ * cont_id IN - container ID as returned by proctrack_g_create()
  * signal IN  - signal to send, if zero then perform error checking
  *              but do not send signal
  *
  * Returns a SLURM errno.
  */
-extern int slurm_container_signal(uint64_t cont_id, int signal)
+extern int proctrack_g_signal(uint64_t cont_id, int signal)
 {
 
 
@@ -328,9 +328,9 @@ extern int slurm_container_signal(uint64_t cont_id, int signal)
 		pid_t *pids = NULL;
 		int i, j, npids = 0, hung_pids = 0;
 		char *stat_fname = NULL;
-		if (slurm_container_get_pids(cont_id, &pids, &npids) ==
+		if (proctrack_g_get_pids(cont_id, &pids, &npids) ==
 		    SLURM_SUCCESS) {
-			/* NOTE: slurm_container_get_pids() is not supported
+			/* NOTE: proctrack_g_get_pids() is not supported
 			 * by the proctrack/pgid plugin */
 			for (j = 0; j < 2; j++) {
 				if (j)
@@ -368,7 +368,7 @@ extern int slurm_container_signal(uint64_t cont_id, int signal)
 	return (*(ops.signal)) (cont_id, signal);
 }
 #else
-extern int slurm_container_signal(uint64_t cont_id, int signal)
+extern int proctrack_g_signal(uint64_t cont_id, int signal)
 {
 	if (slurm_proctrack_init() < 0)
 		return SLURM_ERROR;
@@ -379,11 +379,11 @@ extern int slurm_container_signal(uint64_t cont_id, int signal)
 
 /*
  * Destroy a container, any processes within the container are not effected
- * cont_id IN - container ID as returned by slurm_container_create()
+ * cont_id IN - container ID as returned by proctrack_g_create()
  *
  * Returns a SLURM errno.
 */
-extern int slurm_container_destroy(uint64_t cont_id)
+extern int proctrack_g_destroy(uint64_t cont_id)
 {
 	if (slurm_proctrack_init() < 0)
 		return SLURM_ERROR;
@@ -396,7 +396,7 @@ extern int slurm_container_destroy(uint64_t cont_id)
  *
  * Returns zero if no container found for the given pid.
  */
-extern uint64_t slurm_container_find(pid_t pid)
+extern uint64_t proctrack_g_find(pid_t pid)
 {
 	if (slurm_proctrack_init() < 0)
 		return SLURM_ERROR;
@@ -408,7 +408,7 @@ extern uint64_t slurm_container_find(pid_t pid)
  * Return "true" if the container "cont_id" contains the process with
  * ID "pid".
  */
-extern bool slurm_container_has_pid(uint64_t cont_id, pid_t pid)
+extern bool proctrack_g_has_pid(uint64_t cont_id, pid_t pid)
 {
 	if (slurm_proctrack_init() < 0)
 		return SLURM_ERROR;
@@ -419,14 +419,14 @@ extern bool slurm_container_has_pid(uint64_t cont_id, pid_t pid)
 /*
  * Wait for all processes within a container to exit.
  *
- * When slurm_container_wait returns SLURM_SUCCESS, the container is considered
- * destroyed.  There is no need to call slurm_container_destroy after
- * a successful call to slurm_container_wait, and in fact it will trigger
+ * When proctrack_g_wait returns SLURM_SUCCESS, the container is considered
+ * destroyed.  There is no need to call proctrack_g_destroy after
+ * a successful call to proctrack_g_wait, and in fact it will trigger
  * undefined behavior.
  *
  * Return SLURM_SUCCESS or SLURM_ERROR.
  */
-extern int slurm_container_wait(uint64_t cont_id)
+extern int proctrack_g_wait(uint64_t cont_id)
 {
 	if (slurm_proctrack_init() < 0)
 		return SLURM_ERROR;
@@ -447,7 +447,7 @@ extern int slurm_container_wait(uint64_t cont_id)
  *   plugin does not implement the call.
  */
 extern int
-slurm_container_get_pids(uint64_t cont_id, pid_t ** pids, int *npids)
+proctrack_g_get_pids(uint64_t cont_id, pid_t ** pids, int *npids)
 {
 	if (slurm_proctrack_init() < 0)
 		return SLURM_ERROR;
