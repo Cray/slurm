@@ -83,6 +83,8 @@ AC_DEFUN([X_AC_CRAY],
 	[AC_MSG_ERROR(There is a problem linking to the Cray api.)])
       LIBS="$saved_LIBS"
       CPPFLAGS="$saved_CPPFLAGS"
+      PKG_CHECK_MODULES([CRAY_ALPSCOMM_CN], [cray-alpscomm_cn]) 
+      PKG_CHECK_MODULES([CRAY_ALPSCOMM_SN], [cray-alpscomm_sn]) 
 
       break
     done

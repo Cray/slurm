@@ -138,6 +138,8 @@ BuildRequires: pkgconfig
 
 BuildRequires: -post-build-checks
 
+BuildRequires: pkg-config
+
 # not sure if this is always an actual rpm or not so leaving the requirement out
 #%if %{slurm_with blcr}
 #BuildRequires: blcr
@@ -162,6 +164,8 @@ BuildRequires: postgresql-devel >= 8.0.0
 %if %{slurm_with cray}
 BuildRequires: cray-MySQL-devel-enterprise
 Requires: cray-MySQL-client-enterprise
+BuildRequires: cray-libalpscomm_cn-devel
+BuildRequires: cray-libalpscomm_sn-devel
 %endif
 
 %ifnos aix5.3
@@ -410,6 +414,7 @@ Gives the ability for SLURM to use Berkeley Lab Checkpoint/Restart
 %build
 # Skip configure if possible
 if [ ! -f "config.status" -o "%{reconfigure}" = "1" ]; then
+./autogen.sh
 %configure --program-prefix=%{?_program_prefix:%{_program_prefix}} \
 	%{?slurm_with_debug:--enable-debug} \
 	%{?slurm_with_partial_attach:--enable-partial-attach} \

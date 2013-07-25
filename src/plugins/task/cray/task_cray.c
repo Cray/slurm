@@ -162,6 +162,207 @@ extern int task_slurmd_release_resources (uint32_t job_id)
  */
 extern int task_pre_setuid (stepd_step_rec_t *job)
 {
+	int i, j, rc;
+	uint16_t multi_prog = 0;  // Is this an MPMD or SPMD launch? 1 = MPMD 0 = SPMD
+	/* Layout variables */
+	slurm_step_layout_t *layout;
+	uint32_t step_node_count, step_task_count, task;
+	uint16_t *tasks_per_node;
+	uint32_t **host_to_task_map;
+	uint32_t stepid, cpus_per_task;
+	uint64_t cpuMaskHere; // Really a type cpuMap_t, but that's an ALPS internal
+	uint32_t pesHere, totalPEs;
+	uint32_t numNodes;
+	uint64_t apid, nid;
+
+	apInfo_t ap;
+	char *cptr = NULL, *cptr1 = NULL;
+
+//	char *sleep_time = NULL;
+//	int seconds = 60; // Default to a minute
+	FILE *fout;
+
+	char *DEBUG_WAIT=getenv("SLURM_DEBUG_WAIT");
+	while(DEBUG_WAIT);
+
+	fout = fopen("/tmp/slurmstepd_output", "w");
+
+	fprintf(fout, "Put something in here.\n");
+
+	fsync(fileno(fout));
+
+	/*
+	sleep_time = getenv("SLURM_SLEEP_TIMER");
+	if (sleep_time) {
+		seconds = atoi(sleep_time);
+	}
+
+	// Sleep long enough to attach GDB to the function.
+
+	sleep(seconds);
+	 */
+
+	/*
+	 * Get SLURM information
+	 * For now, I'm just translating SLURM-named variables into Cray-named
+	 * variables.
+	 */
+
+	numNodes = job->nnodes;
+	totalPEs = job->ntasks;
+	pesHere = job->node_tasks;
+	layout = job->layout;
+	step_node_count = layout->node_cnt;
+	step_task_count = layout->task_cnt;
+	tasks_per_node = layout->tasks;
+	host_to_task_map = layout->tids;
+	/* There may be problems here because I think job_alloc_cores only goes up
+	 * to size uint32_t, not uint64_t.
+	 */
+	/*
+	 *
+	 rc = bit_unfmt((bitstr_t *)&cpuMaskHere, job->job_alloc_cores); // CPU/core bit map
+	if (rc < 0 ) {
+		error("Failed to set cpuMaskHere using bit_unfmt");
+		return SLURM_ERROR;
+	}
+	*/
+
+	cpus_per_task = job->cpus_per_task;
+
+	/* JDS: To incorporate both the JOB ID and the STEPID, I bit shifted the
+		 * the jobid into the upper 32 bits.
+		 */
+	apid = make_apid(job->jobid, job->stepid);
+
+	/* Create APID directory */
+	/* TO DO: rmdir() this directory in the clean-up section. */
+	rc = make_apid_dir(apid, job->uid, job->gid);
+	if (rc) {
+		fprintf(stderr, "Making APID directory failed: APID: %llu.", apid);
+	}
+
+	/*
+	 * Configure the Cray network
+	 */
+
+	fprintf(fout, "Configure_network\n");
+	configure_network(apid, job->uid, cookie_array);
+
+	// For testing, inc the cookie_array cookies for the next job step.
+	//cookie_array[0] += 0x020000;
+	//cookie_array[1] += 0x020000;
+
+	/*
+	 * Write information into the ALPS placement file for Cray's PMI layer.
+	 * First, populate the ALPS information into ap.
+	 * The values depend on whether this job launch is an MPMD launch or an
+	 * SPMD launch.  Determine that first before proceeding.
+	 */
+
+	/* Launch independent */
+	ap.apid = apid;
+	// I think I converted the cupMaskHere to a uint64_t correctly.
+	ap.cpuMaskHere = cpuMaskHere;
+	/* I'm not sure that this is a one-to-one match, and it may need to change.*/
+	/* This one is not needed by Cray's PMI. */
+	ap.peDepth = cpus_per_task;
+
+	/*
+	 * peNidArray
+	 * This takes the SLURM ordering within a 2-D array that maps hosts to
+	 * their associated tasks and flattens it into a 1-D array mapping
+	 * tasks to hosts.  In Cray parlance, it maps PEs to nodes.
+	 */
+	fprintf(fout, "host_to_task_map configuring\n");
+	ap.peNidArray = calloc(step_task_count, sizeof(int));
+	for (i=0; i<step_node_count; i++) {
+		for (j=0; j<tasks_per_node[i]; j++) {
+			task = host_to_task_map[i][j];
+			if (task > step_task_count - 1) {
+				fprintf(stderr, "ERROR: Task number %ul exceeds bounds of task "
+						"array: Max %ul", task, step_task_count - 1);
+				return(1);
+			}
+			cptr = strpbrk(slurm_step_layout_host_name(layout,task), "0123456789");
+			nid = atoi(cptr);
+			ap.peNidArray[task] = nid;
+			debug("task_pre_setuid: %llu, %llu", nid, task);
+		}
+	}
+
+	// Does this need to be SPMD/MPMD specific?
+	ap.totalPEs = totalPEs;
+
+
+	if (multi_prog) {
+		/* MPMD Launch */
+		/*
+		 * Need to fill in this information.  I may need to parse the MPMD
+		 * configuration file to get it.
+		 */
+		/*
+			ap.cmdIndex = ;
+			ap.peCmdMapArray = ;
+			ap.firstPeHere = ;
+
+			ap.pesHere = pesHere; // These need to be MPMD specific.
+		 */
+
+	} else {
+		/* SPMD Launch */
+		ap.cmdIndex = 0;
+
+		ap.peCmdMapArray = calloc(totalPEs, sizeof(int));
+		for (i = 0; i < totalPEs; i++ ) {
+			ap.peCmdMapArray[i] = ap.cmdIndex;
+		}
+
+		ap.firstPeHere = get_first_pe(job->nodeid, pesHere, host_to_task_map);
+
+		ap.pesHere = pesHere;
+
+	}
+
+	/*
+	 * I'm not sure whether I need to set the branches or not.
+	 * For now, I'm copping out and setting the first one invalid.
+	 * This isn't right, but we'll sort it out later.
+	 * TO DO: I should only have the first process, local 0, on the node
+	 * write this file.
+	 */
+	ap.branch[0].targFd = -1;
+
+	/*
+	 * Attempt to add the cookie variables to the task's environment
+	 * This is rather hacky and should be refined.
+	 */
+    cptr = getenv("CRAY_NUM_COOKIES");
+    if (!cptr) {
+	DEBUGP("%s: ERROR failed to find env var CRAY_NUM_COOKIES\n", __func__);
+	return 1;
+    }
+
+    cptr1 = getenv("CRAY_COOKIES");
+    if (!cptr1) {
+	DEBUGP("%s: ERROR failed to find env var CRAY_COOKIES\n", __func__);
+	return 1;
+    }
+
+	env_array_overwrite_fmt(&(job->env),"CRAY_NUM_COOKIES", "%s",
+							    cptr);
+	env_array_overwrite_fmt(&(job->env),"CRAY_COOKIES", "%s",
+					    cptr1);
+
+
+	fprintf(fout, "WritePlacementFile\n");
+	writePlacementFile(&ap);
+
+	if (cookie_array) {
+		free(cookie_array);
+	}
+	fclose(fout);
+
 	return SLURM_SUCCESS;
 }
 
@@ -173,7 +374,8 @@ extern int task_pre_setuid (stepd_step_rec_t *job)
 extern int task_pre_launch (stepd_step_rec_t *job)
 {
 	debug("task_pre_launch: %u.%u, task %d",
-		job->jobid, job->stepid, job->envtp->procid);
+			job->jobid, job->stepid, job->envtp->procid);
+
 	return SLURM_SUCCESS;
 }
 
@@ -183,8 +385,39 @@ extern int task_pre_launch (stepd_step_rec_t *job)
  */
 extern int task_pre_launch_priv (stepd_step_rec_t *job)
 {
+	char *ptr;
+	int rc;
+
 	debug("task_pre_launch_priv: %u.%u",
 		job->jobid, job->stepid);
+
+	/*
+	 * Send the rank to the application's PMI layer via an environment variable.
+	 */
+	rc = send_rank_to_app(job->envtp->procid);
+
+	if (rc) {
+		// Should reword this error because I'm peering behind the abstraction barrier here.
+		debug("Failed to set env variable ALPS_APP_PE");
+		return SLURM_ERROR;
+	}
+
+	/*
+	 * Send the rank to the application's PMI layer via an environment variable.
+	 */
+	rc = turn_off_pmi_fork();
+
+	if (rc) {
+		// Should reword this error because I'm peering behind the abstraction barrier here.
+		debug("Failed to set env variable PMI_NO_FORK");
+		return SLURM_ERROR;
+	}
+
+	// Debug stuff
+	if (slurm_get_debug_flags() & DEBUG_FLAG_SWITCH) {
+		debug("(%s:%d) task_pre_launch_priv: ALPS_APP_PE (i.e. rank): %s", THIS_FILE, __LINE__, getenv("PMI_NO_FORK"));
+	}
+
 	return SLURM_SUCCESS;
 }
 
