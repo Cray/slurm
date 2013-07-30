@@ -201,8 +201,7 @@ static int _call_external_program(void)
 		exit(127);
 	}
 
-	if (container_g_add_pid(recorded_jobid, cpid, getuid()) !=
-	    SLURM_SUCCESS)
+	if (container_g_add_pid(recorded_jobid,cpid,getuid()) != SLURM_SUCCESS)
 		error("container_g_add_pid(%u): %m", recorded_jobid);
 
 	opt = WNOHANG;

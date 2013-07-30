@@ -39,11 +39,26 @@
 #  include "config.h"
 #endif
 
+#define _GNU_SOURCE
+#include <stdio.h>
+#include <stdlib.h>
 #include <signal.h>
 #include <sys/types.h>
+#include <sys/stat.h>
+#include <string.h>
+#include <unistd.h>
+#include <errno.h>
+#include <dirent.h>
+#include <inttypes.h>
+#include <fcntl.h>
 
+#include "slurm/slurm.h"
 #include "slurm/slurm_errno.h"
 #include "src/common/slurm_xlator.h"
+#include "src/plugins/switch/cray/switch_cray.h"
+#include "src/common/pack.h"
+#include "src/plugins/switch/cray/alpscomm_cn.h"
+#include "src/plugins/switch/cray/alpscomm_sn.h"
 
 /*
  * These variables are required by the generic plugin interface.  If they
@@ -75,6 +90,49 @@
 const char plugin_name[]        = "switch CRAY plugin";
 const char plugin_type[]        = "switch/cray";
 const uint32_t plugin_version   = 100;
+
+static void _print_jobinfo(slurm_cray_jobinfo_t *job)
+{
+	int i, j, rc;
+	int32_t *nodes;
+
+	assert(job);
+	assert(job->magic == CRAY_JOBINFO_MAGIC);
+
+	debug("--Begin Jobinfo--");
+	debug("  num_cookies: %u", job->num_cookies);
+	debug("  --- cookies ---");
+	for (i = 0; i < job->num_cookies; i++) {
+		debug("  cookies[%d]: %s", i, job->cookies[i]);
+	}
+	debug("  --- cookie_ids ---");
+	for (i = 0; i < job->num_cookies; i++) {
+		debug("  cookie_ids[%d]: %u", i, job->cookie_ids[i]);
+	}
+	debug("  ------");
+	debug("  node_cnt: %" PRIu32, job->step_layout->node_cnt);
+	debug("  node_list: %s", job->step_layout->node_list);
+	debug("  --- tasks ---");
+	for (i=0; i < job->step_layout->node_cnt; i++) {
+		debug("  tasks[%d] = %u", i, job->step_layout->tasks[i]);
+	}
+	debug("  ------");
+	debug("  task_cnt: %" PRIu32, job->step_layout->task_cnt);
+	debug("  --- hosts to task---");
+	rc = node_list_str_to_array(job->step_layout->node_cnt, job->step_layout->node_list, &nodes);
+	if (rc) {
+		error("(%s: %d: %s) node_list_str_to_array failed", THIS_FILE, __LINE__, __FUNCTION__);
+	}
+	for (i=0; i < job->step_layout->node_cnt; i++) {
+		debug("Host: %d", i);
+		for (j=0; j < job->step_layout->tasks[i]; j++) {
+			debug("Task: %d", job->step_layout->tids[i][j]);
+		}
+	}
+
+	debug("  ------");
+	debug("--END Jobinfo--");
+}
 
 /*
  * init() is called when the plugin is loaded, before any other functions
@@ -119,6 +177,17 @@ int switch_p_libstate_clear(void)
  */
 int switch_p_alloc_jobinfo(switch_jobinfo_t **switch_job)
 {
+	slurm_cray_jobinfo_t *new;
+
+	assert(switch_job != NULL);
+	new = (slurm_cray_jobinfo_t *) xmalloc(sizeof(slurm_cray_jobinfo_t));
+	new->magic = CRAY_JOBINFO_MAGIC;
+	new->num_cookies = 0;
+	new->cookies = NULL;
+	new->cookie_ids = NULL;
+	new->jobid = 0;
+	new->stepid = 0;
+	*switch_job = (switch_jobinfo_t *)new;
 	return SLURM_SUCCESS;
 }
 
@@ -126,27 +195,287 @@ int switch_p_build_jobinfo(switch_jobinfo_t *switch_job,
 			   slurm_step_layout_t *step_layout,
 			   char *network)
 {
+
+	int i, rc;
+	int num_cookies = 2;
+	char *errMsg;
+	char **cookies, **s_cookies;
+	int32_t *nodes, *cookie_ids, *s_cookie_ids;
+	slurm_cray_jobinfo_t *job = (slurm_cray_jobinfo_t *)switch_job;
+
+	rc = node_list_str_to_array(step_layout->node_cnt, step_layout->node_list, &nodes);
+	if (rc < 0) {
+		error("(%s: %d: %s) node_list_str_to_array failed", THIS_FILE, __LINE__, __FUNCTION__);
+		return SLURM_ERROR;
+	}
+
+	/*
+	 * Get cookies for network configuration
+	 *
+	 * TODO: I could specify a lease time if I knew the wall-clock limit of
+	 * the job.  However, if the job got suspended, then all bets are off.  An
+	 * infinite release time seems safest for now.
+	 *
+	 * TODO: The domain parameter should be something to identify the job such as the
+	 * APID.  I left it as zero for now because I don't know how to get the
+	 * JOB ID and JOB STEP ID from here.
+	 *
+	 * TODO: I'm hard-coding the number of cookies for now to two.  Maybe we'll
+	 * have a dynamic way to ascertain the number of cookies later.
+	 *
+	 * TODO: I could ensure that the nodes list was sorted either by doing
+	 * some research to see if it comes in sorted or calling a sort
+	 * routine.
+	 */
+	rc = alpsc_lease_cookies(&errMsg,
+				       "SLURM", 0,
+				       0, nodes,
+				       step_layout->node_cnt, num_cookies,
+				       &cookies, &cookie_ids);
+	if (rc != 1) {
+		if (errMsg) {
+			error("(%s: %d: %s) alpsc_lease_cookies failed: %s",
+					THIS_FILE, __LINE__, __FUNCTION__, errMsg);
+			free(errMsg);
+		}
+		else {
+			error("(%s: %d: %s) alpsc_lease_cookies failed: No error message present.", THIS_FILE, __LINE__, __FUNCTION__);
+		}
+		return SLURM_ERROR;
+	}
+	if (errMsg) {
+		info("(%s: %d: %s) alpsc_establish_GPU_mps_def_state: %s", THIS_FILE, __LINE__, __FUNCTION__, errMsg);
+		free(errMsg);
+	}
+
+	xfree(nodes);
+
+	/*
+	 * xmalloc the space for the cookies and cookie_ids, so it can be freed
+	 * with xfree later, which is consistent with SLURM practices and how the
+	 * rest of the structure will be freed.
+	 * We must free() the ALPS Common library allocated memory using free(),
+	 * not xfree().
+	 */
+	s_cookie_ids = xmalloc(sizeof(uint32_t) * num_cookies);
+	memcpy(s_cookie_ids, cookie_ids, sizeof(uint32_t) * num_cookies);
+	free(cookie_ids);
+
+	s_cookies = xmalloc(sizeof(char *) * num_cookies);
+	memcpy(s_cookies, cookies, sizeof(char *) * num_cookies);
+	for (i=0; i<num_cookies; i++) {
+		s_cookies[i] = xstrdup(cookies[i]);
+		free(cookies[i]);
+	}
+	free(cookies);
+
+	if (!rc) {
+		if (errMsg) {
+			error("(%s: %d: %s) Failed to obtain %d cookie%s: Errno: %d -- %s",
+					THIS_FILE, __LINE__, __FUNCTION__, num_cookies,
+					(num_cookies == 1) ? "" : "s", rc, errMsg);
+		} else {
+			error("(%s: %d: %s) Failed to obtain %d cookie%s: No error message present.  Errno: %d", THIS_FILE, __LINE__, __FUNCTION__, num_cookies,
+					(num_cookies == 1) ? "" : "s", rc);
+		}
+		return SLURM_ERROR;
+	}
+	if (errMsg) {
+		info("(%s: %d: %s) alpsc_establish_GPU_mps_def_state: %s", THIS_FILE, __LINE__, __FUNCTION__, errMsg);
+		free(errMsg);
+	}
+
+	/*
+	 * Populate the switch_jobinfo_t struct
+	 */
+	job->num_cookies = num_cookies;
+	job->cookies = s_cookies;
+	job->cookie_ids = s_cookie_ids;
+	job->step_layout = step_layout;
+
+	/*
+	 * Inform the system that an application (i.e. job step) is starting.
+	 * This is for tracking purposes for congestion management and power
+	 * management.
+	 *
+	 * TODO: Implement the actual call.
+	 */
+	// alpsc_put_app_start_info();
+
 	return SLURM_SUCCESS;
 }
 
 switch_jobinfo_t *switch_p_copy_jobinfo(switch_jobinfo_t *switch_job)
 {
-	return NULL;
+	int i;
+	slurm_cray_jobinfo_t *old = (slurm_cray_jobinfo_t *)switch_job;
+	switch_jobinfo_t *new_init;
+	slurm_cray_jobinfo_t *new;
+	assert(switch_job);
+	assert(((slurm_cray_jobinfo_t *)switch_job)->magic == CRAY_JOBINFO_MAGIC);
+
+	if (switch_p_alloc_jobinfo(&new_init)) {
+		error("Allocating new jobinfo");
+		slurm_seterrno(ENOMEM);
+		return NULL;
+	}
+
+	new = (slurm_cray_jobinfo_t *)new_init;
+	// Copy over non-malloced memory.
+	*new = *old;
+
+	new->cookies = xmalloc(old->num_cookies * sizeof(char *));
+	for(i=0; i<old->num_cookies; i++) {
+		new->cookies[i] = xstrdup(old->cookies[i]);
+	}
+	new->cookie_ids = xmalloc(old->num_cookies * sizeof(uint32_t));
+	memcpy(new->cookie_ids, old->cookie_ids, old->num_cookies * sizeof(uint32_t));
+
+	new->step_layout = xmalloc(sizeof(slurm_step_layout_t));
+	*(new->step_layout) = *(old->step_layout);
+	new->step_layout->node_list = xstrdup("old->step_layout->node_list");
+	new->step_layout->tasks = xmalloc(old->step_layout->node_cnt * sizeof(uint16_t));
+	memcpy(new->step_layout->tasks, old->step_layout->tasks,
+			sizeof(*(old->step_layout->tasks)) * old->step_layout->node_cnt);
+	new->step_layout->tids = xmalloc(sizeof(old->step_layout->tids) *
+			old->step_layout->node_cnt);
+	for (i=0; i<old->step_layout->node_cnt; i++) {
+		new->step_layout->tids[i] = xmalloc(sizeof(*(*(old->step_layout->tids))) * old->step_layout->tasks[i]);
+		memcpy(new->step_layout->tids[i], old->step_layout->tids[i], old->step_layout->tasks[i]);
+	}
+
+	return (switch_jobinfo_t *)new;
 }
 
+/*
+ *
+ */
 void switch_p_free_jobinfo(switch_jobinfo_t *switch_job)
 {
+	slurm_cray_jobinfo_t *job = (slurm_cray_jobinfo_t *)switch_job;
+	int i;
+	if (!job)
+		return;
+
+	if (job->magic != CRAY_JOBINFO_MAGIC) {
+		error("job is not a switch/cray slurm_cray_jobinfo_t");
+		return;
+	}
+
+	job->magic = 0;
+
+	/*
+	 * Free the cookies and the cookie_ids.
+	 */
+	if (job->num_cookies != 0) {
+		// Free the cookie_ids
+		if (job->cookie_ids) {
+			xfree(job->cookie_ids);
+		}
+
+		// Free the individual cookie strings.
+		for (i = 0; i < job->num_cookies; i++) {
+			if(job->cookies[i]) {
+				xfree(job->cookies[i]);
+			}
+		}
+		// Free the cookie array
+		if (job->cookies) {
+			xfree(job->cookies);
+		}
+	}
+
+	if(run_in_daemon("slurmd,slurmstepd")) {
+		slurm_step_layout_destroy(job->step_layout);
+	}
+
+	xfree(job);
+
 	return;
 }
 
+/*
+ * TODO: Pack job id, step id, and apid
+ */
 int switch_p_pack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer)
 {
+	int i;
+
+	slurm_cray_jobinfo_t *job= (slurm_cray_jobinfo_t *)switch_job;
+
+	assert(job);
+	assert(job->magic == CRAY_JOBINFO_MAGIC);
+	assert(buffer);
+
+	/*Debug Example
+	if (slurm_get_debug_flags() & DEBUG_FLAG_SWITCH)
+		debug("(%s:%d) job id: %u -- No nodes in bitmap of "
+				"job_record!",
+				THIS_FILE, __LINE__, __FUNCTION__, job_ptr->job_id);
+	 */
+
+	if (slurm_get_debug_flags() & DEBUG_FLAG_SWITCH) {
+		debug("(%s: %d: %s) switch_p_pack_jobinfo switch_jobinfo_t contents", THIS_FILE, __LINE__, __FUNCTION__);
+		_print_jobinfo(job);
+	}
+
+	safe_pack32(job->magic, buffer);
+	safe_pack32(job->num_cookies, buffer);
+	packstr_array(job->cookies, job->num_cookies, buffer);
+
+	/*
+	 *  Range Checking on cookie_ids
+	 *  We're using a signed integer to store the cookies and a function that
+	 *  packs unsigned uint32_t's, so I'm that the cookie_ids
+	 *  are not negative so that they don't underflow the uint32_t.
+	 */
+	for (i=0; i < job->num_cookies; i++) {
+		if (job->cookie_ids[i] < 0) {
+			error("(%s: %d: %s) cookie_ids is negative.",
+					THIS_FILE, __LINE__, __FUNCTION__);
+			return SLURM_ERROR;
+		}
+	}
+	safe_pack32_array((uint32_t *)job->cookie_ids, job->num_cookies, buffer);
+	pack_slurm_step_layout(job->step_layout, buffer, SLURM_PROTOCOL_VERSION);
+
 	return 0;
 }
 
+/*
+ * TODO: Unpack job id, step id, and apid
+ */
+
 int switch_p_unpack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer)
 {
+	slurm_cray_jobinfo_t *job = (slurm_cray_jobinfo_t *)switch_job;
+	assert(job);
+	assert(job->magic == CRAY_JOBINFO_MAGIC);
+	assert(buffer);
+	safe_unpack32(&job->magic, buffer);
+	assert(job->magic == CRAY_JOBINFO_MAGIC);
+	/*
+	 * There's some dodgy type-casting here because I'm dealing with signed
+	 * integers, but the pack/unpack functions use signed integers.
+	 */
+	safe_unpack32((uint32_t *)&(job->num_cookies), buffer);
+	unpackstr_array(&(job->cookies), (uint32_t *)&(job->num_cookies), buffer);
+	safe_unpack32_array((uint32_t **)&(job->cookie_ids), (uint32_t *)&(job->num_cookies), buffer);
+
+	/*
+	 * Allocate our own step_layout function.
+	 */
+	unpack_slurm_step_layout(&(job->step_layout), buffer, SLURM_PROTOCOL_VERSION);
+
+	if (slurm_get_debug_flags() & DEBUG_FLAG_SWITCH) {
+		debug("(%s:%d: %s) switch_p_unpack_jobinfo switch_jobinfo_t contents:", THIS_FILE, __LINE__, __FUNCTION__);
+		_print_jobinfo(job);
+	}
+       
 	return SLURM_SUCCESS;
+ unpack_error:
+    error("Cray switch plugin: switch_p_unpack_jobinfo failed");
+	return SLURM_ERROR;
 }
 
 void switch_p_print_jobinfo(FILE *fp, switch_jobinfo_t *jobinfo)
@@ -186,6 +515,289 @@ int switch_p_job_preinit(switch_jobinfo_t *jobinfo)
 extern int switch_p_job_init(switch_jobinfo_t *jobinfo, uid_t uid,
 			     char *job_name)
 {
+	slurm_cray_jobinfo_t *job = (slurm_cray_jobinfo_t *)jobinfo;
+	int rc, numPTags, cmdIndex, num_cpus, cpu_scaling, mem_scaling, i, j;
+	uint32_t amount_mem = 0;
+	int *pTags;
+	// uint64_t apid = 0;
+	char *errMsg, *apid_dir;
+	stepd_step_rec_t *step_rec;  // This will become a formal parameter.  Remove when it does.
+	alpsc_peInfo_t alpsc_peInfo;
+	FILE *f = NULL;
+	size_t sz = 0;
+	ssize_t lsz;
+	char *lin = NULL;
+	char meminfo_str[1024];
+	int meminfo_value, gpu_enable = 0;
+	hostlist_t hl;
+	uint32_t task;
+	int32_t *task_to_nodes_map;
+	int32_t *nodes;
+	gni_ntt_descriptor_t *ntt_desc_ptr = NULL;
+
+	// Dummy variables to satisfy alpsc_write_placement_file
+	int controlNid = 0, numBranches = 0;
+	struct sockaddr_in controlSoc;
+	alpsc_branchInfo_t alpsc_branchInfo;
+
+	rc = job_attach_reservation(step_rec->cont_id, step_rec->jobid, 0);
+	if (rc) {
+		error("(%s: %d: %s) job_attach_reservation failed: %d", THIS_FILE, __LINE__, __FUNCTION__, errno);
+		return SLURM_ERROR;
+	}
+
+	/*
+	 * Create APID directory
+	 */
+	rc = asprintf(&apid_dir, "/var/spool/alps/%" PRIu64, job->apid);
+	if (rc == -1) {
+		error("(%s: %d: %s) asprintf failed", THIS_FILE, __LINE__, __FUNCTION__);
+		return SLURM_ERROR;
+	}
+
+	rc = mkdir(apid_dir, 700);
+	if (rc) {
+		free(apid_dir);
+		error("(%s: %d: %s) mkdir failed: %s", THIS_FILE, __LINE__, __FUNCTION__, strerror(errno));
+		return SLURM_ERROR;
+	}
+	free(apid_dir);
+	/*
+	 * Not defined yet -- This one may be skipped because we may not need to
+	 * find the PAGG JOB container based on the APID.  It is part of the
+	 * stepd_step_rec_t struct in the cont_id member, so if we have access to the
+	 * struct, then we have access to the JOB container.
+	 */
+
+	// alpsc_set_PAGG_apid()
+
+	/*
+	 * Configure the network
+	 *
+	 * I'm setting exclusive flag to zero for now until we can figure out a way
+	 * to guarantee that the application not only has exclusive access to the
+	 * node but also will not be suspended.  This may not happen.
+	 */
+
+	/*
+	 * To get the number of CPUs.
+	 *
+	 * I co-opted the hostlist_count() and its counterparts to count CPUS.
+	 * TODO: There might be a better (community) way to do this.
+	 */
+	f = fopen("/sys/devices/system/cpu/online", "r");
+
+	while (!feof(f)) {
+		lsz = getline(&lin, &sz, f);
+		if (lsz > 0) {
+			hl = hostlist_create(lin);
+			if (hl == NULL) {
+				error("(%s: %d: %s) hostlist_create failed: %d", THIS_FILE,
+						__LINE__, __FUNCTION__, errno);
+				return SLURM_ERROR;
+			}
+			num_cpus += hostlist_count(hl);
+			hostlist_destroy(hl);
+			free(lin);
+		}
+	}
+	fclose(f);
+
+	//Use /proc/meminfo to get the total amount of memory on the node
+	f = fopen("/proc/meminfo", "r");
+
+	while (!feof(f)) {
+		lsz = getline(&lin, &sz, f);
+		sscanf(lin, "%s %d", meminfo_str, &meminfo_value);
+		if(!strcmp(meminfo_str, "MemTotal:")) {
+			amount_mem = meminfo_value;
+			break;
+		}
+		free(lin);
+	}
+	fclose(f);
+
+	if (amount_mem == 0) {
+		error("(%s: %d: %s) Scanning /proc/meminfo results in MemTotal=0", THIS_FILE, __LINE__, __FUNCTION__);
+		return SLURM_ERROR;
+	}
+
+	// Scaling
+	cpu_scaling = (step_rec->node_tasks * step_rec->cpus_per_task)/ num_cpus;
+	mem_scaling = step_rec->step_mem / amount_mem;
+
+	rc = alpsc_configure_nic(&errMsg, 0, cpu_scaling,
+	    mem_scaling, step_rec->cont_id, job->num_cookies, (const char **)job->cookies,
+	    &numPTags, &pTags, ntt_desc_ptr);
+	if (rc != 1) {
+		if (errMsg) {
+			error("(%s: %d: %s) alpsc_configure_nic failed: %s", THIS_FILE, __LINE__, __FUNCTION__, errMsg);
+			free(errMsg);
+		}
+		else {
+			error("(%s: %d: %s) alpsc_configure_nic failed: No error message present.", THIS_FILE, __LINE__, __FUNCTION__);
+		}
+		return SLURM_ERROR;
+	}
+	if (errMsg) {
+		info("(%s: %d: %s) alpsc_configure_nic: %s", THIS_FILE, __LINE__, __FUNCTION__, errMsg);
+		free(errMsg);
+	}
+
+
+	// Not defined yet -- deferred
+	//alpsc_config_gpcd();
+
+	/*
+	 * The following section will fill in the alpsc_peInfo structure which is
+	 * the key argument to the alpsc_write_placement_file() call.
+	 */
+	alpsc_peInfo.totalPEs = step_rec->ntasks;
+	alpsc_peInfo.pesHere = step_rec->node_tasks;
+	alpsc_peInfo.peDepth = step_rec->cpus_per_task;
+
+	/*
+	 * Fill in alpsc_peInfo.firstPeHere
+	 */
+	rc = get_first_pe(step_rec->nodeid, job->step_layout->task_cnt,
+			job->step_layout->tids, &alpsc_peInfo.firstPeHere);
+	if (rc < 0) {
+		error("(%s: %d: %s) get_first_pe failed", THIS_FILE, __LINE__, __FUNCTION__);
+		return SLURM_ERROR;
+	}
+
+	/*
+	 * Fill in alpsc_peInfo.peNidArray
+	 *
+	 * The peNidArray maps tasks to nodes.
+	 * Basically, reverse the tids variable which maps nodes to tasks.
+	 */
+	rc = node_list_str_to_array(job->step_layout->node_cnt,
+			job->step_layout->node_list, &nodes);
+	if (rc < 0) {
+		error("(%s: %d: %s) node_list_str_to_array failed", THIS_FILE, __LINE__, __FUNCTION__);
+		return SLURM_ERROR;
+	}
+	task_to_nodes_map = xmalloc(job->step_layout->task_cnt * sizeof(int));
+
+	for (i=0; i<job->step_layout->node_cnt; i++) {
+		for (j=0; j < job->step_layout->tasks[i]; j++) {
+			task = job->step_layout->tids[i][j];
+			task_to_nodes_map[task] = nodes[i];
+		}
+	}
+	alpsc_peInfo.peNidArray = task_to_nodes_map;
+	xfree(nodes);
+
+	/*
+	 * Fill in alpsc_peInfo.peCmdMapArray
+	 *
+	 * If the job is an SPMD job, then the command Index (cmdIndex) is 0.
+	 * Otherwise, if the job is an MPMD job, then the command Index (cmdIndex)
+	 * is equal to the number of executables in the job minus 1.
+	 *
+	 * TODO: Add MPMD support once SchedMD provides the needed MPMD data.
+	 */
+
+	if (!step_rec->multi_prog) {
+		/* SPMD Launch */
+		cmdIndex = 0;
+
+		alpsc_peInfo.peCmdMapArray = calloc(alpsc_peInfo.totalPEs, sizeof(int));
+		for (i = 0; i < alpsc_peInfo.totalPEs ; i++ ) {
+			alpsc_peInfo.peCmdMapArray[i] = cmdIndex;
+		}
+	} else {
+		/* MPMD Launch */
+
+		// Deferred support
+		/*
+			ap.cmdIndex = ;
+			ap.peCmdMapArray = ;
+			ap.firstPeHere = ;
+
+			ap.pesHere = pesHere; // These need to be MPMD specific.
+		 */
+
+		error("(%s: %d: %s) MPMD Applications are not currently supported.", THIS_FILE, __LINE__, __FUNCTION__);
+		return SLURM_ERROR;
+	}
+
+	/*
+	 * Fill in alpsc_peInfo.nodeCpuArray
+	 * I don't know how to get this information from SLURM.
+	 * Cray's PMI does not need the information.
+	 * It may be used by debuggers like ATP or lgdb.  If so, then it will
+	 * have to be filled in when support for them is added.
+	 *
+	 * Currently, it's all zeros.
+	 *
+	 */
+	alpsc_peInfo.nodeCpuArray = calloc(sizeof(int), job->step_layout->node_cnt);
+	if (job->step_layout->node_cnt && (alpsc_peInfo.nodeCpuArray == NULL)) {
+		error("(%s: %d: %s) failed to calloc nodeCpuArray.", THIS_FILE, __LINE__, __FUNCTION__);
+		return SLURM_ERROR;
+	}
+
+	/*
+	 * Some of the input parameters for alpsc_write_placement_file do not apply
+	 * for SLURM.  These parameters will be given zero values.
+	 * They are
+	 *  int controlNid
+	 *  struct sockaddr_in controlSoc
+	 *  int numBranches
+	 *  alpsc_branchInfo_t alpsc_branchInfo
+	 */
+	controlSoc.sin_port = 0;
+	controlSoc.sin_addr.s_addr = 0;
+	alpsc_branchInfo.tAddr = controlSoc; // Just assing controlSoc because it's already zero.
+	alpsc_branchInfo.tIndex = 0;
+	alpsc_branchInfo.tLen = 0;
+	alpsc_branchInfo.targ = 0;
+
+	alpsc_write_placement_file(&errMsg, job->apid, cmdIndex, &alpsc_peInfo,
+			controlNid, controlSoc, numBranches, &alpsc_branchInfo);
+	if (rc != 1) {
+		if (errMsg) {
+			error("(%s: %d: %s) alpsc_write_placement_file failed: %s",
+					THIS_FILE, __LINE__, __FUNCTION__, errMsg);
+			free(errMsg);
+		}
+		else {
+			error("(%s: %d: %s) alpsc_write_placement_file failed: No error message present.", THIS_FILE, __LINE__, __FUNCTION__);
+		}
+		return SLURM_ERROR;
+	}
+	if (errMsg) {
+		info("(%s: %d: %s) alpsc_write_placement_file: %s", THIS_FILE, __LINE__, __FUNCTION__, errMsg);
+		free(errMsg);
+	}
+
+	/*
+	 * Query the generic resources to see if the GPU should be allocated
+	 */
+
+	alpsc_pre_launch_GPU_mps(&errMsg, gpu_enable);
+	if (rc != 1) {
+		if (errMsg) {
+			error("(%s: %d: %s) alpsc_prelaunch_GPU_mps failed: %s",
+					THIS_FILE, __LINE__, __FUNCTION__, errMsg);
+			free(errMsg);
+		}
+		else {
+			error("(%s: %d: %s) alpsc_prelaunch_GPU_mps failed: No error message present.", THIS_FILE, __LINE__, __FUNCTION__);
+		}
+		return SLURM_ERROR;
+	}
+	if (errMsg) {
+		info("(%s: %d: %s) alpsc_prelaunch_GPU_mps: %s", THIS_FILE, __LINE__, __FUNCTION__, errMsg);
+		free(errMsg);
+	}
+
+
+	/* Clean up */
+	xfree(task_to_nodes_map);
+
 	return SLURM_SUCCESS;
 }
 
@@ -227,12 +839,28 @@ extern int switch_p_job_resume(void *suspend_info, int max_wait)
 
 int switch_p_job_fini(switch_jobinfo_t *jobinfo)
 {
+	slurm_cray_jobinfo_t *job = (slurm_cray_jobinfo_t *)jobinfo;
+	int rc;
+	char *apid_dir = NULL;
+	rc = asprintf(&apid_dir, "/var/spool/alps/%" PRIu64, job->apid);
+	if (rc == -1) {
+		error("(%s: %d: %s) asprintf failed", THIS_FILE, __LINE__, __FUNCTION__);
+		return SLURM_ERROR;
+	}
+
+	// Stolen from ALPS
+	recursiveRmdir(apid_dir);
+	free(apid_dir);
+
 	return SLURM_SUCCESS;
 }
 
 int switch_p_job_postfini(switch_jobinfo_t *jobinfo, uid_t pgid,
 			   uint32_t job_id, uint32_t step_id)
 {
+	int rc;
+	char *errMsg = NULL;
+
 	/*
 	 *  Kill all processes in the job's session
 	 */
@@ -243,6 +871,55 @@ int switch_p_job_postfini(switch_jobinfo_t *jobinfo, uid_t pgid,
 	} else
 		debug("Job %u.%u: Bad pid valud %lu", job_id,
 		      step_id, (unsigned long) pgid);
+	/*
+	 * Clean-up
+	 *
+	 * 1. Flush Lustre caches
+	 * 2. Flush virtual memory
+	 * 3. Compact memory
+	*/
+
+	// Flush Lustre Cache
+	rc = alpsc_flush_lustre(&errMsg);
+	if (rc != 1) {
+		if (errMsg) {
+			error("(%s: %d: %s) alpsc_flush_lustre failed: %s",
+					THIS_FILE, __LINE__, __FUNCTION__, errMsg);
+			free(errMsg);
+		}
+		else {
+			error("(%s: %d: %s) alpsc_flush_lustre failed: No error message present.", THIS_FILE, __LINE__, __FUNCTION__);
+		}
+		return SLURM_ERROR;
+	}
+	if (errMsg) {
+		info("(%s: %d: %s) alpsc_flush_lustre: %s", THIS_FILE, __LINE__, __FUNCTION__, errMsg);
+		free(errMsg);
+	}
+
+	// Flush virtual memory
+	do_drop_caches();
+
+	// Compact Memory
+	/*
+	alpsc_compact_mem(&errMsg, int numNodes, int *numaNodes,
+	    cpu_set_t *cpuMasks, const char *cpusetDir);
+	 */
+	if (rc != 1) {
+		if (errMsg) {
+			error("(%s: %d: %s) alpsc_compact_mem failed: %s",
+					THIS_FILE, __LINE__, __FUNCTION__, errMsg);
+			free(errMsg);
+		}
+		else {
+			error("(%s: %d: %s) alpsc_compact_mem failed: No error message present.", THIS_FILE, __LINE__, __FUNCTION__);
+		}
+		return SLURM_ERROR;
+	}
+	if (errMsg) {
+		info("(%s: %d: %s) alpsc_compact_mem: %s", THIS_FILE, __LINE__, __FUNCTION__, errMsg);
+		free(errMsg);
+	}
 
 	return SLURM_SUCCESS;
 }
@@ -322,8 +999,48 @@ extern char*switch_p_sprintf_node_info(switch_node_info_t *switch_node,
 }
 
 extern int switch_p_job_step_complete(switch_jobinfo_t *jobinfo,
-				      char *nodelist)
+		char *nodelist)
 {
+	slurm_cray_jobinfo_t *job = (slurm_cray_jobinfo_t *)jobinfo;
+	char *errMsg;
+	int rc = 0;
+
+	if (slurm_get_debug_flags() & DEBUG_FLAG_SWITCH) {
+		debug("(%s:%d: %s) switch_p_job_step_complete", THIS_FILE, __LINE__, __FUNCTION__);
+	}
+
+	/* Release the cookies */
+
+	rc = alpsc_release_cookies(&errMsg, job->cookie_ids, job->num_cookies);
+
+	if (rc != 1) {
+
+		if (errMsg) {
+			error("(%s: %d: %s) alpsc_release_cookies failed: %s",
+					THIS_FILE, __LINE__, __FUNCTION__, errMsg);
+			free(errMsg);
+		}
+		else {
+			error("(%s: %d: %s) alpsc_release_cookies failed: No error message present.", THIS_FILE, __LINE__, __FUNCTION__);
+		}
+		return SLURM_ERROR;
+
+	}
+	if (errMsg) {
+		info("(%s: %d: %s) alpsc_release_cookies: %s", THIS_FILE, __LINE__, __FUNCTION__, errMsg);
+		free(errMsg);
+	}
+
+
+	/*
+	 * Inform the system that an application (i.e. job step) is terminating.
+	 * This is for tracking purposes for congestion management and power
+	 * management.
+	 *
+	 * TODO: Implement the actual call.
+	 */
+	// alpsc_put_app_end_info();
+
 	return SLURM_SUCCESS;
 }
 
@@ -351,10 +1068,300 @@ extern int switch_p_slurmctld_init(void)
 
 extern int switch_p_slurmd_init(void)
 {
+	int rc = 0;
+	char *errMsg;
+
+	// Create the ALPS directories
+	char dir[] = "/var/spool/alps/";
+	char dir1[] = "/var/opt/cray/alps/";
+
+
+	rc = mkdir_safe(dir, 755);
+	if (rc) {
+		error("(%s: %d: %s) mkdir %s failed: %s", THIS_FILE, __LINE__, __FUNCTION__, dir,
+				strerror(errno));
+		return SLURM_ERROR;
+	}
+
+	// Create the directory
+	rc = mkdir_safe(dir1, 755);
+	if (rc) {
+		error("(%s: %d: %s) mkdir %s failed: %s", THIS_FILE, __LINE__, __FUNCTION__, dir,
+				strerror(errno));
+		return SLURM_ERROR;
+	}
+
+	// Create the symlink to the real directory
+	rc = symlink(dir, "/var/opt/cray/alps/spool");
+	if (!rc) {
+		error("(%s: %d: %s) Failed to create symlink /var/opt/cray/alps/spool "
+				"-> %s", THIS_FILE, __LINE__, __FUNCTION__, dir);
+		return SLURM_ERROR;
+	}
+
+	// Establish GPU's default state
+	rc = alpsc_establish_GPU_mps_def_state(&errMsg);
+	if (rc != 1) {
+		if (errMsg) {
+			error("(%s: %d: %s) alpsc_establish_GPU_mps_def_state failed: %s",
+					THIS_FILE, __LINE__, __FUNCTION__, errMsg);
+			free(errMsg);
+		}
+		else {
+			error("(%s: %d: %s) alpsc_establish_GPU_mps_def_state failed: No error message present.", THIS_FILE, __LINE__, __FUNCTION__);
+		}
+		return SLURM_ERROR;
+	}
+	if (errMsg) {
+		info("(%s: %d: %s) alpsc_establish_GPU_mps_def_state: %s", THIS_FILE, __LINE__, __FUNCTION__, errMsg);
+		free(errMsg);
+	}
+
 	return SLURM_SUCCESS;
 }
 
 extern int switch_p_slurmd_step_init(void)
 {
 	return SLURM_SUCCESS;
+}
+
+/*
+ * Function: get_first_pe
+ * Description:
+ * Returns the first (i.e. lowest) PE on the node.
+ *
+ * IN:
+ * nodeid -- Index of the node in the host_to_task_map
+ * task_count -- Number of tasks on the node
+ * host_to_task_map -- 2D array mapping the host to its tasks
+ *
+ * OUT:
+ * first_pe -- The first (i.e. lowest) PE on the node
+ *
+ * RETURN
+ * 0 on success and -1 on error
+ */
+static int get_first_pe(uint32_t nodeid, uint32_t task_count,
+		uint32_t **host_to_task_map, int32_t *first_pe) {
+
+	int i, ret = 0;
+
+	if (task_count == 0) {
+		error("(%s: %d: %s) task_count == 0", THIS_FILE, __LINE__, __FUNCTION__);
+		return -1;
+	}
+	if (host_to_task_map == NULL) {
+		error("(%s: %d: %s) host_to_task_map == NULL", THIS_FILE, __LINE__, __FUNCTION__);
+		return -1;
+	}
+	*first_pe = host_to_task_map[nodeid][0];
+	for (i=0; i<task_count; i++) {
+		if (host_to_task_map[nodeid][i] < *first_pe) {
+			*first_pe = host_to_task_map[nodeid][i];
+		}
+	}
+	return ret;
+}
+
+/*
+ * Function: node_list_str_to_array
+ * Description:
+ * 	Convert the node_list string into an array of nid integers.
+ *
+ * IN node_cnt  -- The number of nodes in the node list string
+ * IN node_list -- The node_list string
+ * OUT nodes    -- Array of node_cnt nids;  Caller is responsible to xfree()
+ *                 this.
+ *
+ * RETURNS
+ * Returns 0 on success and -1 on failure.
+ */
+
+static int node_list_str_to_array(uint32_t node_cnt, char *node_list,
+		int32_t **nodes) {
+
+	int32_t *nodes_ptr = *nodes;
+	hostlist_t hl;
+	int i, ret = 0;
+	char *node_str, *cptr;
+
+	/*
+	 * Create a hostlist
+	 */
+	if ((hl = hostlist_create(node_list)) == NULL) {
+		error("hostlist_create error on %s",
+				node_list);
+		return ESLURM_INVALID_NODE_NAME;
+	}
+
+	/*
+	 * Create an integer array of nodes_ptr in the same order as in the node_list.
+	 */
+	nodes_ptr = xmalloc(node_cnt * sizeof(uint32_t));
+	if (nodes_ptr == NULL) {
+		error("(%s: %d: %s) xmalloc failed", THIS_FILE, __LINE__, __FUNCTION__);
+		hostlist_destroy(hl);
+		return -1;
+	}
+	for (i = 0; i < node_cnt; i++) {
+		// node_str must be freed using free(), not xfree()
+		node_str = hostlist_shift(hl);
+		if (node_str == NULL) {
+			error("(%s: %d: %s) hostlist_shift error", THIS_FILE, __LINE__, __FUNCTION__);
+			xfree(nodes_ptr);
+			hostlist_destroy(hl);
+			return -1;
+		}
+		cptr = strpbrk(node_str, "0123456789");
+		if (cptr == NULL) {
+			error("(%s: %d: %s) Error: Node was not recognizable: %s", THIS_FILE,
+					__LINE__, __FUNCTION__, node_str);
+			xfree(nodes_ptr);
+			hostlist_destroy(hl);
+		}
+		nodes_ptr[i] = atoll(cptr);
+		xfree(node_str);
+	}
+
+	// Clean up
+	hostlist_destroy(hl);
+
+	return ret;
+}
+
+/*
+ * Recursive directory delete
+ *
+ * Call with a directory name and this function will delete
+ * all files and directories rooted in this name. Finally
+ * the named directory will be deleted.
+ * If called with a file name, only that file will be deleted.
+ *
+ * Stolen from the ALPS code base.  I may need to write my own.
+ */
+static void
+recursiveRmdir(const char *dirnm)
+{
+	int            st;
+	size_t         dirnmLen, fnmLen, nameLen;
+	char          *fnm = 0;
+	DIR           *dirp;
+	struct dirent *dir;
+	struct stat    stBuf;
+
+	/* Don't do anything if there is no directory name */
+	if (dirnm == NULL) {
+		return;
+	}
+	dirp = opendir(dirnm);
+	if (!dirp) {
+		if (errno == ENOTDIR) goto fileDel;
+		error("Error opening directory %s", dirnm);
+		return;
+	}
+
+	dirnmLen = strlen(dirnm);
+	if (dirnmLen == 0) return;
+	while ((dir = readdir(dirp))) {
+		nameLen = strlen(dir->d_name);
+		if (nameLen == 1 && dir->d_name[0] == '.') continue;
+		if (nameLen == 2 && strcmp(dir->d_name, "..") == 0) continue;
+		fnmLen = dirnmLen + nameLen + 2;
+		free(fnm);
+		fnm = xmalloc(fnmLen);
+		snprintf(fnm, fnmLen, "%s/%s", dirnm, dir->d_name);
+		st = stat(fnm, &stBuf);
+		if (st < 0) {
+			error("stat of %s", fnm);
+			continue;
+		}
+		if (stBuf.st_mode & S_IFDIR) {
+			recursiveRmdir(fnm);
+		} else {
+
+			st = unlink(fnm);
+			if (st < 0 && errno == EISDIR) st = rmdir(fnm);
+			if (st < 0 && errno != ENOENT) {
+				error("Error removing %s", fnm);
+			}
+		}
+	}
+	xfree(fnm);
+	closedir(dirp);
+	fileDel:
+	st = unlink(dirnm);
+	if (st < 0 && errno == EISDIR) st = rmdir(dirnm);
+	if (st < 0 && errno != ENOENT) {
+		error("Error removing %s", dirnm);
+	}
+}
+
+/*
+ * Function: mkdir_safe
+ * Description:
+ *   Create the directory safely.
+ *
+ * IN dir -- path to the directory
+ * IN flags -- flags
+ *
+ * RETURNS
+ * On success return 0, on error return -1
+ */
+
+static int mkdir_safe(const char *pathname, mode_t mode) {
+	int rc, errnum;
+	struct stat buf;
+
+	rc = mkdir(pathname, mode);
+	errnum = errno;
+	if (rc) {
+		if(errno == EEXIST) {
+			// Check that the path really is a directory.
+			rc = stat(pathname, &buf);
+			if (rc) {
+				error("(%s: %d: %s) stat on %s failed: %s", THIS_FILE, __LINE__, __FUNCTION__, pathname,
+						strerror(errno));
+				errno = errnum;
+				return -1;
+			}
+			if(!S_ISDIR(buf.st_mode)) {
+				error("(%s: %d: %s) mkpathname %s failed: %s", THIS_FILE, __LINE__, __FUNCTION__, pathname,
+						strerror(errnum));
+				return -1;
+			}
+		} else {
+			error("(%s: %d: %s) mkpathname %s failed: %s", THIS_FILE, __LINE__, __FUNCTION__, pathname,
+					strerror(errno));
+			return -1;
+		}
+	}
+
+	return 0;
+}
+
+/*
+ * Flush the kernel's VM caches.  This is equivalent to:
+ *
+ *      echo 3 > /proc/sys/vm/drop_caches
+ *
+ */
+static void
+do_drop_caches(void)
+{
+    int fd;
+    ssize_t n;
+
+    fd = open("/proc/sys/vm/drop_caches", O_WRONLY, 0);
+    if (fd < 0) {
+        error("(%s: %d: %s): open: errno %d, %s", THIS_FILE, __LINE__, __FUNCTION__, errno,
+        		strerror(errno));
+        return;
+    }
+    debug("(%s: %d: %s) writing 3 to /proc/sys/vm/drop_caches", THIS_FILE, __LINE__, __FUNCTION__);
+    n = write(fd, "3\n", 2);
+    if (n != 2) {
+    	error("(%s: %d: %s): write: wrote %zd of 2, errno %d, %s", THIS_FILE,
+    			__LINE__, __FUNCTION__, n, errno, strerror(errno));
+    }
+    close(fd);
 }

@@ -27,6 +27,8 @@ AM_MAINTAINER_MODE
 AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_HEADERS([slurm/slurm.h])
 
+PKG_PROG_PKG_CONFIG
+
 dnl This needs to be close to the front to set CFLAGS=-m64
 X_AC_RPATH
 X_AC_BGL
@@ -103,7 +105,8 @@ AC_PROG_CC
 AC_PROG_CXX
 AC_PROG_MAKE_SET
 AC_PROG_LIBTOOL
-PKG_PROG_PKG_CONFIG([0.9.0])
+
+#PKG_PROG_PKG_CONFIG([0.9.0])
 
 AM_CONDITIONAL(WITH_CXX, test -n "$ac_ct_CXX")
 AM_CONDITIONAL(WITH_GNU_LD, test "$with_gnu_ld" = "yes")
@@ -247,38 +250,6 @@ AC_SUBST(HAVE_SOME_CURSES)
 
 PKG_CHECK_MODULES([CHECK], [check >= 0.9.8], [ac_have_check="yes"], [ac_have_check="no"])
 AM_CONDITIONAL(HAVE_CHECK, test "x$ac_have_check" = "xyes")
-
-#
-#  Tests for GTK+
-#
-
-# use the correct libs if running on 64bit
-if test -d "/usr/lib64/pkgconfig"; then
-    PKG_CONFIG_PATH="/usr/lib64/pkgconfig/:$PKG_CONFIG_PATH"
-fi
-
-if test -d "/opt/gnome/lib64/pkgconfig"; then
-    PKG_CONFIG_PATH="/opt/gnome/lib64/pkgconfig/:$PKG_CONFIG_PATH"
-fi
-
-AM_PATH_GLIB_2_0([2.7.1], [ac_glib_test="yes"], [ac_glib_test="no"], [gthread])
-
-if test ${glib_config_minor_version=0} -ge 32 ; then
-       AC_DEFINE([GLIB_NEW_THREADS], 1, [Define to 1 if using glib-2.32.0 or higher])
-fi
-
-AM_PATH_GTK_2_0([2.7.1], [ac_gtk_test="yes"], [ac_gtk_test="no"], [gthread])
-if test ${gtk_config_minor_version=0} -ge 10 ; then
-       AC_DEFINE([GTK2_USE_RADIO_SET], 1, [Define to 1 if using gtk+-2.10.0 or higher])
-fi
-
-if test ${gtk_config_minor_version=0} -ge 12 ; then
-       AC_DEFINE([GTK2_USE_TOOLTIP], 1, [Define to 1 if using gtk+-2.12.0 or higher])
-fi
-
-if test ${gtk_config_minor_version=0} -ge 14 ; then
-       AC_DEFINE([GTK2_USE_GET_FOCUS], 1, [Define to 1 if using gtk+-2.14.0 or higher])
-fi
 
 AM_CONDITIONAL(BUILD_SVIEW, [test "x$ac_glib_test" = "xyes"] && [test "x$ac_gtk_test" = "xyes"])
 
