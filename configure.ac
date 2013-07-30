@@ -166,10 +166,6 @@ dnl Check for PAM module support
 X_AC_PAM
 
 dnl
-dnl Check whether RFC 5424 time format should be used
-X_AC_RFC5424_TIME
-
-dnl
 dnl Check for ISO compliance
 X_AC_ISO
 
@@ -556,6 +552,7 @@ AC_CONFIG_FILES([Makefile
 		 src/plugins/slurmctld/dynalloc/Makefile
 		 src/plugins/switch/Makefile
 		 src/plugins/switch/cray/Makefile
+		 src/plugins/switch/generic/Makefile
 		 src/plugins/switch/none/Makefile
 		 src/plugins/switch/nrt/Makefile
 		 src/plugins/switch/nrt/libpermapi/Makefile
