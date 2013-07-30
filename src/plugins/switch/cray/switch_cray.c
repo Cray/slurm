@@ -518,8 +518,8 @@ int switch_p_job_preinit(switch_jobinfo_t *jobinfo)
 extern int switch_p_job_init(stepd_step_rec_t *job)
 {
 	slurm_cray_jobinfo_t *sw_job = (slurm_cray_jobinfo_t *)job->switch_job;
-	int rc, numPTags, cmdIndex, num_cpus, cpu_scaling, mem_scaling, i, j;
-	uint32_t amount_mem = 0;
+	int rc, numPTags, cmdIndex, num_app_cpus, total_cpus, cpu_scaling, mem_scaling, i, j;
+	uint32_t total_mem = 0;
 	int *pTags;
 	// uint64_t apid = 0;
 	char *errMsg, *apid_dir;
@@ -597,7 +597,7 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 						__LINE__, __FUNCTION__, errno);
 				return SLURM_ERROR;
 			}
-			num_cpus += hostlist_count(hl);
+			total_cpus += hostlist_count(hl);
 			hostlist_destroy(hl);
 			free(lin);
 		}
@@ -611,21 +611,31 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 		lsz = getline(&lin, &sz, f);
 		sscanf(lin, "%s %d", meminfo_str, &meminfo_value);
 		if(!strcmp(meminfo_str, "MemTotal:")) {
-			amount_mem = meminfo_value;
+			total_mem = meminfo_value;
 			break;
 		}
 		free(lin);
 	}
 	fclose(f);
 
-	if (amount_mem == 0) {
+	if (total_mem == 0) {
 		error("(%s: %d: %s) Scanning /proc/meminfo results in MemTotal=0", THIS_FILE, __LINE__, __FUNCTION__);
 		return SLURM_ERROR;
 	}
 
 	// Scaling
-	cpu_scaling = (job->node_tasks * job->cpus_per_task)/ num_cpus;
-	mem_scaling = job->step_mem / amount_mem;
+	num_app_cpus = job->node_tasks * job->cpus_per_task;
+	cpu_scaling = num_app_cpus / total_cpus;
+	if (job->step_mem & MEM_PER_CPU) {
+		/*
+		 * This means that job->step_mem is a the amount of memory per CPU,
+		 * not total.
+		 */
+		mem_scaling = (job->step_mem * num_app_cpus) / total_mem;
+
+	} else {
+		mem_scaling = job->step_mem / total_mem;
+	}
 
 	rc = alpsc_configure_nic(&errMsg, 0, cpu_scaling,
 	    mem_scaling, job->cont_id, sw_job->num_cookies, (const char **)sw_job->cookies,
