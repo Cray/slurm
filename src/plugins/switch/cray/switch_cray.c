@@ -317,7 +317,7 @@ switch_jobinfo_t *switch_p_copy_jobinfo(switch_jobinfo_t *switch_job)
 	assert(switch_job);
 	assert(((slurm_cray_jobinfo_t *)switch_job)->magic == CRAY_JOBINFO_MAGIC);
 
-	if (switch_p_alloc_jobinfo(&new_init)) {
+	if (switch_p_alloc_jobinfo(&new_init, old->jobid, old->stepid)) {
 		error("Allocating new jobinfo");
 		slurm_seterrno(ENOMEM);
 		return NULL;
