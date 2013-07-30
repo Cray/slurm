@@ -92,7 +92,6 @@ am__aclocal_m4_deps = $(top_srcdir)/auxdir/acx_pthread.m4 \
 	$(top_srcdir)/auxdir/x_ac_printf_null.m4 \
 	$(top_srcdir)/auxdir/x_ac_ptrace.m4 \
 	$(top_srcdir)/auxdir/x_ac_readline.m4 \
-	$(top_srcdir)/auxdir/x_ac_rfc5424_time.m4 \
 	$(top_srcdir)/auxdir/x_ac_rrdtool.m4 \
 	$(top_srcdir)/auxdir/x_ac_setpgrp.m4 \
 	$(top_srcdir)/auxdir/x_ac_setproctitle.m4 \
@@ -174,6 +173,8 @@ CPP = @CPP@
 CPPFLAGS = @CPPFLAGS@
 CRAY_CPPFLAGS = @CRAY_CPPFLAGS@
 CRAY_LDFLAGS = @CRAY_LDFLAGS@
+CRAY_SWITCH_CPPFLAGS = @CRAY_SWITCH_CPPFLAGS@
+CRAY_SWITCH_LDFLAGS = @CRAY_SWITCH_LDFLAGS@
 CXX = @CXX@
 CXXCPP = @CXXCPP@
 CXXDEPMODE = @CXXDEPMODE@
@@ -381,7 +382,7 @@ AM_CPPFLAGS = -I$(top_srcdir)
 slurmstepd_LDADD = \
 	$(top_builddir)/src/common/libdaemonize.la \
 	$(top_builddir)/src/api/libslurm.o $(DL_LIBS) \
-	$(PLPA_LIBS) $(PAM_LIBS) $(UTIL_LIBS) \
+	$(PAM_LIBS) $(UTIL_LIBS) \
 	../common/libslurmd_common.la
 
 slurmstepd_SOURCES = \

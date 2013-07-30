@@ -11,6 +11,13 @@ documents those changes that are of interest to users and admins.
  -- Added JobContainerPlugin configuration parameter and plugin infrastructure.
  -- Added partition configuration parameters AllowAccounts, AllowQOS,
     DenyAccounts and DenyQOS.
+ -- The rpmbuild option for a cray system with ALPS has changed from
+    %_with_cray to %_with_cray_alps.
+ -- The log file timestamp format can now be selected at runtime via the
+    LogTimeFormat configuration option. See the slurm.conf and slurmdbd.conf 
+    man pages for details.
+ -- Added switch/generic plugin to a job's convey network topology (just a
+    set of empty functions now).
 
 * Changes in Slurm 2.6.1
 ========================
@@ -28,6 +35,11 @@ documents those changes that are of interest to users and admins.
  -- PMI2 Updated the Makefile.am to build a versioned library.
  -- CRAY - Fix srun --mem_bind=local option with launch/aprun.
  -- PMI2 Corrected buffer size computation in the pmi2_api.c module.
+ -- GRES accounting data wrong in database: gres_alloc, gres_req, and gres_used
+    fields were empty if the job was not started immediately.
+ -- Fix sbatch and srun task count logic when --ntasks-per-node specified,
+    but no explicit task count.
+ -- Corrected the hdf5 profile user guide and the acct_gather.conf documentation.
 
 * Changes in Slurm 2.6.0
 ========================

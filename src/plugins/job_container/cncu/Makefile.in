@@ -90,7 +90,6 @@ am__aclocal_m4_deps = $(top_srcdir)/auxdir/acx_pthread.m4 \
 	$(top_srcdir)/auxdir/x_ac_printf_null.m4 \
 	$(top_srcdir)/auxdir/x_ac_ptrace.m4 \
 	$(top_srcdir)/auxdir/x_ac_readline.m4 \
-	$(top_srcdir)/auxdir/x_ac_rfc5424_time.m4 \
 	$(top_srcdir)/auxdir/x_ac_rrdtool.m4 \
 	$(top_srcdir)/auxdir/x_ac_setpgrp.m4 \
 	$(top_srcdir)/auxdir/x_ac_setproctitle.m4 \
@@ -133,7 +132,8 @@ am__uninstall_files_from_dir = { \
   }
 am__installdirs = "$(DESTDIR)$(pkglibdir)"
 LTLIBRARIES = $(pkglib_LTLIBRARIES)
-job_container_cncu_la_LIBADD =
+am__DEPENDENCIES_1 =
+job_container_cncu_la_DEPENDENCIES = $(am__DEPENDENCIES_1)
 am_job_container_cncu_la_OBJECTS = job_container_cncu.lo
 job_container_cncu_la_OBJECTS = $(am_job_container_cncu_la_OBJECTS)
 job_container_cncu_la_LINK = $(LIBTOOL) --tag=CC $(AM_LIBTOOLFLAGS) \
@@ -191,6 +191,8 @@ CPP = @CPP@
 CPPFLAGS = @CPPFLAGS@
 CRAY_CPPFLAGS = @CRAY_CPPFLAGS@
 CRAY_LDFLAGS = @CRAY_LDFLAGS@
+CRAY_SWITCH_CPPFLAGS = @CRAY_SWITCH_CPPFLAGS@
+CRAY_SWITCH_LDFLAGS = @CRAY_SWITCH_LDFLAGS@
 CXX = @CXX@
 CXXCPP = @CXXCPP@
 CXXDEPMODE = @CXXDEPMODE@
@@ -400,7 +402,8 @@ pkglib_LTLIBRARIES = job_container_cncu.la
 
 # job_container/cncu plugin.
 job_container_cncu_la_SOURCES = job_container_cncu.c
-job_container_cncu_la_LDFLAGS = $(SO_LDFLAGS) $(PLUGIN_FLAGS) $(CRAY_LDFLAGS)
+job_container_cncu_la_LDFLAGS = $(SO_LDFLAGS) $(PLUGIN_FLAGS)
+job_container_cncu_la_LIBADD = $(CRAY_LDFLAGS)
 all: all-am
 
 .SUFFIXES:
