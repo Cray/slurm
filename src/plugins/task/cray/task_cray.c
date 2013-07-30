@@ -441,3 +441,51 @@ extern int task_p_post_step (stepd_step_rec_t *job)
 {
 	return SLURM_SUCCESS;
 }
+
+/* Function: send_rank_to_app
+ *
+ * IN
+ * uint64_t	rank	The rank of the process about to be run
+ *
+ * Returns
+ * int		status	0 for SUCCESS; Non-zero for FAILURE
+ *
+ * Description:
+ * This function writes the rank of the process that is about to be executed to
+ * an environment variable.
+ */
+
+static int send_rank_to_app(uint64_t rank) {
+    char buf[MAXPATHLEN];
+    int ret;
+    snprintf(buf, sizeof(buf), "%ju", (uintmax_t)rank);
+    ret = setenv("ALPS_APP_PE", buf, 1);
+    if (ret < 0) {
+	DEBUG200("setenv ALPS_APP_PE");
+	return 1;
+    }
+    return 0;
+}
+
+/* Function: turn_off_pmi_fork
+ *
+ * IN
+ *
+ *
+ * Returns
+ * int		status	0 for SUCCESS; Non-zero for FAILURE
+ *
+ * Description:
+ * This function turns of PMI Forking by setting an environment variable
+ * an environment variable.
+ */
+
+static int turn_off_pmi_fork() {
+    int ret;
+    ret = setenv("PMI_NO_FORK", "1", 1);
+    if (ret < 0) {
+	DEBUG200("setenv PMI_NO_FORK");
+	return 1;
+    }
+    return 0;
+}
