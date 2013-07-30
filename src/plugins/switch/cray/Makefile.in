@@ -90,7 +90,6 @@ am__aclocal_m4_deps = $(top_srcdir)/auxdir/acx_pthread.m4 \
 	$(top_srcdir)/auxdir/x_ac_printf_null.m4 \
 	$(top_srcdir)/auxdir/x_ac_ptrace.m4 \
 	$(top_srcdir)/auxdir/x_ac_readline.m4 \
-	$(top_srcdir)/auxdir/x_ac_rfc5424_time.m4 \
 	$(top_srcdir)/auxdir/x_ac_rrdtool.m4 \
 	$(top_srcdir)/auxdir/x_ac_setpgrp.m4 \
 	$(top_srcdir)/auxdir/x_ac_setproctitle.m4 \
@@ -133,7 +132,9 @@ am__uninstall_files_from_dir = { \
   }
 am__installdirs = "$(DESTDIR)$(pkglibdir)"
 LTLIBRARIES = $(pkglib_LTLIBRARIES)
-switch_cray_la_LIBADD =
+am__DEPENDENCIES_1 =
+switch_cray_la_DEPENDENCIES = $(am__DEPENDENCIES_1) \
+	$(am__DEPENDENCIES_1)
 am_switch_cray_la_OBJECTS = switch_cray.lo
 switch_cray_la_OBJECTS = $(am_switch_cray_la_OBJECTS)
 switch_cray_la_LINK = $(LIBTOOL) --tag=CC $(AM_LIBTOOLFLAGS) \
@@ -191,6 +192,8 @@ CPP = @CPP@
 CPPFLAGS = @CPPFLAGS@
 CRAY_CPPFLAGS = @CRAY_CPPFLAGS@
 CRAY_LDFLAGS = @CRAY_LDFLAGS@
+CRAY_SWITCH_CPPFLAGS = @CRAY_SWITCH_CPPFLAGS@
+CRAY_SWITCH_LDFLAGS = @CRAY_SWITCH_LDFLAGS@
 CXX = @CXX@
 CXXCPP = @CXXCPP@
 CXXDEPMODE = @CXXDEPMODE@
@@ -395,12 +398,15 @@ top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
 AUTOMAKE_OPTIONS = foreign
 PLUGIN_FLAGS = -module -avoid-version --export-dynamic
-AM_CPPFLAGS = -I$(top_srcdir) -I$(top_srcdir)/src/common
+AM_CPPFLAGS = -I$(top_srcdir) -I$(top_srcdir)/src/common \
+	$(CRAY_CPPFLAGS) $(CRAY_SWITCH_CPPFLAGS)
+
 pkglib_LTLIBRARIES = switch_cray.la
 
 # Null switch plugin.
 switch_cray_la_SOURCES = switch_cray.c
 switch_cray_la_LDFLAGS = $(SO_LDFLAGS) $(PLUGIN_FLAGS)
+switch_cray_la_LIBADD = $(CRAY_LDFLAGS) $(CRAY_SWITCH_LDFLAGS)
 all: all-am
 
 .SUFFIXES:

@@ -3757,7 +3757,8 @@ unpack_job_step_create_response_msg(job_step_create_response_msg_t ** msg,
 		if (select_g_select_jobinfo_unpack(
 			    &tmp_ptr->select_jobinfo, buffer, protocol_version))
 			goto unpack_error;
-		switch_g_alloc_jobinfo(&tmp_ptr->switch_job);
+		switch_g_alloc_jobinfo(&tmp_ptr->switch_job, NO_VAL,
+				       tmp_ptr->job_step_id);
 		if (switch_g_unpack_jobinfo(tmp_ptr->switch_job, buffer)) {
 			error("switch_g_unpack_jobinfo: %m");
 			switch_g_free_jobinfo(tmp_ptr->switch_job);
@@ -7171,7 +7172,8 @@ _unpack_launch_tasks_request_msg(launch_tasks_request_msg_t **
 		safe_unpackstr_xmalloc(&msg->task_epilog, &uint32_tmp, buffer);
 		safe_unpack16(&msg->slurmd_debug, buffer);
 
-		switch_g_alloc_jobinfo(&msg->switch_job);
+		switch_g_alloc_jobinfo(&msg->switch_job,
+				       msg->job_id, msg->job_step_id);
 		if (switch_g_unpack_jobinfo(msg->switch_job, buffer) < 0) {
 			error("switch_g_unpack_jobinfo: %m");
 			switch_g_free_jobinfo(msg->switch_job);
@@ -7267,7 +7269,8 @@ _unpack_launch_tasks_request_msg(launch_tasks_request_msg_t **
 		safe_unpackstr_xmalloc(&msg->task_epilog, &uint32_tmp, buffer);
 		safe_unpack16(&msg->slurmd_debug, buffer);
 
-		switch_g_alloc_jobinfo(&msg->switch_job);
+		switch_g_alloc_jobinfo(&msg->switch_job,
+				       msg->job_id, msg->job_step_id);
 		if (switch_g_unpack_jobinfo(msg->switch_job, buffer) < 0) {
 			error("switch_g_unpack_jobinfo: %m");
 			switch_g_free_jobinfo(msg->switch_job);
@@ -9129,7 +9132,7 @@ static void _pack_suspend_int_msg(suspend_int_msg_t *msg, Buf buffer,
 	pack16(msg->op, buffer);
 	pack32(msg->job_id,  buffer);
 	pack8(msg->indf_susp, buffer);
-	switch_g_suspend_info_pack(msg->switch_info, buffer);
+	switch_g_job_suspend_info_pack(msg->switch_info, buffer);
 }
 
 static int  _unpack_suspend_int_msg(suspend_int_msg_t **msg_ptr, Buf buffer,
@@ -9144,7 +9147,7 @@ static int  _unpack_suspend_int_msg(suspend_int_msg_t **msg_ptr, Buf buffer,
 	safe_unpack16(&msg->op,     buffer);
 	safe_unpack32(&msg->job_id, buffer);
 	safe_unpack8(&msg->indf_susp, buffer);
-	if (switch_g_suspend_info_unpack(&msg->switch_info, buffer))
+	if (switch_g_job_suspend_info_unpack(&msg->switch_info, buffer))
 		goto unpack_error;
 	return SLURM_SUCCESS;
 
