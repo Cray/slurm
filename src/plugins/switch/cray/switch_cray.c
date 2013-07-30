@@ -186,8 +186,9 @@ int switch_p_alloc_jobinfo(switch_jobinfo_t **switch_job,
 	new->num_cookies = 0;
 	new->cookies = NULL;
 	new->cookie_ids = NULL;
-	new->jobid = 0;
-	new->stepid = 0;
+	new->jobid = job_id;
+	new->stepid = step_id;
+	new->apid = SLURM_ID_HASH(job_id, step_id);
 	*switch_job = (switch_jobinfo_t *)new;
 	return SLURM_SUCCESS;
 }
@@ -298,6 +299,7 @@ int switch_p_build_jobinfo(switch_jobinfo_t *switch_job,
 	 * Inform the system that an application (i.e. job step) is starting.
 	 * This is for tracking purposes for congestion management and power
 	 * management.
+	 * This is probably going to be moved to the select plugin.
 	 *
 	 * TODO: Implement the actual call.
 	 */
@@ -515,13 +517,12 @@ int switch_p_job_preinit(switch_jobinfo_t *jobinfo)
 
 extern int switch_p_job_init(stepd_step_rec_t *job)
 {
-	slurm_cray_jobinfo_t *job = (slurm_cray_jobinfo_t *)jobinfo;
+	slurm_cray_jobinfo_t *sw_job = (slurm_cray_jobinfo_t *)job->switch_job;
 	int rc, numPTags, cmdIndex, num_cpus, cpu_scaling, mem_scaling, i, j;
 	uint32_t amount_mem = 0;
 	int *pTags;
 	// uint64_t apid = 0;
 	char *errMsg, *apid_dir;
-	stepd_step_rec_t *step_rec;  // This will become a formal parameter.  Remove when it does.
 	alpsc_peInfo_t alpsc_peInfo;
 	FILE *f = NULL;
 	size_t sz = 0;
@@ -540,7 +541,7 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 	struct sockaddr_in controlSoc;
 	alpsc_branchInfo_t alpsc_branchInfo;
 
-	rc = job_attach_reservation(step_rec->cont_id, step_rec->jobid, 0);
+	rc = job_attach_reservation(job->cont_id, job->jobid, 0);
 	if (rc) {
 		error("(%s: %d: %s) job_attach_reservation failed: %d", THIS_FILE, __LINE__, __FUNCTION__, errno);
 		return SLURM_ERROR;
@@ -549,7 +550,7 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 	/*
 	 * Create APID directory
 	 */
-	rc = asprintf(&apid_dir, "/var/spool/alps/%" PRIu64, job->apid);
+	rc = asprintf(&apid_dir, "/var/spool/alps/%" PRIu64, sw_job->apid);
 	if (rc == -1) {
 		error("(%s: %d: %s) asprintf failed", THIS_FILE, __LINE__, __FUNCTION__);
 		return SLURM_ERROR;
@@ -623,11 +624,11 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 	}
 
 	// Scaling
-	cpu_scaling = (step_rec->node_tasks * step_rec->cpus_per_task)/ num_cpus;
-	mem_scaling = step_rec->step_mem / amount_mem;
+	cpu_scaling = (job->node_tasks * job->cpus_per_task)/ num_cpus;
+	mem_scaling = job->step_mem / amount_mem;
 
 	rc = alpsc_configure_nic(&errMsg, 0, cpu_scaling,
-	    mem_scaling, step_rec->cont_id, job->num_cookies, (const char **)job->cookies,
+	    mem_scaling, job->cont_id, sw_job->num_cookies, (const char **)sw_job->cookies,
 	    &numPTags, &pTags, ntt_desc_ptr);
 	if (rc != 1) {
 		if (errMsg) {
@@ -652,15 +653,15 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 	 * The following section will fill in the alpsc_peInfo structure which is
 	 * the key argument to the alpsc_write_placement_file() call.
 	 */
-	alpsc_peInfo.totalPEs = step_rec->ntasks;
-	alpsc_peInfo.pesHere = step_rec->node_tasks;
-	alpsc_peInfo.peDepth = step_rec->cpus_per_task;
+	alpsc_peInfo.totalPEs = job->ntasks;
+	alpsc_peInfo.pesHere = job->node_tasks;
+	alpsc_peInfo.peDepth = job->cpus_per_task;
 
 	/*
 	 * Fill in alpsc_peInfo.firstPeHere
 	 */
-	rc = get_first_pe(step_rec->nodeid, job->step_layout->task_cnt,
-			job->step_layout->tids, &alpsc_peInfo.firstPeHere);
+	rc = get_first_pe(job->nodeid, sw_job->step_layout->task_cnt,
+			sw_job->step_layout->tids, &alpsc_peInfo.firstPeHere);
 	if (rc < 0) {
 		error("(%s: %d: %s) get_first_pe failed", THIS_FILE, __LINE__, __FUNCTION__);
 		return SLURM_ERROR;
@@ -672,17 +673,17 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 	 * The peNidArray maps tasks to nodes.
 	 * Basically, reverse the tids variable which maps nodes to tasks.
 	 */
-	rc = node_list_str_to_array(job->step_layout->node_cnt,
-			job->step_layout->node_list, &nodes);
+	rc = node_list_str_to_array(sw_job->step_layout->node_cnt,
+			sw_job->step_layout->node_list, &nodes);
 	if (rc < 0) {
 		error("(%s: %d: %s) node_list_str_to_array failed", THIS_FILE, __LINE__, __FUNCTION__);
 		return SLURM_ERROR;
 	}
-	task_to_nodes_map = xmalloc(job->step_layout->task_cnt * sizeof(int));
+	task_to_nodes_map = xmalloc(sw_job->step_layout->task_cnt * sizeof(int));
 
-	for (i=0; i<job->step_layout->node_cnt; i++) {
-		for (j=0; j < job->step_layout->tasks[i]; j++) {
-			task = job->step_layout->tids[i][j];
+	for (i=0; i<sw_job->step_layout->node_cnt; i++) {
+		for (j=0; j < sw_job->step_layout->tasks[i]; j++) {
+			task = sw_job->step_layout->tids[i][j];
 			task_to_nodes_map[task] = nodes[i];
 		}
 	}
@@ -699,7 +700,7 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 	 * TODO: Add MPMD support once SchedMD provides the needed MPMD data.
 	 */
 
-	if (!step_rec->multi_prog) {
+	if (!job->multi_prog) {
 		/* SPMD Launch */
 		cmdIndex = 0;
 
@@ -733,8 +734,8 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 	 * Currently, it's all zeros.
 	 *
 	 */
-	alpsc_peInfo.nodeCpuArray = calloc(sizeof(int), job->step_layout->node_cnt);
-	if (job->step_layout->node_cnt && (alpsc_peInfo.nodeCpuArray == NULL)) {
+	alpsc_peInfo.nodeCpuArray = calloc(sizeof(int), sw_job->step_layout->node_cnt);
+	if (sw_job->step_layout->node_cnt && (alpsc_peInfo.nodeCpuArray == NULL)) {
 		error("(%s: %d: %s) failed to calloc nodeCpuArray.", THIS_FILE, __LINE__, __FUNCTION__);
 		return SLURM_ERROR;
 	}
@@ -755,7 +756,7 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 	alpsc_branchInfo.tLen = 0;
 	alpsc_branchInfo.targ = 0;
 
-	alpsc_write_placement_file(&errMsg, job->apid, cmdIndex, &alpsc_peInfo,
+	alpsc_write_placement_file(&errMsg, sw_job->apid, cmdIndex, &alpsc_peInfo,
 			controlNid, controlSoc, numBranches, &alpsc_branchInfo);
 	if (rc != 1) {
 		if (errMsg) {
