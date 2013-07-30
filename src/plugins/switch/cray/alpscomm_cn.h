@@ -13,7 +13,10 @@
 
 #include <stdint.h>
 #include <sched.h>
-#include <gni_pub.h>
+/*
+ * Commenting this out as it is not found.
+ */
+// #include <gni_pub.h>
 
 /*
  * libalpscomm_cn - an external library interface for compute node
