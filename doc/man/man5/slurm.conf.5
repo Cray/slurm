@@ -233,7 +233,7 @@ Configurable values at present are:
 No filesystem data are collected.
 .TP
 \fBacct_gather_filesystem/lustre\fR
-Lustre filesystem traffic data are collected from the counters found in 
+Lustre filesystem traffic data are collected from the counters found in
 /proc/fs/lustre/.
 .RE
 
@@ -444,6 +444,9 @@ Generic resource details
 .TP
 \fBGang\fR
 Gang scheduling details
+.TP
+\fBJobContainer\fR
+Job container plugin details
 .TP
 \fBNO_CONF_HASH\fR
 Do not log when the slurm.conf files differs between SLURM daemons
@@ -879,7 +882,7 @@ Acceptable values at present include:
 .TP 20
 \job_container/cncu\fR
 used only for Cray systems (CNCU = Compute Node Clean Up)
-.TP 
+.TP
 \job_container/none\fR
 used for all other system types
 .RE
@@ -983,6 +986,20 @@ Note that SLURM prevents jobs from being scheduled if their
 required license specification is not available.
 SLURM does not prevent jobs from using licenses that are
 not explicitly listed in the job submission specification.
+
+.TP
+\fBLogTimeFormat\fR
+Format of the timestamp in slurmctld and slurmd log files. Accepted
+values are "iso8601", "iso8601_ms", "rfc5424", "rfc5424_ms", "clock",
+"short" and "thread_id". The values ending in "_ms" differ from the ones without
+in that fractional seconds with millisecond precision are printed. The
+default value is "iso8601_ms". The "rfc5424" formats are the same as
+the "iso8601" formats except that the timezone value is also
+shown. The "clock" format shows a timestamp in microseconds retrieved
+with the C standard clock() function. The "short" format is a short
+date and time format. The "thread_id" format shows the timestamp
+in the C standard ctime() function form without the year but
+including the microseconds, the daemon's process ID and the current thread ID.
 
 .TP
 \fBMailProg\fR
@@ -1867,11 +1884,9 @@ since the job state save format used by each plugin is different.
 Acceptable values include
 .RS
 .TP
-\fBselect/linear\fR
-for allocation of entire nodes assuming a
-one\-dimensional array of nodes in which sequentially ordered
-nodes are preferable.
-This is the default value for non\-BlueGene systems.
+\fBselect/bluegene\fR
+for a three\-dimensional BlueGene system.
+The default value is "select/bluegene" for BlueGene systems.
 .TP
 \fBselect/cons_res\fR
 The resources within a node are individually allocated as
@@ -1880,19 +1895,21 @@ Note that whole nodes can be allocated to jobs for selected
 partitions by using the \fIShared=Exclusive\fR option.
 See the partition \fBShared\fR parameter for more information.
 .TP
+\fBselect/cray\fR
+for a Cray system.
+The default value is "select/cray" for all Cray systems.
+.TP
+\fBselect/linear\fR
+for allocation of entire nodes assuming a
+one\-dimensional array of nodes in which sequentially ordered
+nodes are preferable.
+This is the default value for non\-BlueGene systems.
+.TP
 \fBselect/serial\fR
 for allocating resources to single CPU jobs only.
 Highly optimized for maximum throughput.
 NOTE: SPANK environment variables are NOT propagated to the job's \fBEpilog\fR
 program.
-.TP
-\fBselect/bluegene\fR
-for a three\-dimensional BlueGene system.
-The default value is "select/bluegene" for BlueGene systems.
-.TP
-\fBselect/cray\fR
-for a Cray system.
-The default value is "select/cray" for all Cray systems.
 .RE
 
 .TP
@@ -1985,6 +2002,10 @@ Setting a value for \fBDefMemPerCPU\fR is strongly recommended.
 Memory is a consumable resource.
 NOTE: This implies \fIShared=YES\fR or \fIShared=FORCE\fR for all partitions.
 Setting a value for \fBDefMemPerCPU\fR is strongly recommended.
+.TP
+\fBother_cons_res\fR
+When SelectType=select/cray plugin, then the underlying select plugin used
+wiill be select/cons_res.
 .RE
 
 .TP
@@ -2329,9 +2350,6 @@ This enables the \-\-cpu_bind and/or \-\-mem_bind srun options.
 If you use "task/affinity" and encounter problems, it may be due to
 the variety of system calls used to implement task affinity on
 different operating systems.
-If that is the case, you may want to install Portable Linux
-Process Affinity (PLPA, see http://www.open-mpi.org/software/plpa),
-which is supported by SLURM.
 .TP
 \fBtask/cgroup\fR
 enables resource containment using Linux control cgroups.
@@ -2377,8 +2395,8 @@ Perform no task binding.
 Overrides user options or automatic binding.
 .TP
 \fBSched\fR
-Use \fIsched_setaffinity\fR or \fIplpa_sched_setaffinity\fR
-(if available) to bind tasks to processors.
+Use \fIsched_setaffinity\fR (if available) to bind tasks to
+processors.
 .TP
 \fBSockets\fR
 Always bind to sockets.

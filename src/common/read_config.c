@@ -225,6 +225,7 @@ s_p_options_t slurm_conf_options[] = {
 	{"KillWait", S_P_UINT16},
 	{"LaunchType", S_P_STRING},
 	{"Licenses", S_P_STRING},
+	{"LogTimeFormat", S_P_STRING},
 	{"MailProg", S_P_STRING},
 	{"MaxArraySize", S_P_UINT16},
 	{"MaxJobCount", S_P_UINT32},
@@ -2952,6 +2953,25 @@ _validate_and_set_defaults(slurm_ctl_conf_t *conf, s_p_hashtbl_t *hashtbl)
 
 	s_p_get_string(&conf->licenses, "Licenses", hashtbl);
 
+	if (s_p_get_string(&temp_str, "LogTimeFormat", hashtbl)) {
+		if (slurm_strcasestr(temp_str, "iso8601_ms"))
+			conf->log_fmt = LOG_FMT_ISO8601_MS;
+		else if (slurm_strcasestr(temp_str, "iso8601"))
+			conf->log_fmt = LOG_FMT_ISO8601;
+		else if (slurm_strcasestr(temp_str, "rfc5424_ms"))
+			conf->log_fmt = LOG_FMT_RFC5424_MS;
+		else if (slurm_strcasestr(temp_str, "rfc5424"))
+			conf->log_fmt = LOG_FMT_RFC5424;
+		else if (slurm_strcasestr(temp_str, "clock"))
+			conf->log_fmt = LOG_FMT_CLOCK;
+		else if (slurm_strcasestr(temp_str, "short"))
+			conf->log_fmt = LOG_FMT_SHORT;
+		else if (slurm_strcasestr(temp_str, "thread_id"))
+			conf->log_fmt = LOG_FMT_THREAD_ID;
+		xfree(temp_str);
+	} else
+		conf->log_fmt = LOG_FMT_ISO8601_MS;
+
 	if (!s_p_get_string(&conf->mail_prog, "MailProg", hashtbl))
 		conf->mail_prog = xstrdup(DEFAULT_MAIL_PROG);
 
@@ -3840,6 +3860,11 @@ extern char * debug_flags2str(uint32_t debug_flags)
 			xstrcat(rc, ",");
 		xstrcat(rc, "Filesystem");
 	}
+	if (debug_flags & DEBUG_FLAG_JOB_CONT) {
+		if (rc)
+			xstrcat(rc, ",");
+		xstrcat(rc, "JobContainer");
+	}
 	if (debug_flags & DEBUG_FLAG_NO_CONF_HASH) {
 		if (rc)
 			xstrcat(rc, ",");
@@ -3890,11 +3915,6 @@ extern char * debug_flags2str(uint32_t debug_flags)
 			xstrcat(rc, ",");
 		xstrcat(rc, "Wiki");
 	}
-	if (debug_flags & DEBUG_FLAG_THREADID) {
-		if (rc)
-			xstrcat(rc, ",");
-		xstrcat(rc, "ThreadID");
-	}
 	return rc;
 }
 
@@ -3940,6 +3960,8 @@ extern uint32_t debug_str2flags(char *debug_flags)
 			rc |= DEBUG_FLAG_INFINIBAND;
 		else if (strcasecmp(tok, "Filesystem") == 0)
 			rc |= DEBUG_FLAG_FILESYSTEM;
+		else if (strcasecmp(tok, "JobContainer") == 0)
+			rc |= DEBUG_FLAG_JOB_CONT;
 		else if (strcasecmp(tok, "NO_CONF_HASH") == 0)
 			rc |= DEBUG_FLAG_NO_CONF_HASH;
 		else if (strcasecmp(tok, "NoRealTime") == 0)
@@ -3962,8 +3984,6 @@ extern uint32_t debug_str2flags(char *debug_flags)
 			rc |= DEBUG_FLAG_TRIGGERS;
 		else if (strcasecmp(tok, "Wiki") == 0)
 			rc |= DEBUG_FLAG_WIKI;
-		else if (strcasecmp(tok, "ThreadID") == 0)
-			rc |= DEBUG_FLAG_THREADID;
 		else {
 			error("Invalid DebugFlag: %s", tok);
 			rc = NO_VAL;

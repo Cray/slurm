@@ -175,7 +175,8 @@ int switch_p_libstate_clear(void)
 /*
  * switch functions for job step specific credential
  */
-int switch_p_alloc_jobinfo(switch_jobinfo_t **switch_job)
+int switch_p_alloc_jobinfo(switch_jobinfo_t **switch_job,
+			   uint32_t job_id, uint32_t step_id)
 {
 	slurm_cray_jobinfo_t *new;
 
@@ -512,8 +513,7 @@ int switch_p_job_preinit(switch_jobinfo_t *jobinfo)
 	return SLURM_SUCCESS;
 }
 
-extern int switch_p_job_init(switch_jobinfo_t *jobinfo, uid_t uid,
-			     char *job_name)
+extern int switch_p_job_init(stepd_step_rec_t *job)
 {
 	slurm_cray_jobinfo_t *job = (slurm_cray_jobinfo_t *)jobinfo;
 	int rc, numPTags, cmdIndex, num_cpus, cpu_scaling, mem_scaling, i, j;
