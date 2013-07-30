@@ -259,6 +259,12 @@ extern int alpsc_free_power_info(char **errMsg, alpsc_powerInfo_t *pinfo);
  * ***************************************************************/
 
 /*
+ * This is a hack until this problem is resolved.
+ */
+struct gni_ntt_descriptor_s;
+typedef struct gni_ntt_descriptor_s gni_ntt_descriptor_t;
+
+/*
  * alpsc_configure_nic - configures the network driver, which includes
  * calculating and setting network resource limits.  The caller provides
  * scaling information to be used with dividing up network resources for
