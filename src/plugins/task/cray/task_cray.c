@@ -46,7 +46,7 @@
 #include "slurm/slurm_errno.h"
 #include "src/common/slurm_xlator.h"
 #include "src/slurmd/slurmstepd/slurmstepd_job.h"
-#include <task.h>
+#include <task_cray.h>
 
 /*
  * These variables are required by the generic plugin interface.  If they
