@@ -172,6 +172,8 @@ BuildRequires: cray-libalpslli-devel
 BuildRequires: cray-libalpscomm_cn-devel
 BuildRequires: cray-libalpscomm_sn-devel
 BuildRequires: cray-libjob-devel
+BuildRequires: gtk2-devel
+BuildRequires: glib2-devel
 BuildRequires: -post-build-checks
 %endif
 
@@ -438,6 +440,7 @@ Gives the ability for SLURM to use Berkeley Lab Checkpoint/Restart
 %build
 # Skip configure if possible
 if [ ! -f "config.status" -o "%{reconfigure}" = "1" ]; then
+./autogen.sh
 %configure \
 	%{?slurm_with_debug:--enable-debug} \
 	%{?slurm_with_partial_attach:--enable-partial-attach} \
