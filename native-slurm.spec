@@ -168,7 +168,6 @@ Requires: cray-MySQL-devel-enterprise
 # Add requirements for build
 %if %{slurm_with cray}
 BuildRequires: cray-MySQL-devel-enterprise
-BuildRequires: cray-libalpslli-devel
 BuildRequires: cray-libalpscomm_cn-devel
 BuildRequires: cray-libalpscomm_sn-devel
 BuildRequires: cray-libjob-devel
