@@ -101,9 +101,9 @@
 %slurm_with_opt sgijob
 %endif
 
-Name:    slurm 
-Version: 13.12.0 
-Release: 0pre1 
+Name: slurm
+Version: 13.12.0
+Release: 0pre1
 
 Summary: Simple Linux Utility for Resource Management
 
