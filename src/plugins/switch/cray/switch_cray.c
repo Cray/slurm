@@ -140,7 +140,7 @@ static void _print_jobinfo(slurm_cray_jobinfo_t *job)
  */
 int init(void)
 {
-	verbose("%s loaded", plugin_name);
+	verbose("%s loaded, really, really loaded.", plugin_name);
 	return SLURM_SUCCESS;
 }
 
@@ -880,7 +880,7 @@ int switch_p_job_postfini(switch_jobinfo_t *jobinfo, uid_t pgid,
 		       (unsigned long) pgid);
 		kill(-pgid, SIGKILL);
 	} else
-		debug("Job %u.%u: Bad pid valud %lu", job_id,
+		debug("Job %u.%u: Bad pid value %lu", job_id,
 		      step_id, (unsigned long) pgid);
 	/*
 	 * Clean-up
