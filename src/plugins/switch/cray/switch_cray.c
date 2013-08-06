@@ -271,7 +271,7 @@ int switch_p_build_jobinfo(switch_jobinfo_t *switch_job,
 	}
 	free(cookies);
 
-	if (!rc) {
+	if (rc) {
 		if (errMsg) {
 			error("(%s: %d: %s) Failed to obtain %d cookie%s: Errno: %d -- %s",
 					THIS_FILE, __LINE__, __FUNCTION__, num_cookies,
