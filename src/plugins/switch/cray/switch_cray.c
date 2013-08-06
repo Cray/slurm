@@ -234,7 +234,7 @@ int switch_p_build_jobinfo(switch_jobinfo_t *switch_job,
 				       0, nodes,
 				       step_layout->node_cnt, num_cookies,
 				       &cookies, &cookie_ids);
-	if (rc != 1) {
+	if (rc != 0) {
 		if (errMsg) {
 			error("(%s: %d: %s) alpsc_lease_cookies failed: %s",
 					THIS_FILE, __LINE__, __FUNCTION__, errMsg);
@@ -1024,7 +1024,7 @@ extern int switch_p_job_step_complete(switch_jobinfo_t *jobinfo,
 
 	rc = alpsc_release_cookies(&errMsg, job->cookie_ids, job->num_cookies);
 
-	if (rc != 1) {
+	if (rc != 0) {
 
 		if (errMsg) {
 			error("(%s: %d: %s) alpsc_release_cookies failed: %s",
