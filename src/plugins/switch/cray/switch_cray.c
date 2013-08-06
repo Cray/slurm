@@ -200,7 +200,7 @@ int switch_p_build_jobinfo(switch_jobinfo_t *switch_job,
 
 	int i, rc;
 	int num_cookies = 2;
-	char *errMsg;
+	char *errMsg = NULL;
 	char **cookies, **s_cookies;
 	int32_t *nodes, *cookie_ids, *s_cookie_ids;
 	slurm_cray_jobinfo_t *job = (slurm_cray_jobinfo_t *)switch_job;
@@ -522,7 +522,7 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 	uint32_t total_mem = 0;
 	int *pTags;
 	// uint64_t apid = 0;
-	char *errMsg, *apid_dir;
+	char *errMsg = NULL, *apid_dir;
 	alpsc_peInfo_t alpsc_peInfo;
 	FILE *f = NULL;
 	size_t sz = 0;
@@ -1013,7 +1013,7 @@ extern int switch_p_job_step_complete(switch_jobinfo_t *jobinfo,
 		char *nodelist)
 {
 	slurm_cray_jobinfo_t *job = (slurm_cray_jobinfo_t *)jobinfo;
-	char *errMsg;
+	char *errMsg = NULL;
 	int rc = 0;
 
 	if (slurm_get_debug_flags() & DEBUG_FLAG_SWITCH) {
@@ -1080,7 +1080,7 @@ extern int switch_p_slurmctld_init(void)
 extern int switch_p_slurmd_init(void)
 {
 	int rc = 0;
-	char *errMsg;
+	char *errMsg = NULL;
 
 	// Create the ALPS directories
 	char dir[] = "/var/spool/alps/";
