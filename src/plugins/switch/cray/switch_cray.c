@@ -1191,7 +1191,7 @@ static int get_first_pe(uint32_t nodeid, uint32_t task_count,
 static int node_list_str_to_array(uint32_t node_cnt, char *node_list,
 		int32_t **nodes) {
 
-	int32_t *nodes_ptr = *nodes;
+	int32_t *nodes_ptr = NULL;
 	hostlist_t hl;
 	int i, ret = 0;
 	char *node_str, *cptr;
@@ -1208,7 +1208,7 @@ static int node_list_str_to_array(uint32_t node_cnt, char *node_list,
 	/*
 	 * Create an integer array of nodes_ptr in the same order as in the node_list.
 	 */
-	nodes_ptr = xmalloc(node_cnt * sizeof(uint32_t));
+	nodes_ptr = *nodes = xmalloc(node_cnt * sizeof(uint32_t));
 	if (nodes_ptr == NULL) {
 		error("(%s: %d: %s) xmalloc failed", THIS_FILE, __LINE__, __FUNCTION__);
 		hostlist_destroy(hl);
@@ -1231,7 +1231,7 @@ static int node_list_str_to_array(uint32_t node_cnt, char *node_list,
 			hostlist_destroy(hl);
 		}
 		nodes_ptr[i] = atoll(cptr);
-		xfree(node_str);
+		free(node_str);
 	}
 
 	// Clean up
