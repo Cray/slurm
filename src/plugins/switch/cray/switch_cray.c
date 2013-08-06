@@ -418,7 +418,7 @@ int switch_p_pack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer)
 	 */
 
 	if (slurm_get_debug_flags() & DEBUG_FLAG_SWITCH) {
-		debug("(%s: %d: %s) switch_p_pack_jobinfo switch_jobinfo_t contents", THIS_FILE, __LINE__, __FUNCTION__);
+		debug("(%s: %d: %s) switch_jobinfo_t contents", THIS_FILE, __LINE__, __FUNCTION__);
 		_print_jobinfo(job);
 	}
 
@@ -451,6 +451,10 @@ int switch_p_pack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer)
 
 int switch_p_unpack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer)
 {
+
+	char *DEBUG_WAIT=getenv("SLURM_DEBUG_WAIT");
+	while(DEBUG_WAIT);
+
 	slurm_cray_jobinfo_t *job = (slurm_cray_jobinfo_t *)switch_job;
 	assert(job);
 	assert(job->magic == CRAY_JOBINFO_MAGIC);
