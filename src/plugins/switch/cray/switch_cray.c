@@ -200,7 +200,7 @@ int switch_p_build_jobinfo(switch_jobinfo_t *switch_job,
 
 	int i, rc;
 	int num_cookies = 2;
-	char *errMsg;
+	char *errMsg = NULL;
 	char **cookies, **s_cookies;
 	int32_t *nodes, *cookie_ids, *s_cookie_ids;
 	slurm_cray_jobinfo_t *job = (slurm_cray_jobinfo_t *)switch_job;
