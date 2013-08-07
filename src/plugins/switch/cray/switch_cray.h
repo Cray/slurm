@@ -19,7 +19,7 @@ typedef struct slurm_cray_jobinfo  slurm_cray_jobinfo_t;
 
 struct slurm_cray_jobinfo {
 	uint32_t magic;
-	int32_t num_cookies;	/* The number of cookies sent to configure the HSN */
+	uint32_t num_cookies;	/* The number of cookies sent to configure the HSN */
 	/* Double pointer to an array of cookie strings.
 	 * cookie values here as NULL-terminated strings.
 	 * There are num_cookies elements in the array.
@@ -27,7 +27,7 @@ struct slurm_cray_jobinfo {
 	 * the array contents and the array itself.  */
 	char     **cookies;
 	/* The array itself must be free()d when this struct is destroyed. */
-	int32_t *cookie_ids;
+	uint32_t *cookie_ids;
 	uint32_t       jobid;  /* Current SLURM job id */
 	uint32_t       stepid; /* Current step id */
 	/* Cray Application ID -- A unique combination of the job id and step id*/

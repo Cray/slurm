@@ -96,8 +96,8 @@ static void _print_jobinfo(slurm_cray_jobinfo_t *job)
 	int i, j, rc;
 	int32_t *nodes;
 
-	assert(job);
-	assert(job->magic == CRAY_JOBINFO_MAGIC);
+	xassert(job);
+	xassert(job->magic == CRAY_JOBINFO_MAGIC);
 
 	debug("--Begin Jobinfo--");
 	debug("  num_cookies: %u", job->num_cookies);
@@ -180,7 +180,7 @@ int switch_p_alloc_jobinfo(switch_jobinfo_t **switch_job,
 {
 	slurm_cray_jobinfo_t *new;
 
-	assert(switch_job != NULL);
+	xassert(switch_job != NULL);
 	new = (slurm_cray_jobinfo_t *) xmalloc(sizeof(slurm_cray_jobinfo_t));
 	new->magic = CRAY_JOBINFO_MAGIC;
 	new->num_cookies = 0;
@@ -202,7 +202,8 @@ int switch_p_build_jobinfo(switch_jobinfo_t *switch_job,
 	int num_cookies = 2;
 	char *errMsg = NULL;
 	char **cookies, **s_cookies;
-	int32_t *nodes, *cookie_ids, *s_cookie_ids;
+	int32_t *nodes, *cookie_ids;
+	uint32_t *s_cookie_ids;
 	slurm_cray_jobinfo_t *job = (slurm_cray_jobinfo_t *)switch_job;
 
 	rc = node_list_str_to_array(step_layout->node_cnt, step_layout->node_list, &nodes);
@@ -314,8 +315,8 @@ switch_jobinfo_t *switch_p_copy_jobinfo(switch_jobinfo_t *switch_job)
 	slurm_cray_jobinfo_t *old = (slurm_cray_jobinfo_t *)switch_job;
 	switch_jobinfo_t *new_init;
 	slurm_cray_jobinfo_t *new;
-	assert(switch_job);
-	assert(((slurm_cray_jobinfo_t *)switch_job)->magic == CRAY_JOBINFO_MAGIC);
+	xassert(switch_job);
+	xassert(((slurm_cray_jobinfo_t *)switch_job)->magic == CRAY_JOBINFO_MAGIC);
 
 	if (switch_p_alloc_jobinfo(&new_init, old->jobid, old->stepid)) {
 		error("Allocating new jobinfo");
@@ -331,13 +332,14 @@ switch_jobinfo_t *switch_p_copy_jobinfo(switch_jobinfo_t *switch_job)
 	for(i=0; i<old->num_cookies; i++) {
 		new->cookies[i] = xstrdup(old->cookies[i]);
 	}
-	new->cookie_ids = xmalloc(old->num_cookies * sizeof(uint32_t));
+	new->cookie_ids = xmalloc(old->num_cookies * sizeof(new->cookie_ids));
 	memcpy(new->cookie_ids, old->cookie_ids, old->num_cookies * sizeof(uint32_t));
 
 	new->step_layout = xmalloc(sizeof(slurm_step_layout_t));
 	*(new->step_layout) = *(old->step_layout);
-	new->step_layout->node_list = xstrdup("old->step_layout->node_list");
-	new->step_layout->tasks = xmalloc(old->step_layout->node_cnt * sizeof(uint16_t));
+	new->step_layout->node_list = xstrdup(old->step_layout->node_list);
+	new->step_layout->tasks = xmalloc(old->step_layout->node_cnt *
+				sizeof(new->step_layout->tasks));
 	memcpy(new->step_layout->tasks, old->step_layout->tasks,
 			sizeof(*(old->step_layout->tasks)) * old->step_layout->node_cnt);
 	new->step_layout->tids = xmalloc(sizeof(old->step_layout->tids) *
@@ -406,9 +408,9 @@ int switch_p_pack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer)
 
 	slurm_cray_jobinfo_t *job= (slurm_cray_jobinfo_t *)switch_job;
 
-	assert(job);
-	assert(job->magic == CRAY_JOBINFO_MAGIC);
-	assert(buffer);
+	xassert(job);
+	xassert(job->magic == CRAY_JOBINFO_MAGIC);
+	xassert(buffer);
 
 	/*Debug Example
 	if (slurm_get_debug_flags() & DEBUG_FLAG_SWITCH)
@@ -422,8 +424,8 @@ int switch_p_pack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer)
 		_print_jobinfo(job);
 	}
 
-	safe_pack32(job->magic, buffer);
-	safe_pack32(job->num_cookies, buffer);
+	pack32(job->magic, buffer);
+	pack32(job->num_cookies, buffer);
 	packstr_array(job->cookies, job->num_cookies, buffer);
 
 	/*
@@ -439,7 +441,7 @@ int switch_p_pack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer)
 			return SLURM_ERROR;
 		}
 	}
-	safe_pack32_array((uint32_t *)job->cookie_ids, job->num_cookies, buffer);
+	pack32_array(job->cookie_ids, job->num_cookies, buffer);
 	pack_slurm_step_layout(job->step_layout, buffer, SLURM_PROTOCOL_VERSION);
 
 	return 0;
@@ -452,22 +454,30 @@ int switch_p_pack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer)
 int switch_p_unpack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer)
 {
 
+	uint32_t num_cookies;
+	/*
 	char *DEBUG_WAIT=getenv("SLURM_DEBUG_WAIT");
 	while(DEBUG_WAIT);
+	*/
 
 	slurm_cray_jobinfo_t *job = (slurm_cray_jobinfo_t *)switch_job;
-	assert(job);
-	assert(job->magic == CRAY_JOBINFO_MAGIC);
-	assert(buffer);
-	safe_unpack32(&job->magic, buffer);
-	assert(job->magic == CRAY_JOBINFO_MAGIC);
+	xassert(job);
+	xassert(job->magic == CRAY_JOBINFO_MAGIC);
+	xassert(buffer);
+	unpack32(&job->magic, buffer);
+	xassert(job->magic == CRAY_JOBINFO_MAGIC);
 	/*
 	 * There's some dodgy type-casting here because I'm dealing with signed
 	 * integers, but the pack/unpack functions use signed integers.
 	 */
-	safe_unpack32((uint32_t *)&(job->num_cookies), buffer);
-	unpackstr_array(&(job->cookies), (uint32_t *)&(job->num_cookies), buffer);
-	safe_unpack32_array((uint32_t **)&(job->cookie_ids), (uint32_t *)&(job->num_cookies), buffer);
+	unpack32(&(job->num_cookies), buffer);
+	unpackstr_array(&(job->cookies), &num_cookies, buffer);
+	if (num_cookies != job->num_cookies) {
+		error("(%s: %d: %s) Wrong number of cookies received.  Expected: %"
+				PRIu32 "Received: %" PRIu32, THIS_FILE, __LINE__, __FUNCTION__,
+				job->num_cookies, num_cookies);
+	}
+	unpack32_array(&(job->cookie_ids), &(job->num_cookies), buffer);
 
 	/*
 	 * Allocate our own step_layout function.
@@ -525,7 +535,6 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 	int rc, numPTags, cmdIndex, num_app_cpus, total_cpus, cpu_scaling, mem_scaling, i, j;
 	uint32_t total_mem = 0;
 	int *pTags;
-	// uint64_t apid = 0;
 	char *errMsg = NULL, *apid_dir;
 	alpsc_peInfo_t alpsc_peInfo;
 	FILE *f = NULL;
