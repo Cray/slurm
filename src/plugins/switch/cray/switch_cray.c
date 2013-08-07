@@ -512,7 +512,7 @@ int switch_p_pack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer)
 	pack_slurm_step_layout(job->step_layout, buffer, SLURM_PROTOCOL_VERSION);
 
 	if (slurm_get_debug_flags() & DEBUG_FLAG_SWITCH) {
-		rc = pack_test(buffer);
+		rc = pack_test(buffer, job->jobid, job->stepid);
 		if (rc != SLURM_SUCCESS) {
 			error("(%s: %d: %s) pack_test failed.",
 					THIS_FILE, __LINE__, __FUNCTION__);
