@@ -400,11 +400,78 @@ void switch_p_free_jobinfo(switch_jobinfo_t *switch_job)
 }
 
 /*
+ * pack_test
+ * Description:
+ * Tests the packing by doing some unpacking.
+ */
+int pack_test(Buf buffer, uint32_t job_id, uint32_t step_id) {
+
+	int rc;
+	uint32_t num_cookies;
+	slurm_cray_jobinfo_t *job;
+	switch_p_alloc_jobinfo(&job, job_id, step_id);
+	xassert(job);
+	xassert(job->magic == CRAY_JOBINFO_MAGIC);
+	xassert(buffer);
+	rc = unpack32(&job->magic, buffer);
+	if (rc != SLURM_SUCCESS) {
+		error("(%s: %d: %s) unpack32 failed. Return code: %d", THIS_FILE,
+				__LINE__, __FUNCTION__, rc);
+		return SLURM_ERROR;
+	}
+	xassert(job->magic == CRAY_JOBINFO_MAGIC);
+	/*
+	 * There's some dodgy type-casting here because I'm dealing with signed
+	 * integers, but the pack/unpack functions use signed integers.
+	 */
+	rc = unpack32(&(job->num_cookies), buffer);
+	if (rc != SLURM_SUCCESS) {
+		error("(%s: %d: %s) unpack32 failed. Return code: %d", THIS_FILE,
+				__LINE__, __FUNCTION__, rc);
+		return SLURM_ERROR;
+	}
+	rc = unpackstr_array(&(job->cookies), &num_cookies, buffer);
+	if (rc != SLURM_SUCCESS) {
+		error("(%s: %d: %s) unpackstr_array failed. Return code: %d", THIS_FILE,
+				__LINE__, __FUNCTION__, rc);
+		return SLURM_ERROR;
+	}
+	if (num_cookies != job->num_cookies) {
+		error("(%s: %d: %s) Wrong number of cookies received.  Expected: %"
+				PRIu32 "Received: %" PRIu32, THIS_FILE, __LINE__, __FUNCTION__,
+				job->num_cookies, num_cookies);
+		return SLURM_ERROR;
+	}
+	rc = unpack32_array(&(job->cookie_ids), &(job->num_cookies), buffer);
+	if (rc != SLURM_SUCCESS) {
+		error("(%s: %d: %s) unpack32_array failed. Return code: %d", THIS_FILE,
+				__LINE__, __FUNCTION__, rc);
+		return SLURM_ERROR;
+	}
+
+	/*
+	 * Allocate our own step_layout function.
+	 */
+	rc = unpack_slurm_step_layout(&(job->step_layout), buffer, SLURM_PROTOCOL_VERSION);
+	if (rc != SLURM_SUCCESS) {
+		error("(%s: %d: %s) unpack32 failed. Return code: %d", THIS_FILE,
+				__LINE__, __FUNCTION__, rc);
+		return SLURM_ERROR;
+	}
+
+	debug("(%s:%d: %s) switch_jobinfo_t contents:", THIS_FILE, __LINE__, __FUNCTION__);
+	_print_jobinfo(job);
+
+	return SLURM_SUCCESS;
+}
+
+/*
  * TODO: Pack job id, step id, and apid
  */
 int switch_p_pack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer)
 {
 	int i;
+	int rc;
 
 	slurm_cray_jobinfo_t *job= (slurm_cray_jobinfo_t *)switch_job;
 
@@ -444,6 +511,14 @@ int switch_p_pack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer)
 	pack32_array(job->cookie_ids, job->num_cookies, buffer);
 	pack_slurm_step_layout(job->step_layout, buffer, SLURM_PROTOCOL_VERSION);
 
+	if (slurm_get_debug_flags() & DEBUG_FLAG_SWITCH) {
+		rc = pack_test(buffer);
+		if (rc != SLURM_SUCCESS) {
+			error("(%s: %d: %s) pack_test failed.",
+					THIS_FILE, __LINE__, __FUNCTION__);
+		}
+	}
+
 	return 0;
 }
 
@@ -454,6 +529,7 @@ int switch_p_pack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer)
 int switch_p_unpack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer)
 {
 
+	int rc;
 	uint32_t num_cookies;
 	/*
 	char *DEBUG_WAIT=getenv("SLURM_DEBUG_WAIT");
@@ -464,28 +540,54 @@ int switch_p_unpack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer)
 	xassert(job);
 	xassert(job->magic == CRAY_JOBINFO_MAGIC);
 	xassert(buffer);
-	unpack32(&job->magic, buffer);
+	rc = unpack32(&job->magic, buffer);
+	if (rc != SLURM_SUCCESS) {
+		error("(%s: %d: %s) unpack32 failed. Return code: %d", THIS_FILE,
+				__LINE__, __FUNCTION__, rc);
+		return SLURM_ERROR;
+	}
 	xassert(job->magic == CRAY_JOBINFO_MAGIC);
 	/*
 	 * There's some dodgy type-casting here because I'm dealing with signed
 	 * integers, but the pack/unpack functions use signed integers.
 	 */
-	unpack32(&(job->num_cookies), buffer);
-	unpackstr_array(&(job->cookies), &num_cookies, buffer);
+	rc = unpack32(&(job->num_cookies), buffer);
+	if (rc != SLURM_SUCCESS) {
+		error("(%s: %d: %s) unpack32 failed. Return code: %d", THIS_FILE,
+				__LINE__, __FUNCTION__, rc);
+		return SLURM_ERROR;
+	}
+	rc = unpackstr_array(&(job->cookies), &num_cookies, buffer);
+	if (rc != SLURM_SUCCESS) {
+		error("(%s: %d: %s) unpackstr_array failed. Return code: %d", THIS_FILE,
+				__LINE__, __FUNCTION__, rc);
+		return SLURM_ERROR;
+	}
 	if (num_cookies != job->num_cookies) {
 		error("(%s: %d: %s) Wrong number of cookies received.  Expected: %"
 				PRIu32 "Received: %" PRIu32, THIS_FILE, __LINE__, __FUNCTION__,
 				job->num_cookies, num_cookies);
+		return SLURM_ERROR;
 	}
-	unpack32_array(&(job->cookie_ids), &(job->num_cookies), buffer);
+	rc = unpack32_array(&(job->cookie_ids), &(job->num_cookies), buffer);
+	if (rc != SLURM_SUCCESS) {
+		error("(%s: %d: %s) unpack32_array failed. Return code: %d", THIS_FILE,
+				__LINE__, __FUNCTION__, rc);
+		return SLURM_ERROR;
+	}
 
 	/*
 	 * Allocate our own step_layout function.
 	 */
-	unpack_slurm_step_layout(&(job->step_layout), buffer, SLURM_PROTOCOL_VERSION);
+	rc = unpack_slurm_step_layout(&(job->step_layout), buffer, SLURM_PROTOCOL_VERSION);
+	if (rc != SLURM_SUCCESS) {
+		error("(%s: %d: %s) unpack32 failed. Return code: %d", THIS_FILE,
+				__LINE__, __FUNCTION__, rc);
+		return SLURM_ERROR;
+	}
 
 	if (slurm_get_debug_flags() & DEBUG_FLAG_SWITCH) {
-		debug("(%s:%d: %s) switch_p_unpack_jobinfo switch_jobinfo_t contents:", THIS_FILE, __LINE__, __FUNCTION__);
+		debug("(%s:%d: %s) switch_jobinfo_t contents:", THIS_FILE, __LINE__, __FUNCTION__);
 		_print_jobinfo(job);
 	}
        
