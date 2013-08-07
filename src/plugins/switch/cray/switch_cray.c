@@ -99,38 +99,40 @@ static void _print_jobinfo(slurm_cray_jobinfo_t *job)
 	xassert(job);
 	xassert(job->magic == CRAY_JOBINFO_MAGIC);
 
+	debug("Address of slurm_cray_jobinfo_t structure: %z", job);
 	debug("--Begin Jobinfo--");
-	debug("  num_cookies: %u", job->num_cookies);
+	debug("  num_cookies: %" PRIu32, job->num_cookies);
 	debug("  --- cookies ---");
 	for (i = 0; i < job->num_cookies; i++) {
 		debug("  cookies[%d]: %s", i, job->cookies[i]);
 	}
 	debug("  --- cookie_ids ---");
 	for (i = 0; i < job->num_cookies; i++) {
-		debug("  cookie_ids[%d]: %u", i, job->cookie_ids[i]);
+		debug("  cookie_ids[%d]: %" PRIu32, i, job->cookie_ids[i]);
 	}
 	debug("  ------");
-	debug("  node_cnt: %" PRIu32, job->step_layout->node_cnt);
-	debug("  node_list: %s", job->step_layout->node_list);
-	debug("  --- tasks ---");
-	for (i=0; i < job->step_layout->node_cnt; i++) {
-		debug("  tasks[%d] = %u", i, job->step_layout->tasks[i]);
-	}
-	debug("  ------");
-	debug("  task_cnt: %" PRIu32, job->step_layout->task_cnt);
-	debug("  --- hosts to task---");
-	rc = node_list_str_to_array(job->step_layout->node_cnt, job->step_layout->node_list, &nodes);
-	if (rc) {
-		error("(%s: %d: %s) node_list_str_to_array failed", THIS_FILE, __LINE__, __FUNCTION__);
-	}
-	for (i=0; i < job->step_layout->node_cnt; i++) {
-		debug("Host: %d", i);
-		for (j=0; j < job->step_layout->tasks[i]; j++) {
-			debug("Task: %d", job->step_layout->tids[i][j]);
+	if (job->step_layout) {
+		debug("  node_cnt: %" PRIu32, job->step_layout->node_cnt);
+		debug("  node_list: %s", job->step_layout->node_list);
+		debug("  --- tasks ---");
+		for (i=0; i < job->step_layout->node_cnt; i++) {
+			debug("  tasks[%d] = %u", i, job->step_layout->tasks[i]);
 		}
+		debug("  ------");
+		debug("  task_cnt: %" PRIu32, job->step_layout->task_cnt);
+		debug("  --- hosts to task---");
+		rc = node_list_str_to_array(job->step_layout->node_cnt, job->step_layout->node_list, &nodes);
+		if (rc) {
+			error("(%s: %d: %s) node_list_str_to_array failed", THIS_FILE, __LINE__, __FUNCTION__);
+		}
+		for (i=0; i < job->step_layout->node_cnt; i++) {
+			debug("Host: %d", i);
+			for (j=0; j < job->step_layout->tasks[i]; j++) {
+				debug("Task: %d", job->step_layout->tids[i][j]);
+			}
+		}
+		debug("  ------");
 	}
-
-	debug("  ------");
 	debug("--END Jobinfo--");
 }
 
@@ -189,6 +191,7 @@ int switch_p_alloc_jobinfo(switch_jobinfo_t **switch_job,
 	new->jobid = job_id;
 	new->stepid = step_id;
 	new->apid = SLURM_ID_HASH(job_id, step_id);
+	new->step_layout = NULL;
 	*switch_job = (switch_jobinfo_t *)new;
 	return SLURM_SUCCESS;
 }
@@ -472,6 +475,7 @@ int switch_p_pack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer)
 {
 	int i;
 	int rc;
+	uint32_t save_processed;
 
 	slurm_cray_jobinfo_t *job= (slurm_cray_jobinfo_t *)switch_job;
 
@@ -512,11 +516,14 @@ int switch_p_pack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer)
 	pack_slurm_step_layout(job->step_layout, buffer, SLURM_PROTOCOL_VERSION);
 
 	if (slurm_get_debug_flags() & DEBUG_FLAG_SWITCH) {
+		save_processed = buffer->processed;
 		rc = pack_test(buffer, job->jobid, job->stepid);
 		if (rc != SLURM_SUCCESS) {
 			error("(%s: %d: %s) pack_test failed.",
 					THIS_FILE, __LINE__, __FUNCTION__);
+			return SLURM_ERROR;
 		}
+		buffer->processed = save_processed;
 	}
 
 	return 0;
