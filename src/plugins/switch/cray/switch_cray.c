@@ -404,6 +404,24 @@ void switch_p_free_jobinfo(switch_jobinfo_t *switch_job)
 }
 
 /*
+ * pack_test1
+ * Description:
+ * Tests the packing by unpacking just the magic number.
+ */
+int pack_test1(Buf buffer) {
+	int rc;
+	uint32_t magic;
+	rc = unpack32(&magic, buffer);
+	debug("(%s:%d: %s) magic: %" PRIx32, THIS_FILE, __LINE__, __FUNCTION__, magic);
+	if (rc != SLURM_SUCCESS) {
+		error("(%s: %d: %s) unpack32 failed. Return code: %d", THIS_FILE,
+				__LINE__, __FUNCTION__, rc);
+		return SLURM_ERROR;
+	}
+	return SLURM_SUCCESS;
+}
+
+/*
  * pack_test
  * Description:
  * Tests the packing by doing some unpacking.
@@ -498,6 +516,12 @@ int switch_p_pack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer)
 
 	save_processed = buffer->processed;
 	pack32(job->magic, buffer);
+	rc = pack_test1(buffer, job->jobid, job->stepid);
+	if (rc != SLURM_SUCCESS) {
+		error("(%s: %d: %s) pack_test1 failed.",
+				THIS_FILE, __LINE__, __FUNCTION__);
+		return SLURM_ERROR;
+	}
 
 	/*
 	pack32(job->num_cookies, buffer);
