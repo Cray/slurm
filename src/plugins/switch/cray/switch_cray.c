@@ -516,6 +516,8 @@ int switch_p_pack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer)
 
 	save_processed = buffer->processed;
 	pack32(job->magic, buffer);
+
+	/*
 	buffer->processed = save_processed;
 	rc = pack_test1(buffer);
 	if (rc != SLURM_SUCCESS) {
@@ -523,6 +525,7 @@ int switch_p_pack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer)
 				THIS_FILE, __LINE__, __FUNCTION__);
 		return SLURM_ERROR;
 	}
+	*/
 
 	/*
 	pack32(job->num_cookies, buffer);
