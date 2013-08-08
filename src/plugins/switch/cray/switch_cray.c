@@ -101,6 +101,7 @@ static void _print_jobinfo(slurm_cray_jobinfo_t *job)
 
 	debug("Address of slurm_cray_jobinfo_t structure: %p", job);
 	debug("--Begin Jobinfo--");
+	debug("  Magic: %" PRIx32, job->magic);
 	debug("  num_cookies: %" PRIu32, job->num_cookies);
 	debug("  --- cookies ---");
 	for (i = 0; i < job->num_cookies; i++) {
