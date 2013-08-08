@@ -516,7 +516,8 @@ int switch_p_pack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer)
 
 	save_processed = buffer->processed;
 	pack32(job->magic, buffer);
-	rc = pack_test1(buffer, job->jobid, job->stepid);
+	buffer->processed = save_processed;
+	rc = pack_test1(buffer);
 	if (rc != SLURM_SUCCESS) {
 		error("(%s: %d: %s) pack_test1 failed.",
 				THIS_FILE, __LINE__, __FUNCTION__);
