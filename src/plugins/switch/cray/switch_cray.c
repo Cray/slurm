@@ -562,16 +562,15 @@ int switch_p_unpack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer)
 	xassert(job);
 	xassert(job->magic == CRAY_JOBINFO_MAGIC);
 	xassert(buffer);
+
 	rc = unpack32(&job->magic, buffer);
-
-
-	/*
 	if (rc != SLURM_SUCCESS) {
 		error("(%s: %d: %s) unpack32 failed. Return code: %d", THIS_FILE,
 				__LINE__, __FUNCTION__, rc);
 		return SLURM_ERROR;
 	}
 	xassert(job->magic == CRAY_JOBINFO_MAGIC);
+	/*
 	rc = unpack32(&(job->num_cookies), buffer);
 	if (rc != SLURM_SUCCESS) {
 		error("(%s: %d: %s) unpack32 failed. Return code: %d", THIS_FILE,
@@ -610,11 +609,12 @@ int switch_p_unpack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer)
 		return SLURM_ERROR;
 	}
 
+*/
 	if (slurm_get_debug_flags() & DEBUG_FLAG_SWITCH) {
 		debug("(%s:%d: %s) switch_jobinfo_t contents:", THIS_FILE, __LINE__, __FUNCTION__);
 		_print_jobinfo(job);
 	}
-      */
+
 	return SLURM_SUCCESS;
  unpack_error:
     error("Cray switch plugin: switch_p_unpack_jobinfo failed");
