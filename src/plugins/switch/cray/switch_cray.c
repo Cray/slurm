@@ -99,7 +99,7 @@ static void _print_jobinfo(slurm_cray_jobinfo_t *job)
 	xassert(job);
 	xassert(job->magic == CRAY_JOBINFO_MAGIC);
 
-	debug("Address of slurm_cray_jobinfo_t structure: %z", job);
+	debug("Address of slurm_cray_jobinfo_t structure: %p", job);
 	debug("--Begin Jobinfo--");
 	debug("  num_cookies: %" PRIu32, job->num_cookies);
 	debug("  --- cookies ---");
@@ -495,9 +495,13 @@ int switch_p_pack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer)
 		_print_jobinfo(job);
 	}
 
+	save_processed = buffer->processed;
 	pack32(job->magic, buffer);
+
+	/*
 	pack32(job->num_cookies, buffer);
 	packstr_array(job->cookies, job->num_cookies, buffer);
+*/
 
 	/*
 	 *  Range Checking on cookie_ids
@@ -505,6 +509,8 @@ int switch_p_pack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer)
 	 *  packs unsigned uint32_t's, so I'm that the cookie_ids
 	 *  are not negative so that they don't underflow the uint32_t.
 	 */
+
+	/*
 	for (i=0; i < job->num_cookies; i++) {
 		if (job->cookie_ids[i] < 0) {
 			error("(%s: %d: %s) cookie_ids is negative.",
@@ -514,18 +520,27 @@ int switch_p_pack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer)
 	}
 	pack32_array(job->cookie_ids, job->num_cookies, buffer);
 	pack_slurm_step_layout(job->step_layout, buffer, SLURM_PROTOCOL_VERSION);
-
+*/
+	/*
 	if (slurm_get_debug_flags() & DEBUG_FLAG_SWITCH) {
-		save_processed = buffer->processed;
+	*/
+		/*
+		 * We need to put the buffer pointer back to where it was before the packing
+		 * process started if we're going to do a test unpack correctly.
+		 */
+
+		/*
+		buffer->processed = save_processed;
 		rc = pack_test(buffer, job->jobid, job->stepid);
 		if (rc != SLURM_SUCCESS) {
 			error("(%s: %d: %s) pack_test failed.",
 					THIS_FILE, __LINE__, __FUNCTION__);
 			return SLURM_ERROR;
 		}
-		buffer->processed = save_processed;
-	}
-
+		*/
+/*
+}
+*/
 	return 0;
 }
 
@@ -548,16 +563,15 @@ int switch_p_unpack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer)
 	xassert(job->magic == CRAY_JOBINFO_MAGIC);
 	xassert(buffer);
 	rc = unpack32(&job->magic, buffer);
+
+
+	/*
 	if (rc != SLURM_SUCCESS) {
 		error("(%s: %d: %s) unpack32 failed. Return code: %d", THIS_FILE,
 				__LINE__, __FUNCTION__, rc);
 		return SLURM_ERROR;
 	}
 	xassert(job->magic == CRAY_JOBINFO_MAGIC);
-	/*
-	 * There's some dodgy type-casting here because I'm dealing with signed
-	 * integers, but the pack/unpack functions use signed integers.
-	 */
 	rc = unpack32(&(job->num_cookies), buffer);
 	if (rc != SLURM_SUCCESS) {
 		error("(%s: %d: %s) unpack32 failed. Return code: %d", THIS_FILE,
@@ -583,9 +597,12 @@ int switch_p_unpack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer)
 		return SLURM_ERROR;
 	}
 
+*/
 	/*
 	 * Allocate our own step_layout function.
 	 */
+
+	/*
 	rc = unpack_slurm_step_layout(&(job->step_layout), buffer, SLURM_PROTOCOL_VERSION);
 	if (rc != SLURM_SUCCESS) {
 		error("(%s: %d: %s) unpack32 failed. Return code: %d", THIS_FILE,
@@ -597,7 +614,7 @@ int switch_p_unpack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer)
 		debug("(%s:%d: %s) switch_jobinfo_t contents:", THIS_FILE, __LINE__, __FUNCTION__);
 		_print_jobinfo(job);
 	}
-       
+      */
 	return SLURM_SUCCESS;
  unpack_error:
     error("Cray switch plugin: switch_p_unpack_jobinfo failed");
