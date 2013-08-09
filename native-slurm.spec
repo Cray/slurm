@@ -172,13 +172,11 @@ Requires: cray-MySQL-devel-enterprise
 # Add requirements for build
 %if %{slurm_with cray}
 BuildRequires: cray-MySQL-devel-enterprise
-
-#Not sure if the next line is needed. JDS 2013--31
-Requires: cray-MySQL-client-enterprise
-BuildRequires: cray-libalpslli-devel
 BuildRequires: cray-libalpscomm_cn-devel
 BuildRequires: cray-libalpscomm_sn-devel
 BuildRequires: cray-libjob-devel
+BuildRequires: gtk2-devel
+BuildRequires: glib2-devel
 BuildRequires: -post-build-checks
 
 %endif
@@ -446,8 +444,6 @@ Gives the ability for SLURM to use Berkeley Lab Checkpoint/Restart
 %build
 # Skip configure if possible
 if [ ! -f "config.status" -o "%{reconfigure}" = "1" ]; then
-
-#Next line is a hack to make things work on our older build systems.  JDS 2013-7-31
 ./autogen.sh
 %configure \
 	%{?slurm_with_debug:--enable-debug} \
