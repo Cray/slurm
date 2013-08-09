@@ -342,6 +342,7 @@ typedef enum {
 	PMI_KVS_GET_RESP,
 
 	RESPONSE_SLURM_RC = 8001,
+	RESPONSE_SLURM_RC_MSG,
 
 	RESPONSE_FORWARD_FAILED = 9001,
 
@@ -749,6 +750,10 @@ typedef struct partition_info partition_desc_msg_t;
 typedef struct return_code_msg {
 	uint32_t return_code;
 } return_code_msg_t;
+typedef struct return_code2_msg {
+	uint32_t return_code;
+	char *err_msg;
+} return_code2_msg_t;
 
 /* Note: We include the node list here for reliable cleanup on XCPU systems.
  *
@@ -1235,6 +1240,13 @@ extern char *trigger_type(uint32_t trig_type);
 
 /* user needs to xfree after */
 extern char *reservation_flags_string(uint16_t flags);
+
+/* Return ctime like string without the newline.
+ * Not thread safe */
+extern char *slurm_ctime(const time_t *timep);
+
+/* Return ctime like string without the newline, thread safe. */
+extern char *slurm_ctime_r(const time_t *timep, char *time_str);
 
 #define safe_read(fd, buf, size) do {					\
 		int remaining = size;					\

@@ -461,17 +461,15 @@ may be the group name or the numerical group ID.
 .TP
 \fB\-\-gres\fR=<\fIlist\fR>
 Specifies a comma delimited list of generic consumable resources.
-The format of each entry on the list is "name[:count[*cpu]]".
+The format of each entry on the list is "name[:count]".
 The name is that of the consumable resource.
 The count is the number of those resources with a default value of 1.
-The specified resources will be allocated to the job on each node
-allocated unless "*cpu" is appended, in which case the resources
-will be allocated on a per cpu basis.
+The specified resources will be allocated to the job on each node.
 The available generic consumable resources is configurable by the system
 administrator.
 A list of available generic consumable resources will be printed and the
 command will exit if the option argument is "help".
-Examples of use include "\-\-gres=gpus:2*cpu,disk=40G" and "\-\-gres=help".
+Examples of use include "\-\-gres=gpu:2,mic=1" and "\-\-gres=help".
 
 .TP
 \fB\-H, \-\-hold\fR
@@ -1142,7 +1140,7 @@ option was not set and allow higher system utilization, but application
 performance will likely suffer due to competition for resources within a node.
 
 .TP
-\fB\-\-signal\fR=<\fIsig_num\fR>[@<\fIsig_time\fR>]
+\fB\-\-signal\fR=[B:]<\fIsig_num\fR>[@<\fIsig_time\fR>]
 When a job is within \fIsig_time\fR seconds of its end time,
 send it the signal \fIsig_num\fR.
 Due to the resolution of event handling by SLURM, the signal may
@@ -1152,6 +1150,8 @@ be sent up to 60 seconds earlier than specified.
 By default, no signal is sent before the job's end time.
 If a \fIsig_num\fR is specified without any \fIsig_time\fR,
 the default time will be 60 seconds.
+Use the "B:" option to signal the batch shell.
+By default all job steps will be signalled, but not the batch shell itself.
 
 .TP
 \fB\-\-sockets\-per\-node\fR=<\fIsockets\fR>

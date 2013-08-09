@@ -321,7 +321,11 @@ enum job_state_reason {
 	WAIT_QOS_THRES,	       	/* required QOS threshold has been breached */
 	WAIT_QOS_JOB_LIMIT,	/* QOS job limit reached */
 	WAIT_QOS_RESOURCE_LIMIT,/* QOS resource limit reached */
-	WAIT_QOS_TIME_LIMIT	/* QOS time limit reached */
+	WAIT_QOS_TIME_LIMIT,	/* QOS time limit reached */
+	WAIT_BLOCK_MAX_ERR,     /* BLUEGENE Block has too many cnodes
+				 * in error state to allow more jobs. */
+	WAIT_BLOCK_D_ACTION,    /* BLUEGENE Block is being freed,
+				 * can't allow more jobs. */
 };
 
 enum job_acct_types {
@@ -642,6 +646,7 @@ enum ctx_keys {
  * approach inside the nodes */
 #define CR_ALLOCATE_FULL_SOCKET 0x2000
 /* Allocate full sockets to jobs rather than individual cores */
+#define CR_LLN		0x4000  /* Select nodes by "least loaded." */
 
 #define MEM_PER_CPU  0x80000000
 #define SHARED_FORCE 0x8000
@@ -1083,8 +1088,10 @@ typedef struct job_descriptor {	/* For submit, allocate, and update requests */
 	uint16_t wait_all_nodes;/* 0 to start job immediately after allocation
 				 * 1 to start job after all nodes booted
 				 * or NO_VAL to use system default */
-	uint16_t warn_signal;	/* signal to send when approaching end time */
-	uint16_t warn_time;	/* time before end to send signal (seconds) */
+	uint16_t warn_flags;	/* flags  related to job signals
+				 * (eg. KILL_JOB_BATCH) */
+	uint16_t warn_signal;	/* signal to send when approaching end time *///
+	uint16_t warn_time;	/* time before end to send signal (seconds) *///
 	char *work_dir;		/* pathname of working directory */
 
 	/* job constraints: */
@@ -1223,6 +1230,9 @@ typedef struct job_info {
 	char *state_desc;	/* optional details for state_reason */
 	uint16_t state_reason;	/* reason job still pending or failed, see
 				 * slurm.h:enum job_state_reason */
+	char *std_err;		/* pathname of job's stderr file */
+	char *std_in;		/* pathname of job's stdin file */
+	char *std_out;		/* pathname of job's stdout file */
 	time_t submit_time;	/* time of job submission */
 	time_t suspend_time;	/* time job last suspended or resumed */
 	uint32_t time_limit;	/* maximum run time in minutes or INFINITE */
@@ -1634,6 +1644,8 @@ typedef struct acct_gather_energy_req_msg {
 #define PART_FLAG_NO_ROOT	0x0004	/* Set if user root jobs disabled */
 #define PART_FLAG_ROOT_ONLY	0x0008	/* Set if only root can submit jobs */
 #define PART_FLAG_REQ_RESV	0x0010	/* Set if reservation is required */
+#define PART_FLAG_LLN		0x0020	/* Set if least loaded node selection
+					 * is desired */
 /* Used with slurm_update_partition() to clear flags associated with existing
  * partitions. For example, if a partition is currently hidden and you want
  * to make it visible then set flags to PART_FLAG_HIDDEN_CLR and call
@@ -1643,6 +1655,7 @@ typedef struct acct_gather_energy_req_msg {
 #define PART_FLAG_NO_ROOT_CLR	0x0400	/* Clear NO_ROOT partition flag */
 #define PART_FLAG_ROOT_ONLY_CLR	0x0800	/* Clear ROOT_ONLY partition flag */
 #define PART_FLAG_REQ_RESV_CLR	0x1000	/* Clear RES_REQ partition flag */
+#define PART_FLAG_LLN_CLR	0x2000	/* Clear LLN partition flag */
 
 typedef struct partition_info {
 	char *allow_alloc_nodes;/* list names of allowed allocating

@@ -455,6 +455,7 @@ static void _opt_default()
 	opt.quiet = 0;
 	_verbose = 0;
 	opt.slurmd_debug = LOG_LEVEL_QUIET;
+	opt.warn_flags  = 0;
 	opt.warn_signal = 0;
 	opt.warn_time   = 0;
 
@@ -757,7 +758,7 @@ _process_env_var(env_vars_t *e, const char *val)
 
 	case OPT_SIGNAL:
 		if (get_signal_opts((char *)val, &opt.warn_signal,
-				    &opt.warn_time)) {
+				    &opt.warn_time, &opt.warn_flags)) {
 			error("Invalid signal specification: %s", val);
 			exit(error_exit);
 		}
@@ -1542,7 +1543,7 @@ static void _set_options(const int argc, char **argv)
 			break;
 		case LONG_OPT_SIGNAL:
 			if (get_signal_opts(optarg, &opt.warn_signal,
-					    &opt.warn_time)) {
+					    &opt.warn_time, &opt.warn_flags)) {
 				error("Invalid signal specification: %s",
 				      optarg);
 				exit(error_exit);
@@ -1946,6 +1947,7 @@ static bool _opt_verify(void)
 		else
 			opt.min_nodes = hl_cnt;
 	}
+
 	if ((opt.nodes_set || opt.extra_set)				&&
 	    ((opt.min_nodes == opt.max_nodes) || (opt.max_nodes == 0))	&&
 	    !opt.ntasks_set) {
@@ -1960,7 +1962,7 @@ static bool _opt_verify(void)
 			opt.ntasks *= opt.cores_per_socket;
 			opt.ntasks *= opt.threads_per_core;
 			opt.ntasks_set = true;
-		} else if (opt.ntasks_per_node > 0)
+		} else if (opt.ntasks_per_node != NO_VAL)
 			opt.ntasks *= opt.ntasks_per_node;
 
 		/* massage the numbers */
@@ -1986,7 +1988,6 @@ static bool _opt_verify(void)
 			/* Don't destroy hl here since it may be used later */
 		}
 	} else if (opt.nodes_set && opt.ntasks_set) {
-
 		/*
 		 * Make sure that the number of
 		 * max_nodes is <= number of tasks
@@ -2019,7 +2020,14 @@ static bool _opt_verify(void)
 					hostlist_ranged_string_xmalloc(hl);
 			}
 		}
-
+		if ((opt.ntasks_per_node != NO_VAL) &&
+		    ((opt.min_nodes == opt.max_nodes) || (opt.max_nodes == 0))&&
+		    (opt.ntasks != (opt.min_nodes * opt.ntasks_per_node))) {
+			error("task count inconsistent with node count and "
+			      "ntasks-per_node (%d != %d x %d).",
+			      opt.ntasks, opt.min_nodes, opt.ntasks_per_node);
+			opt.ntasks = opt.min_nodes * opt.ntasks_per_node;
+		}
 	} /* else if (opt.ntasks_set && !opt.nodes_set) */
 
 	if (hl)
@@ -2501,7 +2509,7 @@ static void _help(void)
 "      --prolog=program        run \"program\" before launching job step\n"
 "      --profile=value         enable acct_gather_profile for detailed data\n"
 "                              value is all or none or any combination of\n"
-"                              energy, lustrenetwork or task\n"
+"                              energy, lustre, network or task\n"
 "      --propagate[=rlimits]   propagate all [or specific list of] rlimits\n"
 #ifdef HAVE_PTY_H
 "      --pty                   run task zero in pseudo terminal\n"
