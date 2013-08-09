@@ -659,6 +659,8 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 	int32_t *nodes;
 	gni_ntt_descriptor_t *ntt_desc_ptr = NULL;
 
+	sleep(600);
+
 	// Dummy variables to satisfy alpsc_write_placement_file
 	int controlNid = 0, numBranches = 0;
 	struct sockaddr_in controlSoc;
