@@ -642,8 +642,10 @@ int switch_p_job_preinit(switch_jobinfo_t *jobinfo)
 extern int switch_p_job_init(stepd_step_rec_t *job)
 {
 	slurm_cray_jobinfo_t *sw_job = (slurm_cray_jobinfo_t *)job->switch_job;
-	int rc, numPTags, cmdIndex, num_app_cpus, total_cpus, cpu_scaling, mem_scaling, i, j;
-	uint32_t total_mem = 0;
+	int rc, numPTags, cmdIndex, num_app_cpus, i, j;
+	double mem_scaling, cpu_scaling;
+	int total_cpus = 0;
+	uint32_t total_mem = 0, app_mem = 0;
 	int *pTags;
 	char *errMsg = NULL, *apid_dir;
 	alpsc_peInfo_t alpsc_peInfo;
@@ -659,7 +661,12 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 	int32_t *nodes;
 	gni_ntt_descriptor_t *ntt_desc_ptr = NULL;
 
-	sleep(600);
+
+	// sleep(60);
+	/*
+	int debug_sleep_wait = 1;
+	while(debug_sleep_wait);
+	*/
 
 	// Dummy variables to satisfy alpsc_write_placement_file
 	int controlNid = 0, numBranches = 0;
@@ -712,6 +719,11 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 	 * TODO: There might be a better (community) way to do this.
 	 */
 	f = fopen("/sys/devices/system/cpu/online", "r");
+	if (f == NULL) {
+		error("(%s: %d: %s) Failed to open /sys/devices/system/cpu/online: %s", THIS_FILE,
+				__LINE__, __FUNCTION__, strerror(errno));
+		return SLURM_ERROR;
+	}
 
 	while (!feof(f)) {
 		lsz = getline(&lin, &sz, f);
@@ -729,8 +741,19 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 	}
 	fclose(f);
 
+	if (total_cpus <= 0) {
+		error("(%s: %d: %s) total_cpus <=0: %d", THIS_FILE, __LINE__,
+				__FUNCTION__, total_cpus);
+		return SLURM_ERROR;
+	}
+
 	//Use /proc/meminfo to get the total amount of memory on the node
 	f = fopen("/proc/meminfo", "r");
+	if (f == NULL) {
+		error("(%s: %d: %s) Failed to open /proc/meminfo: %s", THIS_FILE,
+				__LINE__, __FUNCTION__, strerror(errno));
+		return SLURM_ERROR;
+	}
 
 	while (!feof(f)) {
 		lsz = getline(&lin, &sz, f);
@@ -750,17 +773,29 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 
 	// Scaling
 	num_app_cpus = job->node_tasks * job->cpus_per_task;
-	cpu_scaling = num_app_cpus / total_cpus;
+	if (num_app_cpus  <= 0) {
+		error("(%s: %d: %s) num_app_cpus <=0: %d", THIS_FILE, __LINE__,
+				__FUNCTION__, num_app_cpus );
+		return SLURM_ERROR;
+	}
+
+	cpu_scaling = ((double)num_app_cpus / (double)total_cpus ) * 100;
+	if ((cpu_scaling == 0) || (cpu_scaling > 100)) {
+		error("(%s: %d: %s) Cpu scaling out of bounds: %f", THIS_FILE,
+				__LINE__, __FUNCTION__, cpu_scaling);
+		return SLURM_ERROR;
+	}
 	if (job->step_mem & MEM_PER_CPU) {
 		/*
-		 * This means that job->step_mem is a the amount of memory per CPU,
+		 * This means that job->step_mem is the amount of memory per CPU,
 		 * not total.
 		 */
-		mem_scaling = (job->step_mem * num_app_cpus) / total_mem;
-
+		app_mem = (job->step_mem * num_app_cpus);
 	} else {
-		mem_scaling = job->step_mem / total_mem;
+		app_mem = job->step_mem;
 	}
+
+	mem_scaling = ((double) app_mem / (double) total_mem) * 100;
 
 	rc = alpsc_configure_nic(&errMsg, 0, cpu_scaling,
 	    mem_scaling, job->cont_id, sw_job->num_cookies, (const char **)sw_job->cookies,
