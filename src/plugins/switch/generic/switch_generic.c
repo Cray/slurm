@@ -60,6 +60,9 @@
 #define SW_GEN_NODE_INFO_MAGIC	0x3b38ac0c
 #define SW_GEN_STEP_INFO_MAGIC	0x58ae93cb
 
+/* Change GEN_STATE_VERSION value when changing the state save format */
+#define GEN_STATE_VERSION      "NRT001"
+
 typedef struct sw_gen_ifa {
 	char *ifa_name;		/* "eth0", "ib1", etc. */
 	char *ifa_family;	/* "AF_INET" or "AF_INET6" */
@@ -468,7 +471,8 @@ void switch_p_free_jobinfo(switch_jobinfo_t *switch_job)
 	return;
 }
 
-int switch_p_pack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer)
+int switch_p_pack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer,
+			  uint16_t protocol_version)
 {
 	sw_gen_step_info_t *gen_step_info = (sw_gen_step_info_t *) switch_job;
 	sw_gen_node_t *node_ptr;
@@ -502,7 +506,8 @@ int switch_p_pack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer)
 	return SLURM_SUCCESS;
 }
 
-int switch_p_unpack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer)
+int switch_p_unpack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer,
+			    uint16_t protocol_version)
 {
 	sw_gen_step_info_t *gen_step_info = (sw_gen_step_info_t *) switch_job;
 	sw_gen_node_t *node_ptr;
@@ -626,14 +631,16 @@ extern void switch_p_job_suspend_info_get(switch_jobinfo_t *jobinfo,
 	return;
 }
 
-extern void switch_p_job_suspend_info_pack(void *suspend_info, Buf buffer)
+extern void switch_p_job_suspend_info_pack(void *suspend_info, Buf buffer,
+					   uint16_t protocol_version)
 {
 	if (debug_flags & DEBUG_FLAG_SWITCH)
 		info("switch_p_job_suspend_info_pack() starting");
 	return;
 }
 
-extern int switch_p_job_suspend_info_unpack(void **suspend_info, Buf buffer)
+extern int switch_p_job_suspend_info_unpack(void **suspend_info, Buf buffer,
+					    uint16_t protocol_version)
 {
 	if (debug_flags & DEBUG_FLAG_SWITCH)
 		info("switch_p_job_suspend_info_unpack() starting");
@@ -809,7 +816,7 @@ extern int switch_p_build_node_info(switch_node_info_t *switch_node)
 }
 
 extern int switch_p_pack_node_info(switch_node_info_t *switch_node,
-				   Buf buffer)
+				   Buf buffer, uint16_t protocol_version)
 {
 	sw_gen_node_info_t *gen_node_info = (sw_gen_node_info_t *) switch_node;
 	sw_gen_ifa_t *ifa_ptr;
@@ -832,7 +839,7 @@ extern int switch_p_pack_node_info(switch_node_info_t *switch_node,
 }
 
 extern int switch_p_unpack_node_info(switch_node_info_t *switch_node,
-				     Buf buffer)
+				     Buf buffer, uint16_t protocol_version)
 {
 	sw_gen_node_info_t *gen_node_info = (sw_gen_node_info_t *) switch_node;
 	sw_gen_ifa_t *ifa_ptr;

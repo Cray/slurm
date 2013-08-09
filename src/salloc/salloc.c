@@ -176,6 +176,7 @@ int main(int argc, char *argv[])
 	static char *msg = "Slurm job queue full, sleeping and retrying.";
 	slurm_allocation_callbacks_t callbacks;
 
+	slurm_conf_init(NULL);
 	log_init(xbasename(argv[0]), logopt, 0, NULL);
 	_set_exit_code();
 
@@ -915,7 +916,7 @@ static void _timeout_handler(srun_timeout_msg_t *msg)
 	if (msg->timeout != last_timeout) {
 		last_timeout = msg->timeout;
 		verbose("Job allocation time limit to be reached at %s",
-			ctime(&msg->timeout));
+			slurm_ctime(&msg->timeout));
 	}
 }
 

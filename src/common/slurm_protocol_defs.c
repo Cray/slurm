@@ -517,6 +517,9 @@ extern void slurm_free_job_info_members(job_info_t * job)
 		job->select_jobinfo = NULL;
 		free_job_resources(&job->job_resrcs);
 		xfree(job->state_desc);
+		xfree(job->std_err);
+		xfree(job->std_in);
+		xfree(job->std_out);
 		xfree(job->wckey);
 		xfree(job->work_dir);
 	}
@@ -1005,6 +1008,10 @@ extern char *job_reason_string(enum job_state_reason inx)
 		return "QOSResourceLimit";
 	case WAIT_QOS_TIME_LIMIT:
 		return "QOSTimeLimit";
+	case WAIT_BLOCK_MAX_ERR:
+		return "BlockMaxError";
+	case WAIT_BLOCK_D_ACTION:
+		return "BlockFreeAction";
 	default:
 		return "?";
 	}
@@ -1222,7 +1229,11 @@ extern char *sched_param_type_string(uint16_t select_type_param)
 			strcat(select_str, ",");
 		strcat(select_str, "CR_ALLOCATE_FULL_SOCKET");
 	}
-
+	if (select_type_param & CR_LLN) {
+		if (select_str[0])
+			strcat(select_str, ",");
+		strcat(select_str, "CR_LLN");
+	}
 	if (select_str[0] == '\0')
 		strcat(select_str, "NONE");
 
@@ -2888,4 +2899,27 @@ extern bool valid_spank_job_env(char **spank_job_env,
 		xfree (entry);
 	}
 	return true;
+}
+
+/* Return ctime like string without the newline.
+ * Not thread safe */
+extern char *slurm_ctime(const time_t *timep)
+{
+	static char time_str[25];
+
+	strftime(time_str, sizeof(time_str), "%a %b %d %T %Y",
+		 localtime(timep));
+
+	return time_str;
+}
+
+/* Return ctime like string without the newline, thread safe. */
+extern char *slurm_ctime_r(const time_t *timep, char *time_str)
+{
+	struct tm newtime;
+	localtime_r(timep, &newtime);
+
+	strftime(time_str, 25, "%a %b %d %T %Y", &newtime);
+
+	return time_str;
 }
