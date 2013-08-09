@@ -87,6 +87,7 @@ int main(int argc, char *argv[])
 	int script_size = 0;
 	int retries = 0;
 
+	slurm_conf_init(NULL);
 	log_init(xbasename(argv[0]), logopt, 0, NULL);
 
 	_set_exit_code();
@@ -402,6 +403,8 @@ static int _fill_job_desc_from_opts(job_desc_msg_t *desc)
 	desc->shared = opt.shared;
 
 	desc->wait_all_nodes = opt.wait_all_nodes;
+	if (opt.warn_flags)
+		desc->warn_flags = opt.warn_flags;
 	if (opt.warn_signal)
 		desc->warn_signal = opt.warn_signal;
 	if (opt.warn_time)
