@@ -60,6 +60,7 @@
 #include "src/common/pack.h"
 #include "src/plugins/switch/cray/alpscomm_cn.h"
 #include "src/plugins/switch/cray/alpscomm_sn.h"
+#include "src/common/gres.h"
 
 /*
  * These variables are required by the generic plugin interface.  If they
@@ -237,8 +238,8 @@ int switch_p_build_jobinfo(switch_jobinfo_t *switch_job,
 	 * routine.
 	 */
 	rc = alpsc_lease_cookies(&errMsg,
-				       "SLURM", 0,
-				       0, nodes,
+				       "SLURM", job->apid,
+				       ALPSC_INFINITE_LEASE, nodes,
 				       step_layout->node_cnt, num_cookies,
 				       &cookies, &cookie_ids);
 	if (rc != 0) {
