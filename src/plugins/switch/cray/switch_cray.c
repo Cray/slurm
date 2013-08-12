@@ -51,6 +51,7 @@
 #include <dirent.h>
 #include <inttypes.h>
 #include <fcntl.h>
+#include "limits.h"
 
 #include "slurm/slurm.h"
 #include "slurm/slurm_errno.h"
@@ -413,8 +414,10 @@ int pack_test(Buf buffer, uint32_t job_id, uint32_t step_id) {
 
 	int rc;
 	uint32_t num_cookies;
+	switch_jobinfo_t *pre_job
 	slurm_cray_jobinfo_t *job;
-	switch_p_alloc_jobinfo(&job, job_id, step_id);
+	switch_p_alloc_jobinfo(&pre_job, job_id, step_id);
+	job = (slurm_cray_jobinfo_t*) pre_job;
 	xassert(job);
 	xassert(job->magic == CRAY_JOBINFO_MAGIC);
 	xassert(buffer);
@@ -1538,7 +1541,7 @@ static int get_cpu_total(void) {
 	f = fopen("/sys/devices/system/cpu/online", "r");
 
 	if (f == NULL) {
-		printf("Failed to open file %s: %s\n", argv[1], strerror(errno));
+		printf("Failed to open file /sys/devices/system/cpu/online: %s\n", strerror(errno));
 		return -1;
 	}
 
