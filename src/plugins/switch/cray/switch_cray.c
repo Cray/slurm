@@ -935,7 +935,7 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 	 * Query the generic resources to see if the GPU should be allocated
 	 */
 
-	alpsc_pre_launch_GPU_mps(&errMsg, gpu_enable);
+	rc = alpsc_pre_launch_GPU_mps(&errMsg, gpu_enable);
 	if (rc != 1) {
 		if (errMsg) {
 			error("(%s: %d: %s) alpsc_prelaunch_GPU_mps failed: %s",
