@@ -12,4 +12,4 @@ EXTRA_DIST = \
 
 sbin_SCRIPTS = slurmconfgen.py
 
-sysconfdir_DATA = slurm.conf.template
+sysconf_DATA = slurm.conf.template
