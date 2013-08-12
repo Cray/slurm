@@ -414,7 +414,7 @@ int pack_test(Buf buffer, uint32_t job_id, uint32_t step_id) {
 
 	int rc;
 	uint32_t num_cookies;
-	switch_jobinfo_t *pre_job
+	switch_jobinfo_t *pre_job;
 	slurm_cray_jobinfo_t *job;
 	switch_p_alloc_jobinfo(&pre_job, job_id, step_id);
 	job = (slurm_cray_jobinfo_t*) pre_job;
@@ -647,7 +647,7 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 {
 	slurm_cray_jobinfo_t *sw_job = (slurm_cray_jobinfo_t *)job->switch_job;
 	int rc, numPTags, cmdIndex, num_app_cpus, i, j;
-	double mem_scaling, cpu_scaling;
+	int mem_scaling, cpu_scaling;
 	int total_cpus = 0;
 	uint32_t total_mem = 0, app_mem = 0;
 	int *pTags;
@@ -778,7 +778,11 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 		app_mem = job->step_mem;
 	}
 
-	mem_scaling = ((double) app_mem / (double) total_mem) * 100;
+	/*
+	 * Scale total_mem, which is in kilobytes, to megabytes because app_mem is
+	 * in megabytes.
+	 */
+	mem_scaling = ((double) app_mem / ((double) total_mem / 1024)) * 100;
 
 	rc = alpsc_configure_nic(&errMsg, 0, cpu_scaling,
 	    mem_scaling, job->cont_id, sw_job->num_cookies, (const char **)sw_job->cookies,
@@ -909,7 +913,7 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 	alpsc_branchInfo.tLen = 0;
 	alpsc_branchInfo.targ = 0;
 
-	alpsc_write_placement_file(&errMsg, sw_job->apid, cmdIndex, &alpsc_peInfo,
+	rc = alpsc_write_placement_file(&errMsg, sw_job->apid, cmdIndex, &alpsc_peInfo,
 			controlNid, controlSoc, numBranches, &alpsc_branchInfo);
 	if (rc != 1) {
 		if (errMsg) {
