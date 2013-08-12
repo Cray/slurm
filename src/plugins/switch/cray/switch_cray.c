@@ -102,6 +102,7 @@ static void _print_jobinfo(slurm_cray_jobinfo_t *job)
 	debug("Address of slurm_cray_jobinfo_t structure: %p", job);
 	debug("--Begin Jobinfo--");
 	debug("  Magic: %" PRIx32, job->magic);
+	debug("  APID: %" PRIu64, job->apid);
 	debug("  num_cookies: %" PRIu32, job->num_cookies);
 	debug("  --- cookies ---");
 	for (i = 0; i < job->num_cookies; i++) {
@@ -662,7 +663,7 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 	gni_ntt_descriptor_t *ntt_desc_ptr = NULL;
 
 
-	// sleep(60);
+	sleep(60);
 	/*
 	int debug_sleep_wait = 1;
 	while(debug_sleep_wait);
