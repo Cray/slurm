@@ -664,6 +664,7 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 	int32_t *task_to_nodes_map;
 	int32_t *nodes;
 	gni_ntt_descriptor_t *ntt_desc_ptr = NULL;
+	int gpu_cnt = 0;
 
 
 	sleep(60);
@@ -935,23 +936,26 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 	 * Query the generic resources to see if the GPU should be allocated
 	 */
 
-	rc = alpsc_pre_launch_GPU_mps(&errMsg, gpu_enable);
-	if (rc != 1) {
+	rc = gres_get_step_info(job->step_gres_list, "gpu", 0, GRES_STEP_DATA_COUNT, &gpu_cnt);
+	info("gres_cnt: %d %u", rc, gpu_cnt);
+	if (gpu_cnt > 0) {
+		rc = alpsc_pre_launch_GPU_mps(&errMsg, gpu_enable);
+		if (rc != 1) {
+			if (errMsg) {
+				error("(%s: %d: %s) alpsc_prelaunch_GPU_mps failed: %s",
+						THIS_FILE, __LINE__, __FUNCTION__, errMsg);
+				free(errMsg);
+			}
+			else {
+				error("(%s: %d: %s) alpsc_prelaunch_GPU_mps failed: No error message present.", THIS_FILE, __LINE__, __FUNCTION__);
+			}
+			return SLURM_ERROR;
+		}
 		if (errMsg) {
-			error("(%s: %d: %s) alpsc_prelaunch_GPU_mps failed: %s",
-					THIS_FILE, __LINE__, __FUNCTION__, errMsg);
+			info("(%s: %d: %s) alpsc_prelaunch_GPU_mps: %s", THIS_FILE, __LINE__, __FUNCTION__, errMsg);
 			free(errMsg);
 		}
-		else {
-			error("(%s: %d: %s) alpsc_prelaunch_GPU_mps failed: No error message present.", THIS_FILE, __LINE__, __FUNCTION__);
-		}
-		return SLURM_ERROR;
 	}
-	if (errMsg) {
-		info("(%s: %d: %s) alpsc_prelaunch_GPU_mps: %s", THIS_FILE, __LINE__, __FUNCTION__, errMsg);
-		free(errMsg);
-	}
-
 
 	/* Clean up */
 	xfree(task_to_nodes_map);
