@@ -766,8 +766,11 @@ rm -rf $RPM_BUILD_ROOT
 %dir %{_libdir}/slurm/src
 %if %{slurm_with cray} || %{slurm_with cray_alps}
 %dir /opt/modulefiles/slurm
+%dir /var/spool/slurm/
 /opt/modulefiles/slurm/.version
 /opt/modulefiles/slurm/%{version}-%{release}
+%config %{_sysconfdir}/slurm.conf.template
+%{_sbindir}/slurmconfgen.py
 %endif
 %config %{_sysconfdir}/slurm.conf.example
 %config %{_sysconfdir}/cgroup.conf.example
