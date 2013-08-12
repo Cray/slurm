@@ -5,7 +5,8 @@
 # slurmconfgen.py
 #
 # A script to generate a slurm configuration file automatically. Should be
-# run as root from a service node on the system to be configured.
+# run from a service node on the system to be configured. Writes a slurm.conf
+# file to stdout. Review and place in @sysconfdir@/slurm.conf.
 
 import subprocess, os
 
