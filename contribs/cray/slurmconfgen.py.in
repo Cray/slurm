@@ -1,0 +1,165 @@
+#!/usr/bin/python
+#
+# (c) Copyright 2013 Cray Inc.  All Rights Reserved.
+#
+# slurmconfgen.py
+#
+# A script to generate a slurm configuration file automatically. Should be
+# run as root from a service node on the system to be configured.
+
+import subprocess, os
+
+#######################################
+# get_nodes
+#######################################
+def get_nodes():
+	""" Get the nodes from the SDB. Returns a list of tuples with entries for
+		nodeid, memory, cores, sockets, and compute units """
+    
+	# Call isql
+	isql = subprocess.Popen(["isql", "XTAdmin", "-b", "-v", "-x0x20"], 
+		stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    
+	# Execute the query
+	(out, err) = isql.communicate("SELECT nodeid,availmem,numcores,sockets,cu \
+		FROM attributes LEFT JOIN processor ON nodeid=processor_id \
+		WHERE processor_type='compute' ORDER BY nodeid;")
+	if len(err) > 0:
+		raise Exception(err)
+    
+	# Now out should contain all the compute node information
+	return [tuple([int(x) for x in line.split()]) for line in out.splitlines()]
+
+#######################################
+# split_nodes
+#######################################
+"""
+Test data from opal-p2:
+[(24,32768,40,2,20), (25,32768,40,2,20), (26,32768,40,2,20), 
+ (27,32768,40,2,20), (32,32768,16,1,8), (33,32768,16,1,8),
+ (34,32768,16,1,8), (35,32768,16,1,8), (48,65536,32,2,16),
+ (49,65536,32,2,16), (50,65536,32,2,16), (51,65536,32,2,16)]
+"""
+def split_nodes(nodelist):
+	""" Given a list of nodes as returned by get_nodes, returns a tuple of
+		equivalence class representative list, equivalence class nid list. """
+	
+	classreps = []
+	classnodes = []
+	
+	for node in nodelist:
+		nodeid, memory, cores, sockets, cu = node
+		
+		# Check if this matches an existing representative
+		i = 0
+		match = False
+		for rep in classreps:
+			rnodeid, rmemory, rcores, rsockets, rcu = rep
+			if (memory == rmemory and cores == rcores and sockets == rsockets
+				and cu == rcu):
+				# We have a match, add to the nodes for this class
+				classnodes[i].append(nodeid)
+				match = True
+				break
+			i += 1
+		
+		# We didn't find a matching equivalence class, make a new one
+		if not match:
+			classreps.append(node)
+			classnodes.append([nodeid])
+	
+	return classreps, classnodes
+
+######################################
+# range_str
+######################################
+def range_str(rangestart, rangeend):
+	""" Returns a string representation of the given range 
+		in slurm hostlist format """
+	if rangeend < rangestart:
+		raise Exception('Range end before range start')
+	elif rangestart == rangeend:
+		return "nid{0:05d}".format(rangeend)
+	elif rangestart + 1 == rangeend:
+		return "nid{0:05d},nid{1:05d}".format(rangestart, rangeend)
+	
+	return "nid[{0:05d}-{1:05d}]".format(rangestart, rangeend)
+
+######################################
+# rli_compress
+######################################
+def rli_compress(nidlist):
+	""" Given a list of node ids, rli compress them into a slurm hostlist
+	   (ex. list [1,2,3,5] becomes string nid[00001-00003],nid00005) """
+	
+	rangestart = nidlist[0]
+	rangeend = nidlist[0]
+	rli = ""
+	for nid in nidlist:
+		# If nid too large, append to rli and start fresh
+		if nid > rangeend + 1 or nid < rangeend:
+			if len(rli) > 0:
+				rli += ','
+			rli += range_str(rangestart, rangeend)
+			rangestart = nid
+		
+		rangeend = nid
+	
+	# Append the last range
+	if len(rli) > 0:
+		rli += ','
+	rli += range_str(rangestart, rangeend)
+	
+	return rli
+
+#######################################
+# format_nodes
+#######################################
+def format_nodes(classreps, classnodes):
+	""" Given a list of class representatives and lists of nodes in those
+		classes, formats a string in slurm.conf format 
+		(ex. NodeName=nid00[024-027] CPUs=40 Sockets=2 CoresPerSocket=10 
+		ThreadsPerCore=2 RealMemory=32768) """
+	
+	i = 0
+	nodestr = ""
+	for rep in classreps:
+		nodeid, memory, cores, sockets, cu = rep
+		nodestr += "NodeName={0} CPUs={1:d} Sockets={2:d} CoresPerSocket={3:d} \
+ ThreadsPerCore={4:d} RealMemory={5:d}\n".format(rli_compress(classnodes[i]),
+ 			cores, sockets, cu/sockets, cores/cu, memory)
+ 		i += 1
+ 	
+ 	return nodestr
+
+#######################################
+# cluster_name
+#######################################
+def cluster_name():
+	""" Gets the cluster name from /etc/xthostname """
+	
+	with open("/etc/xthostname", "r") as xthostname:
+		return xthostname.readline().rstrip()
+
+#######################################
+# main
+#######################################
+if __name__ == "__main__":
+	# Set environment variable for isql
+	os.environ['ODBCSYSINI']='/etc/opt/cray/sysadm/'
+	
+	# Get nodes using isql
+	nodes = get_nodes()
+	
+	# Split them into equivalence classes
+	classreps, classnodes = split_nodes(nodes)
+
+	# Read and format the template
+	with open("@sysconfdir@/slurm.conf.template", "r") as template:
+		print template.read().format(slurmdir="@prefix@",
+			spooldir="/var/spool/slurm",
+			defmem=min(node[1] for node in nodes),
+			maxmem=max(node[1] for node in nodes),
+			clustername=cluster_name(),
+			computenodes=format_nodes(classreps, classnodes),
+			nodelist=rli_compress([node[0] for node in nodes]))
