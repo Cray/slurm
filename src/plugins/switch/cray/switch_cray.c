@@ -719,28 +719,7 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 	 * I co-opted the hostlist_count() and its counterparts to count CPUS.
 	 * TODO: There might be a better (community) way to do this.
 	 */
-	f = fopen("/sys/devices/system/cpu/online", "r");
-	if (f == NULL) {
-		error("(%s: %d: %s) Failed to open /sys/devices/system/cpu/online: %s", THIS_FILE,
-				__LINE__, __FUNCTION__, strerror(errno));
-		return SLURM_ERROR;
-	}
-
-	while (!feof(f)) {
-		lsz = getline(&lin, &sz, f);
-		if (lsz > 0) {
-			hl = hostlist_create(lin);
-			if (hl == NULL) {
-				error("(%s: %d: %s) hostlist_create failed: %d", THIS_FILE,
-						__LINE__, __FUNCTION__, errno);
-				return SLURM_ERROR;
-			}
-			total_cpus += hostlist_count(hl);
-			hostlist_destroy(hl);
-			free(lin);
-		}
-	}
-	fclose(f);
+	total_cpus = get_cpu_total();
 
 	if (total_cpus <= 0) {
 		error("(%s: %d: %s) total_cpus <=0: %d", THIS_FILE, __LINE__,
@@ -1538,4 +1517,70 @@ do_drop_caches(void)
     			__LINE__, __FUNCTION__, n, errno, strerror(errno));
     }
     close(fd);
+}
+
+/*
+ * Function: get_cpu_total
+ * Description:
+ *  Get the total number of online cpus on the node.
+ *
+ * RETURNS
+ *  Returns the number of online cpus on the node.  On error, it returns -1.
+ */
+static int get_cpu_total(void) {
+	FILE *f;
+	char * token, *token1, *token2, *lin=NULL, *ptr;
+	char *saveptr, *saveptr1, *endptr;
+	int total = 0, lsz;
+	size_t sz;
+	long int number1, number2;
+
+	f = fopen("/sys/devices/system/cpu/online", "r");
+
+	if (f == NULL) {
+		printf("Failed to open file %s: %s\n", argv[1], strerror(errno));
+		return -1;
+	}
+
+	while (!feof(f)) {
+		lsz = getline(&lin, &sz, f);
+		ptr = lin;
+		if (lsz > 0) {
+			while (token) {
+				token = strtok_r(ptr, ",", &saveptr);
+				ptr = NULL;
+				// Check for ranged sub-list
+				token1 = strtok_r(token, "-", &saveptr1);
+				if (token1) {
+					number1 = strtol(token1, &endptr, 10);
+					if ((number1 == LONG_MIN) || (number1 == LONG_MAX)) {
+						printf("Error: %s", strerror(errno));
+						return -1;
+					} else if (endptr == token1) {
+						printf("Error: Not a number: %s\n", endptr);
+						return -1;
+					}
+
+					token2 = strtok_r(NULL, "-", &saveptr1);
+					if(token2) {
+						number2 = strtol(token2, &endptr, 10);
+						if ((number2 == LONG_MIN) || (number2 == LONG_MAX)) {
+							printf("Error: %s", strerror(errno));
+							return -1;
+						} else if (endptr == token2) {
+							printf("Error: Not a number: '%s'\n", endptr);
+							return -1;
+						}
+
+						total += number2 - number1 + 1;
+					} else {
+						total += 1;
+					}
+				}
+			}
+			free(lin);
+		}
+	}
+	fclose(f);
+	return total;
 }
