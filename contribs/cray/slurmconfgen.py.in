@@ -11,35 +11,58 @@
 import subprocess, os
 
 #######################################
-# get_nodes
+# sdb_query
 #######################################
-def get_nodes():
-	""" Get the nodes from the SDB. Returns a list of tuples with entries for
-		nodeid, memory, cores, sockets, and compute units """
-    
+def sdb_query(query):
+	""" Query the SDB. Returns the results, space separated. """
 	# Call isql
 	isql = subprocess.Popen(["isql", "XTAdmin", "-b", "-v", "-x0x20"], 
 		stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     
 	# Execute the query
-	(out, err) = isql.communicate("SELECT nodeid,availmem,numcores,sockets,cu \
-		FROM attributes LEFT JOIN processor ON nodeid=processor_id \
-		WHERE processor_type='compute' ORDER BY nodeid;")
+	(out, err) = isql.communicate(query)
 	if len(err) > 0:
 		raise Exception(err)
+	
+	return out
+
+#######################################
+# get_nodes
+#######################################
+def get_nodes():
+	""" Get the nodes from the SDB. Returns a list of tuples with entries for
+		nodeid, memory, cores, sockets, compute units, gpu """
+    
+	# Query the SDB for the info
+	out = sdb_query("SELECT nodeid,availmem,numcores,sockets,cu,avail \
+		FROM attributes LEFT JOIN processor ON nodeid=processor_id \
+			LEFT JOIN gpus ON nodeid=node_id \
+		WHERE processor_type='compute' ORDER BY nodeid;")
     
 	# Now out should contain all the compute node information
-	return [tuple([int(x) for x in line.split()]) for line in out.splitlines()]
+	nodes = []
+	for line in out.splitlines():
+		fields = line.split()
+		if len(fields) == 5:
+			# This doesn't have a GPU
+			nodes.append(tuple([int(x) for x in fields]) + (0,))
+		elif len(fields) == 6:
+			# This does have a GPU
+			nodes.append(tuple([int(x) for x in fields]))
+		else:
+			raise Exception("Couldn't parse line " + line)
+	
+	return nodes
 
 #######################################
 # split_nodes
 #######################################
 """
 Test data from opal-p2:
-[(24,32768,40,2,20), (25,32768,40,2,20), (26,32768,40,2,20), 
- (27,32768,40,2,20), (32,32768,16,1,8), (33,32768,16,1,8),
- (34,32768,16,1,8), (35,32768,16,1,8), (48,65536,32,2,16),
- (49,65536,32,2,16), (50,65536,32,2,16), (51,65536,32,2,16)]
+[(24,32768,40,2,20,0), (25,32768,40,2,20,0), (26,32768,40,2,20,0), 
+ (27,32768,40,2,20,0), (32,32768,16,1,8,1), (33,32768,16,1,8,1),
+ (34,32768,16,1,8,1), (35,32768,16,1,8,1), (48,65536,32,2,16,0),
+ (49,65536,32,2,16,0), (50,65536,32,2,16,0), (51,65536,32,2,16,0)]
 """
 def split_nodes(nodelist):
 	""" Given a list of nodes as returned by get_nodes, returns a tuple of
@@ -49,15 +72,15 @@ def split_nodes(nodelist):
 	classnodes = []
 	
 	for node in nodelist:
-		nodeid, memory, cores, sockets, cu = node
+		nodeid, memory, cores, sockets, cu, gpu = node
 		
 		# Check if this matches an existing representative
 		i = 0
 		match = False
 		for rep in classreps:
-			rnodeid, rmemory, rcores, rsockets, rcu = rep
+			rnodeid, rmemory, rcores, rsockets, rcu, rgpu = rep
 			if (memory == rmemory and cores == rcores and sockets == rsockets
-				and cu == rcu):
+				and cu == rcu and gpu == rgpu):
 				# We have a match, add to the nodes for this class
 				classnodes[i].append(nodeid)
 				match = True
@@ -125,10 +148,12 @@ def format_nodes(classreps, classnodes):
 	i = 0
 	nodestr = ""
 	for rep in classreps:
-		nodeid, memory, cores, sockets, cu = rep
+		nodeid, memory, cores, sockets, cu, gpu = rep
+		feature = " Feature=gpu" if gpu > 0 else ""
 		nodestr += "NodeName={0} CPUs={1:d} Sockets={2:d} CoresPerSocket={3:d} \
- ThreadsPerCore={4:d} RealMemory={5:d}\n".format(rli_compress(classnodes[i]),
- 			cores, sockets, cu/sockets, cores/cu, memory)
+ ThreadsPerCore={4:d} RealMemory={5:d}{6:s}\n".format(
+ 			rli_compress(classnodes[i]), cores, sockets, cu/sockets, cores/cu, 
+ 			memory, feature)
  		i += 1
  	
  	return nodestr
