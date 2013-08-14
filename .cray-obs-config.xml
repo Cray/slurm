@@ -15,7 +15,7 @@
             </environment>
             <gitcmd>
                 <command>
-                    rev-parse HEAD
+                    rev-parse --short HEAD
                 </command>
                 <name>
                     _last_changed_rev
@@ -35,7 +35,12 @@
                     native-slurm.spec
                 </name>
                 <extract group="1" name="version" pattern="^Version:\s*(\S+)"/>
-            </file>
+	    </file>
+	    <file>
+		<name>
+		    slurm-rpmlintrc
+		</name>
+	    </file>
             <tarfile compression="bz2">
                 <name>
                     slurm-
