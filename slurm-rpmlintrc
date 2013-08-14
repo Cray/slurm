@@ -1,0 +1,3 @@
+addFilter("unstripped-binary-or-object")
+addFilter("manpage-not-gzipped")
+addFilter("files-duplicate")
