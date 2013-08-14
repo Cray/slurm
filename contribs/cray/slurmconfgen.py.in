@@ -121,7 +121,7 @@ def rli_compress(nidlist):
 	rli = ""
 	for nid in nidlist:
 		# If nid too large, append to rli and start fresh
-		if nid > range_end + 1 or nid < rangeend:
+		if nid > range_end + 1 or nid < range_end:
 			if len(rli) > 0:
 				rli += ','
 			rli += range_str(range_start, range_end)
