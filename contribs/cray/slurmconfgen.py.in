@@ -68,8 +68,8 @@ def split_nodes(nodelist):
 	""" Given a list of nodes as returned by get_nodes, returns a tuple of
 		equivalence class representative list, equivalence class nid list. """
 	
-	classreps = []
-	classnodes = []
+	class_reps = []
+	class_nodes = []
 	
 	for node in nodelist:
 		nodeid, memory, cores, sockets, cu, gpu = node
@@ -77,37 +77,37 @@ def split_nodes(nodelist):
 		# Check if this matches an existing representative
 		i = 0
 		match = False
-		for rep in classreps:
+		for rep in class_reps:
 			rnodeid, rmemory, rcores, rsockets, rcu, rgpu = rep
 			if (memory == rmemory and cores == rcores and sockets == rsockets
 				and cu == rcu and gpu == rgpu):
 				# We have a match, add to the nodes for this class
-				classnodes[i].append(nodeid)
+				class_nodes[i].append(nodeid)
 				match = True
 				break
 			i += 1
 		
 		# We didn't find a matching equivalence class, make a new one
 		if not match:
-			classreps.append(node)
-			classnodes.append([nodeid])
+			class_reps.append(node)
+			class_nodes.append([nodeid])
 	
-	return classreps, classnodes
+	return class_reps, class_nodes
 
 ######################################
 # range_str
 ######################################
-def range_str(rangestart, rangeend):
+def range_str(range_start, range_end):
 	""" Returns a string representation of the given range 
 		in slurm hostlist format """
-	if rangeend < rangestart:
+	if range_end < range_start:
 		raise Exception('Range end before range start')
-	elif rangestart == rangeend:
-		return "nid{0:05d}".format(rangeend)
-	elif rangestart + 1 == rangeend:
-		return "nid{0:05d},nid{1:05d}".format(rangestart, rangeend)
+	elif range_start == range_end:
+		return "nid{0:05d}".format(range_end)
+	elif range_start + 1 == range_end:
+		return "nid{0:05d},nid{1:05d}".format(range_start, range_end)
 	
-	return "nid[{0:05d}-{1:05d}]".format(rangestart, rangeend)
+	return "nid[{0:05d}-{1:05d}]".format(range_start, range_end)
 
 ######################################
 # rli_compress
@@ -116,30 +116,30 @@ def rli_compress(nidlist):
 	""" Given a list of node ids, rli compress them into a slurm hostlist
 	   (ex. list [1,2,3,5] becomes string nid[00001-00003],nid00005) """
 	
-	rangestart = nidlist[0]
-	rangeend = nidlist[0]
+	range_start = nidlist[0]
+	range_end = nidlist[0]
 	rli = ""
 	for nid in nidlist:
 		# If nid too large, append to rli and start fresh
-		if nid > rangeend + 1 or nid < rangeend:
+		if nid > range_end + 1 or nid < rangeend:
 			if len(rli) > 0:
 				rli += ','
-			rli += range_str(rangestart, rangeend)
-			rangestart = nid
+			rli += range_str(range_start, range_end)
+			range_start = nid
 		
-		rangeend = nid
+		range_end = nid
 	
 	# Append the last range
 	if len(rli) > 0:
 		rli += ','
-	rli += range_str(rangestart, rangeend)
+	rli += range_str(range_start, range_end)
 	
 	return rli
 
 #######################################
 # format_nodes
 #######################################
-def format_nodes(classreps, classnodes):
+def format_nodes(class_reps, class_nodes):
 	""" Given a list of class representatives and lists of nodes in those
 		classes, formats a string in slurm.conf format 
 		(ex. NodeName=nid00[024-027] CPUs=40 Sockets=2 CoresPerSocket=10 
@@ -147,12 +147,12 @@ def format_nodes(classreps, classnodes):
 	
 	i = 0
 	nodestr = ""
-	for rep in classreps:
+	for rep in class_reps:
 		nodeid, memory, cores, sockets, cu, gpu = rep
 		feature = " Feature=gpu" if gpu > 0 else ""
 		nodestr += "NodeName={0} CPUs={1:d} Sockets={2:d} CoresPerSocket={3:d} \
  ThreadsPerCore={4:d} RealMemory={5:d}{6:s}\n".format(
- 			rli_compress(classnodes[i]), cores, sockets, cu/sockets, cores/cu, 
+ 			rli_compress(class_nodes[i]), cores, sockets, cu/sockets, cores/cu, 
  			memory, feature)
  		i += 1
  	
@@ -178,7 +178,7 @@ if __name__ == "__main__":
 	nodes = get_nodes()
 	
 	# Split them into equivalence classes
-	classreps, classnodes = split_nodes(nodes)
+	class_reps, class_nodes = split_nodes(nodes)
 
 	# Read and format the template
 	with open("@sysconfdir@/slurm.conf.template", "r") as template:
@@ -187,5 +187,5 @@ if __name__ == "__main__":
 			defmem=min(node[1] for node in nodes),
 			maxmem=max(node[1] for node in nodes),
 			clustername=cluster_name(),
-			computenodes=format_nodes(classreps, classnodes),
+			computenodes=format_nodes(class_reps, class_nodes),
 			nodelist=rli_compress([node[0] for node in nodes]))
