@@ -101,6 +101,11 @@ static void _print_jobinfo(slurm_cray_jobinfo_t *job)
 	xassert(job);
 	xassert(job->magic == CRAY_JOBINFO_MAGIC);
 
+	if (NULL == job) {
+		error("(%s: %d: %s) job pointer was NULL", THIS_FILE, __LINE__, __FUNCTION__);
+		return;
+	}
+
 	info("Address of slurm_cray_jobinfo_t structure: %p", job);
 	info("--Begin Jobinfo--");
 	info("  Magic: %" PRIx32, job->magic);
@@ -1244,36 +1249,48 @@ extern int switch_p_slurmctld_init(void)
 	return SLURM_SUCCESS;
 }
 
+#define ALPS_DIR "/var/opt/cray/alps/spool/"
+#define LEGACY_SPOOL_DIR "/var/spool/"
+
 extern int switch_p_slurmd_init(void)
 {
 	int rc = 0;
 	char *errMsg = NULL;
 
 	// Create the ALPS directories
-	char dir[] = "/var/spool/alps/";
-	char dir1[] = "/var/opt/cray/alps/";
-
-
-	rc = mkdir_safe(dir, 755);
+	rc = system("mkdir -p " ALPS_DIR);
 	if (rc) {
-		error("(%s: %d: %s) mkdir %s failed: %s", THIS_FILE, __LINE__, __FUNCTION__, dir,
-				strerror(errno));
+		error("(%s: %d: %s) mkdir -p %s failed: %s", THIS_FILE, __LINE__,
+				__FUNCTION__, ALPS_DIR, strerror(errno));
+		return SLURM_ERROR;
+	}
+	rc = chmod(ALPS_DIR, 755);
+	if (rc) {
+		error("(%s: %d: %s) chmod 755 %s failed: %s", THIS_FILE, __LINE__,
+				__FUNCTION__, ALPS_DIR, strerror(errno));
 		return SLURM_ERROR;
 	}
 
-	// Create the directory
-	rc = mkdir_safe(dir1, 755);
+	rc = system("mkdir -p " LEGACY_SPOOL_DIR);
 	if (rc) {
-		error("(%s: %d: %s) mkdir %s failed: %s", THIS_FILE, __LINE__, __FUNCTION__, dir,
-				strerror(errno));
+		error("(%s: %d: %s) mkdir -p %s failed: %s", THIS_FILE, __LINE__,
+				__FUNCTION__, LEGACY_SPOOL_DIR, strerror(errno));
+		return SLURM_ERROR;
+	}
+
+	rc = chmod(LEGACY_SPOOL_DIR, 755);
+	if (rc) {
+		error("(%s: %d: %s) chmod 755 %s failed: %s", THIS_FILE, __LINE__,
+				__FUNCTION__, LEGACY_SPOOL_DIR, strerror(errno));
 		return SLURM_ERROR;
 	}
 
 	// Create the symlink to the real directory
-	rc = symlink(dir, "/var/opt/cray/alps/spool");
+	rc = symlink(ALPS_DIR , LEGACY_SPOOL_DIR "alps");
 	if (!rc) {
-		error("(%s: %d: %s) Failed to create symlink /var/opt/cray/alps/spool "
-				"-> %s", THIS_FILE, __LINE__, __FUNCTION__, dir);
+		error("(%s: %d: %s) Failed to create symlink %s "
+				"-> %s/alps", THIS_FILE, __LINE__, __FUNCTION__, ALPS_DIR,
+				LEGACY_SPOOL_DIR);
 		return SLURM_ERROR;
 	}
 
@@ -1477,7 +1494,8 @@ recursiveRmdir(const char *dirnm)
 /*
  * Function: mkdir_safe
  * Description:
- *   Create the directory safely.
+ *   Create the directory safely.  Only return success if the directory is
+ *   successfully created or already exists as a directory.
  *
  * IN dir -- path to the directory
  * IN flags -- flags
@@ -1494,6 +1512,11 @@ static int mkdir_safe(const char *pathname, mode_t mode) {
 	errnum = errno;
 	if (rc) {
 		if(errno == EEXIST) {
+			if (slurm_get_debug_flags() & DEBUG_FLAG_SWITCH) {
+				info("(%s: %d: %s) Directory %s already exists", THIS_FILE,
+				__LINE__, __FUNCTION__, pathname);
+			}
+
 			// Check that the path really is a directory.
 			rc = stat(pathname, &buf);
 			if (rc) {
@@ -1503,18 +1526,21 @@ static int mkdir_safe(const char *pathname, mode_t mode) {
 				return -1;
 			}
 			if(!S_ISDIR(buf.st_mode)) {
-				error("(%s: %d: %s) mkpathname %s failed: %s", THIS_FILE, __LINE__, __FUNCTION__, pathname,
-						strerror(errnum));
+				error("(%s: %d: %s) mkdir %s failed: %s -- It is not a "
+						"directory.", THIS_FILE, __LINE__, __FUNCTION__,
+						pathname, strerror(errnum));
+				errno = errnum;
 				return -1;
 			}
+			return 0;
 		} else {
-			error("(%s: %d: %s) mkpathname %s failed: %s", THIS_FILE, __LINE__, __FUNCTION__, pathname,
+			error("(%s: %d: %s) mkdir %s failed: %s", THIS_FILE, __LINE__, __FUNCTION__, pathname,
 					strerror(errno));
 			return -1;
 		}
 	}
 
-	return 0;
+	return rc;
 }
 
 /*
