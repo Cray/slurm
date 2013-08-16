@@ -101,43 +101,43 @@ static void _print_jobinfo(slurm_cray_jobinfo_t *job)
 	xassert(job);
 	xassert(job->magic == CRAY_JOBINFO_MAGIC);
 
-	debug("Address of slurm_cray_jobinfo_t structure: %p", job);
-	debug("--Begin Jobinfo--");
-	debug("  Magic: %" PRIx32, job->magic);
-	debug("  APID: %" PRIu64, job->apid);
-	debug("  num_cookies: %" PRIu32, job->num_cookies);
-	debug("  --- cookies ---");
+	info("Address of slurm_cray_jobinfo_t structure: %p", job);
+	info("--Begin Jobinfo--");
+	info("  Magic: %" PRIx32, job->magic);
+	info("  APID: %" PRIu64, job->apid);
+	info("  num_cookies: %" PRIu32, job->num_cookies);
+	info("  --- cookies ---");
 	for (i = 0; i < job->num_cookies; i++) {
-		debug("  cookies[%d]: %s", i, job->cookies[i]);
+		info("  cookies[%d]: %s", i, job->cookies[i]);
 	}
-	debug("  --- cookie_ids ---");
+	info("  --- cookie_ids ---");
 	for (i = 0; i < job->num_cookies; i++) {
-		debug("  cookie_ids[%d]: %" PRIu32, i, job->cookie_ids[i]);
+		info("  cookie_ids[%d]: %" PRIu32, i, job->cookie_ids[i]);
 	}
-	debug("  ------");
+	info("  ------");
 	if (job->step_layout) {
-		debug("  node_cnt: %" PRIu32, job->step_layout->node_cnt);
-		debug("  node_list: %s", job->step_layout->node_list);
-		debug("  --- tasks ---");
+		info("  node_cnt: %" PRIu32, job->step_layout->node_cnt);
+		info("  node_list: %s", job->step_layout->node_list);
+		info("  --- tasks ---");
 		for (i=0; i < job->step_layout->node_cnt; i++) {
-			debug("  tasks[%d] = %u", i, job->step_layout->tasks[i]);
+			info("  tasks[%d] = %u", i, job->step_layout->tasks[i]);
 		}
-		debug("  ------");
-		debug("  task_cnt: %" PRIu32, job->step_layout->task_cnt);
-		debug("  --- hosts to task---");
+		info("  ------");
+		info("  task_cnt: %" PRIu32, job->step_layout->task_cnt);
+		info("  --- hosts to task---");
 		rc = node_list_str_to_array(job->step_layout->node_cnt, job->step_layout->node_list, &nodes);
 		if (rc) {
 			error("(%s: %d: %s) node_list_str_to_array failed", THIS_FILE, __LINE__, __FUNCTION__);
 		}
 		for (i=0; i < job->step_layout->node_cnt; i++) {
-			debug("Host: %d", i);
+			info("Host: %d", i);
 			for (j=0; j < job->step_layout->tasks[i]; j++) {
-				debug("Task: %d", job->step_layout->tids[i][j]);
+				info("Task: %d", job->step_layout->tids[i][j]);
 			}
 		}
-		debug("  ------");
+		info("  ------");
 	}
-	debug("--END Jobinfo--");
+	info("--END Jobinfo--");
 }
 
 /*
@@ -468,7 +468,7 @@ int pack_test(Buf buffer, uint32_t job_id, uint32_t step_id) {
 		return SLURM_ERROR;
 	}
 
-	debug("(%s:%d: %s) switch_jobinfo_t contents:", THIS_FILE, __LINE__, __FUNCTION__);
+	info("(%s:%d: %s) switch_jobinfo_t contents:", THIS_FILE, __LINE__, __FUNCTION__);
 	_print_jobinfo(job);
 
 	return SLURM_SUCCESS;
@@ -491,13 +491,13 @@ int switch_p_pack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer,
 
 	/*Debug Example
 	if (slurm_get_debug_flags() & DEBUG_FLAG_SWITCH)
-		debug("(%s:%d) job id: %u -- No nodes in bitmap of "
+		info("(%s:%d) job id: %u -- No nodes in bitmap of "
 				"job_record!",
 				THIS_FILE, __LINE__, __FUNCTION__, job_ptr->job_id);
 	 */
 
 	if (slurm_get_debug_flags() & DEBUG_FLAG_SWITCH) {
-		debug("(%s: %d: %s) switch_jobinfo_t contents", THIS_FILE, __LINE__, __FUNCTION__);
+		info("(%s: %d: %s) switch_jobinfo_t contents", THIS_FILE, __LINE__, __FUNCTION__);
 		_print_jobinfo(job);
 	}
 
@@ -600,7 +600,7 @@ int switch_p_unpack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer,
 	}
 
 	if (slurm_get_debug_flags() & DEBUG_FLAG_SWITCH) {
-		debug("(%s:%d: %s) switch_jobinfo_t contents:", THIS_FILE, __LINE__, __FUNCTION__);
+		info("(%s:%d: %s) switch_jobinfo_t contents:", THIS_FILE, __LINE__, __FUNCTION__);
 		_print_jobinfo(job);
 	}
        
@@ -668,8 +668,9 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 	int gpu_cnt = 0;
 
 
-	sleep(60);
+
 	/*
+	 * 	sleep(60);
 	int debug_sleep_wait = 1;
 	while(debug_sleep_wait);
 	*/
@@ -785,6 +786,18 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 	 * in megabytes.
 	 */
 	mem_scaling = ((double) app_mem / ((double) total_mem / 1024)) * 100;
+
+	if (slurm_get_debug_flags() & DEBUG_FLAG_SWITCH) {
+		info("(%s:%d: %s) --Network Scaling Start--", THIS_FILE, __LINE__,
+				__FUNCTION__);
+		info("(%s:%d: %s) --CPU Scaling: %d--", THIS_FILE, __LINE__,
+				__FUNCTION__, cpu_scaling);
+		info("(%s:%d: %s) --Memory Scaling: %d--", THIS_FILE, __LINE__,
+						__FUNCTION__, mem_scaling);
+		info("(%s:%d: %s) --Network Scaling End--", THIS_FILE, __LINE__,
+				__FUNCTION__);
+	}
+
 
 	rc = alpsc_configure_nic(&errMsg, 0, cpu_scaling,
 	    mem_scaling, job->cont_id, sw_job->num_cookies, (const char **)sw_job->cookies,
@@ -1034,7 +1047,7 @@ int switch_p_job_postfini(switch_jobinfo_t *jobinfo, uid_t pgid,
 		       (unsigned long) pgid);
 		kill(-pgid, SIGKILL);
 	} else
-		debug("Job %u.%u: Bad pid value %lu", job_id,
+		info("Job %u.%u: Bad pid value %lu", job_id,
 		      step_id, (unsigned long) pgid);
 	/*
 	 * Clean-up
@@ -1171,7 +1184,7 @@ extern int switch_p_job_step_complete(switch_jobinfo_t *jobinfo,
 	int rc = 0;
 
 	if (slurm_get_debug_flags() & DEBUG_FLAG_SWITCH) {
-		debug("(%s:%d: %s) switch_p_job_step_complete", THIS_FILE, __LINE__, __FUNCTION__);
+		info("(%s:%d: %s) switch_p_job_step_complete", THIS_FILE, __LINE__, __FUNCTION__);
 	}
 
 	/* Release the cookies */
@@ -1522,7 +1535,7 @@ do_drop_caches(void)
         		strerror(errno));
         return;
     }
-    debug("(%s: %d: %s) writing 3 to /proc/sys/vm/drop_caches", THIS_FILE, __LINE__, __FUNCTION__);
+    info("(%s: %d: %s) writing 3 to /proc/sys/vm/drop_caches", THIS_FILE, __LINE__, __FUNCTION__);
     n = write(fd, "3\n", 2);
     if (n != 2) {
     	error("(%s: %d: %s): write: wrote %zd of 2, errno %d, %s", THIS_FILE,
