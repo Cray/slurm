@@ -85,7 +85,7 @@ const uint32_t plugin_version   = 100;
  */
 extern int init (void)
 {
-	verbose("%s loaded", plugin_name);
+	verbose("%s loaded, really, really loaded.", plugin_name);
 	return SLURM_SUCCESS;
 }
 
@@ -104,7 +104,7 @@ extern int fini (void)
 extern int task_p_slurmd_batch_request (uint32_t job_id,
 					batch_job_launch_msg_t *req)
 {
-	debug("task_p_slurmd_batch_request: %u", job_id);
+	info("task_p_slurmd_batch_request: %u", job_id);
 	return SLURM_SUCCESS;
 }
 
@@ -115,7 +115,7 @@ extern int task_p_slurmd_launch_request (uint32_t job_id,
 					 launch_tasks_request_msg_t *req,
 					 uint32_t node_id)
 {
-	debug("task_p_slurmd_launch_request: %u.%u %u",
+	info("task_p_slurmd_launch_request: %u.%u %u",
 	      job_id, req->job_step_id, node_id);
 	return SLURM_SUCCESS;
 }
@@ -127,7 +127,7 @@ extern int task_p_slurmd_reserve_resources (uint32_t job_id,
 					    launch_tasks_request_msg_t *req,
 					    uint32_t node_id)
 {
-	debug("task_p_slurmd_reserve_resources: %u %u", job_id, node_id);
+	info("task_p_slurmd_reserve_resources: %u %u", job_id, node_id);
 	return SLURM_SUCCESS;
 }
 
@@ -136,7 +136,7 @@ extern int task_p_slurmd_reserve_resources (uint32_t job_id,
  */
 extern int task_p_slurmd_suspend_job (uint32_t job_id)
 {
-	debug("task_p_slurmd_suspend_job: %u", job_id);
+	info("task_p_slurmd_suspend_job: %u", job_id);
 	return SLURM_SUCCESS;
 }
 
@@ -145,7 +145,7 @@ extern int task_p_slurmd_suspend_job (uint32_t job_id)
  */
 extern int task_p_slurmd_resume_job (uint32_t job_id)
 {
-	debug("task_p_slurmd_resume_job: %u", job_id);
+	info("task_p_slurmd_resume_job: %u", job_id);
 	return SLURM_SUCCESS;
 }
 
@@ -154,7 +154,7 @@ extern int task_p_slurmd_resume_job (uint32_t job_id)
  */
 extern int task_p_slurmd_release_resources (uint32_t job_id)
 {
-	debug("task_p_slurmd_release_resources: %u", job_id);
+	info("task_p_slurmd_release_resources: %u", job_id);
 	return SLURM_SUCCESS;
 }
 
@@ -165,7 +165,7 @@ extern int task_p_slurmd_release_resources (uint32_t job_id)
  */
 extern int task_p_pre_setuid (stepd_step_rec_t *job)
 {
-	debug("task_p_pre_setuid: %u.%u",
+	info("task_p_pre_setuid: %u.%u",
 		job->jobid, job->stepid);
 
 	return SLURM_SUCCESS;
@@ -178,7 +178,7 @@ extern int task_p_pre_setuid (stepd_step_rec_t *job)
  */
 extern int task_p_pre_launch (stepd_step_rec_t *job)
 {
-	debug("task_p_pre_launch: %u.%u, task %d",
+	info("task_p_pre_launch: %u.%u, task %d",
 	      job->jobid, job->stepid, job->envtp->procid);
 	return SLURM_SUCCESS;
 }
@@ -191,7 +191,7 @@ extern int task_p_pre_launch_priv (stepd_step_rec_t *job)
 {
 	int rc;
 
-	debug("task_pre_launch_priv: %u.%u",
+	info("task_pre_launch_priv: %u.%u",
 		job->jobid, job->stepid);
 
 	/*
@@ -201,7 +201,7 @@ extern int task_p_pre_launch_priv (stepd_step_rec_t *job)
 
 	if (rc) {
 		// Should reword this error because I'm peering behind the abstraction barrier here.
-		debug("Failed to set env variable ALPS_APP_PE");
+		info("Failed to set env variable ALPS_APP_PE");
 		return SLURM_ERROR;
 	}
 
@@ -212,12 +212,12 @@ extern int task_p_pre_launch_priv (stepd_step_rec_t *job)
 
 	if (rc) {
 		// Should reword this error because I'm peering behind the abstraction barrier here.
-		debug("Failed to set env variable PMI_NO_FORK");
+		info("Failed to set env variable PMI_NO_FORK");
 		return SLURM_ERROR;
 	}
 
 	// Debug stuff
-	  debug("(%s:%d) task_p_pre_launch_priv: %u" PRIu32 ".%u" PRIu32
+	  info("(%s:%d) task_p_pre_launch_priv: %u" PRIu32 ".%u" PRIu32
 			  "ALPS_APP_PE (i.e. rank): %s", THIS_FILE, __LINE__, job->jobid,
 			  job->stepid, getenv("PMI_NO_FORK"));
 
@@ -231,7 +231,7 @@ extern int task_p_pre_launch_priv (stepd_step_rec_t *job)
  */
 extern int task_p_post_term (stepd_step_rec_t *job, stepd_step_task_info_t *task)
 {
-	debug("task_p_post_term: %u.%u, task %d",
+	info("task_p_post_term: %u.%u, task %d",
 	      job->jobid, job->stepid, job->envtp->procid);
 	return SLURM_SUCCESS;
 }
@@ -264,7 +264,7 @@ static int send_rank_to_app(uint64_t rank) {
     snprintf(buf, sizeof(buf), "%ju", (uintmax_t)rank);
     ret = setenv("ALPS_APP_PE", buf, 1);
     if (ret < 0) {
-	debug("setenv ALPS_APP_PE");
+	info("setenv ALPS_APP_PE");
 	return 1;
     }
     return 0;
@@ -287,7 +287,7 @@ static int turn_off_pmi_fork() {
     int ret;
     ret = setenv("PMI_NO_FORK", "1", 1);
     if (ret < 0) {
-	debug("setenv PMI_NO_FORK");
+	info("setenv PMI_NO_FORK");
 	return 1;
     }
     return 0;

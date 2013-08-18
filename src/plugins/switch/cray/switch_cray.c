@@ -771,8 +771,8 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 	}
 
 	cpu_scaling = ((double)num_app_cpus / (double)total_cpus ) * 100;
-	if ((cpu_scaling == 0) || (cpu_scaling > 100)) {
-		error("(%s: %d: %s) Cpu scaling out of bounds: %f", THIS_FILE,
+	if ((cpu_scaling <= 0) || (cpu_scaling > 100)) {
+		error("(%s: %d: %s) Cpu scaling out of bounds: %d", THIS_FILE,
 				__LINE__, __FUNCTION__, cpu_scaling);
 		return SLURM_ERROR;
 	}
@@ -791,6 +791,12 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 	 * in megabytes.
 	 */
 	mem_scaling = ((double) app_mem / ((double) total_mem / 1024)) * 100;
+	if ((mem_scaling <= 0) || (mem_scaling > 100)) {
+		error("(%s: %d: %s) Memory scaling out of bounds: %d", THIS_FILE,
+				__LINE__, __FUNCTION__, mem_scaling);
+		return SLURM_ERROR;
+	}
+
 
 	if (slurm_get_debug_flags() & DEBUG_FLAG_SWITCH) {
 		info("(%s:%d: %s) --Network Scaling Start--", THIS_FILE, __LINE__,
@@ -1081,7 +1087,12 @@ int switch_p_job_postfini(switch_jobinfo_t *jobinfo, uid_t pgid,
 	}
 
 	// Flush virtual memory
-	do_drop_caches();
+	rc = system("echo 3 > /proc/sys/vm/drop_caches");
+	if (rc != 1) {
+		error("(%s: %d: %s) Flushing virtual memory failed. Return code: %d",
+				THIS_FILE, __LINE__, __FUNCTION__, rc);
+	}
+	// do_drop_caches();
 
 	// Compact Memory
 	/*
