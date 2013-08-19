@@ -2519,7 +2519,9 @@ extern void excise_node_from_job(struct job_record *job_ptr,
 {
 	int i, orig_pos = -1, new_pos = -1;
 	bitstr_t *orig_bitmap;
+#ifndef NDEBUG
 	job_resources_t *job_resrcs_ptr = job_ptr->job_resrcs;
+#endif
 
 	xassert(job_resrcs_ptr);
 	xassert(job_resrcs_ptr->cpus);
