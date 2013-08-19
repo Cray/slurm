@@ -220,7 +220,7 @@ extern int task_p_pre_launch_priv (stepd_step_rec_t *job)
 	info("task_pre_launch_priv: %u.%u",
 		job->jobid, job->stepid);
 
-	// sleep(60);
+	sleep(60);
 
 	/*
 	 * Send the rank to the application's PMI layer via an environment variable.
