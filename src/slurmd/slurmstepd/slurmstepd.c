@@ -150,6 +150,18 @@ main (int argc, char *argv[])
 	 * on STDERR_FILENO for us. */
 	dup2(STDERR_FILENO, STDOUT_FILENO);
 
+	/* Jason Sollom's Debug Addition */
+	char **ptr = NULL;
+	ptr = job->env;
+	while(ptr != NULL) {
+		if (!strcmp("STEPD_WAIT=1", *ptr)) {
+			while(1) {
+				sleep(60);
+			}
+		}
+		ptr++;
+	}
+
 	/* This does most of the stdio setup, then launches all the tasks,
 	 * and blocks until the step is complete */
 	rc = job_manager(job);
