@@ -220,11 +220,13 @@ extern int task_p_pre_launch_priv (stepd_step_rec_t *job)
 	info("task_pre_launch_priv: %u.%u",
 		job->jobid, job->stepid);
 
+	// sleep(60);
+
 	/*
 	 * Send the rank to the application's PMI layer via an environment variable.
 	 */
 //	rc = send_rank_to_app(job->envtp->procid);
-	snprintf(buff, "%d", job->envtp->procid);
+	snprintf(buff, sizeof(buff), "%d", job->envtp->procid);
 	rc = env_array_overwrite(&job->env,"ALPS_APP_PE", buff);
 
 	if (rc == 0) {
