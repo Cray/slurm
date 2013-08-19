@@ -180,6 +180,30 @@ extern int task_p_pre_launch (stepd_step_rec_t *job)
 {
 	info("task_p_pre_launch: %u.%u, task %d",
 	      job->jobid, job->stepid, job->envtp->procid);
+
+	/*
+	 * Send the rank to the application's PMI layer via an environment variable.
+	 */
+	rc = send_rank_to_app(job->envtp->procid);
+
+	if (rc) {
+		// Should reword this error because I'm peering behind the abstraction barrier here.
+		info("Failed to set env variable ALPS_APP_PE");
+		return SLURM_ERROR;
+	}
+
+	/*
+	 * Send the rank to the application's PMI layer via an environment variable.
+	 */
+	rc = turn_off_pmi_fork();
+
+	if (rc) {
+		// Should reword this error because I'm peering behind the abstraction barrier here.
+		info("Failed to set env variable PMI_NO_FORK");
+		return SLURM_ERROR;
+	}
+
+
 	return SLURM_SUCCESS;
 }
 
@@ -217,7 +241,7 @@ extern int task_p_pre_launch_priv (stepd_step_rec_t *job)
 	}
 
 	// Debug stuff
-	  info("(%s:%d) task_p_pre_launch_priv: %u" PRIu32 ".%u" PRIu32
+	  info("(%s:%d) task_p_pre_launch_priv: %" PRIu32 ".%" PRIu32
 			  "ALPS_APP_PE (i.e. rank): %s", THIS_FILE, __LINE__, job->jobid,
 			  job->stepid, getenv("PMI_NO_FORK"));
 
