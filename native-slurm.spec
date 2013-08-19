@@ -38,7 +38,7 @@
 %define slurm_with() %{expand:%%{?slurm_with_%{1}:1}%%{!?slurm_with_%{1}:0}}
 
 # Define some defaults for rpmbuild
-%define _prefix /opt/slurm/%{version}
+%define _prefix /opt/slurm/%{version}-%{release}
 %define _sysconfdir %{_prefix}/etc
 %define _mandir %{_prefix}/share/man
 %define _infodir %{_prefix}/share/info
@@ -461,6 +461,7 @@ if [ ! -f "config.status" -o "%{reconfigure}" = "1" ]; then
 	%{?with_cflags}
 fi
 
+export CFLAGS="-Werror"
 make %{?_smp_mflags}
 
 %install
@@ -481,8 +482,8 @@ DESTDIR="$RPM_BUILD_ROOT" make install-contrib
 %endif
 
 %if %{slurm_with cray} || %{slurm_with cray_alps}
-   install -D -m644 contribs/cray/opt_modulefiles_slurm $RPM_BUILD_ROOT/opt/modulefiles/slurm/%{version}
-   echo -e '#%Module\nset ModulesVersion "%{version}"' > $RPM_BUILD_ROOT/opt/modulefiles/slurm/.version 
+   install -D -m644 contribs/cray/opt_modulefiles_slurm $RPM_BUILD_ROOT/opt/modulefiles/slurm/%{version}-%{release}
+   echo -e '#%Module\nset ModulesVersion "%{version}-%{release}"' > $RPM_BUILD_ROOT/opt/modulefiles/slurm/.version 
 %else
    rm -f contribs/cray/opt_modulefiles_slurm
 %endif
@@ -751,7 +752,7 @@ rm -rf $RPM_BUILD_ROOT
 %if %{slurm_with cray} || %{slurm_with cray_alps}
 %dir /opt/modulefiles/slurm
 /opt/modulefiles/slurm/.version
-/opt/modulefiles/slurm/%{version}
+/opt/modulefiles/slurm/%{version}-%{release}
 %endif
 %config %{_sysconfdir}/slurm.conf.example
 %config %{_sysconfdir}/cgroup.conf.example
