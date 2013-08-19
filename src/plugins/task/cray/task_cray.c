@@ -179,53 +179,14 @@ extern int task_p_pre_setuid (stepd_step_rec_t *job)
 extern int task_p_pre_launch (stepd_step_rec_t *job)
 {
 	int rc = 0;
+	char buff[1024];
+
 	info("task_p_pre_launch: %u.%u, task %d",
 	      job->jobid, job->stepid, job->envtp->procid);
 
 	/*
 	 * Send the rank to the application's PMI layer via an environment variable.
 	 */
-	rc = send_rank_to_app(job->envtp->procid);
-
-	if (rc) {
-		// Should reword this error because I'm peering behind the abstraction barrier here.
-		info("Failed to set env variable ALPS_APP_PE");
-		return SLURM_ERROR;
-	}
-
-	/*
-	 * Send the rank to the application's PMI layer via an environment variable.
-	 */
-	rc = turn_off_pmi_fork();
-
-	if (rc) {
-		// Should reword this error because I'm peering behind the abstraction barrier here.
-		info("Failed to set env variable PMI_NO_FORK");
-		return SLURM_ERROR;
-	}
-
-
-	return SLURM_SUCCESS;
-}
-
-/*
- * task_p_pre_launch_priv() is called prior to exec of application task.
- * in privileged mode, just after slurm_spank_task_init_privileged
- */
-extern int task_p_pre_launch_priv (stepd_step_rec_t *job)
-{
-	int rc;
-	char buff[1024];
-
-	info("task_pre_launch_priv: %u.%u",
-		job->jobid, job->stepid);
-
-	sleep(60);
-
-	/*
-	 * Send the rank to the application's PMI layer via an environment variable.
-	 */
-//	rc = send_rank_to_app(job->envtp->procid);
 	snprintf(buff, sizeof(buff), "%d", job->envtp->procid);
 	rc = env_array_overwrite(&job->env,"ALPS_APP_PE", buff);
 
@@ -238,8 +199,6 @@ extern int task_p_pre_launch_priv (stepd_step_rec_t *job)
 	/*
 	 * Send the rank to the application's PMI layer via an environment variable.
 	 */
-//	rc = turn_off_pmi_fork();
-
 	rc = env_array_overwrite(&job->env,"PMI_NO_FORK", "1");
 
 	if (rc == 0) {
@@ -247,6 +206,18 @@ extern int task_p_pre_launch_priv (stepd_step_rec_t *job)
 		info("Failed to set env variable ALPS_APP_PE");
 		return SLURM_ERROR;
 	}
+
+	return SLURM_SUCCESS;
+}
+
+/*
+ * task_p_pre_launch_priv() is called prior to exec of application task.
+ * in privileged mode, just after slurm_spank_task_init_privileged
+ */
+extern int task_p_pre_launch_priv (stepd_step_rec_t *job)
+{
+	info("task_pre_launch_priv: %u.%u",
+		job->jobid, job->stepid);
 
 	// Debug stuff
 	  info("(%s:%d) task_p_pre_launch_priv: %" PRIu32 ".%" PRIu32
