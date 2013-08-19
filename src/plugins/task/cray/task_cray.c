@@ -178,6 +178,7 @@ extern int task_p_pre_setuid (stepd_step_rec_t *job)
  */
 extern int task_p_pre_launch (stepd_step_rec_t *job)
 {
+	int rc = 0;
 	info("task_p_pre_launch: %u.%u, task %d",
 	      job->jobid, job->stepid, job->envtp->procid);
 
@@ -222,8 +223,9 @@ extern int task_p_pre_launch_priv (stepd_step_rec_t *job)
 	 * Send the rank to the application's PMI layer via an environment variable.
 	 */
 	rc = send_rank_to_app(job->envtp->procid);
+	rc = env_array_overwrite(&job->env,"ALPS_APP_PE", job->envtp->procid);
 
-	if (rc) {
+	if (rc == 0) {
 		// Should reword this error because I'm peering behind the abstraction barrier here.
 		info("Failed to set env variable ALPS_APP_PE");
 		return SLURM_ERROR;
