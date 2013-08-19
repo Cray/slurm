@@ -1088,7 +1088,10 @@ int switch_p_job_postfini(switch_jobinfo_t *jobinfo, uid_t pgid,
 
 	// Flush virtual memory
 	rc = system("echo 3 > /proc/sys/vm/drop_caches");
-	if (rc != 1) {
+	if (rc != -1) {
+		rc = WEXITSTATUS(rc);
+	}
+	if (rc) {
 		error("(%s: %d: %s) Flushing virtual memory failed. Return code: %d",
 				THIS_FILE, __LINE__, __FUNCTION__, rc);
 	}
@@ -1098,7 +1101,7 @@ int switch_p_job_postfini(switch_jobinfo_t *jobinfo, uid_t pgid,
 	/*
 	alpsc_compact_mem(&errMsg, int numNodes, int *numaNodes,
 	    cpu_set_t *cpuMasks, const char *cpusetDir);
-	 */
+
 	if (rc != 1) {
 		if (errMsg) {
 			error("(%s: %d: %s) alpsc_compact_mem failed: %s",
@@ -1114,6 +1117,7 @@ int switch_p_job_postfini(switch_jobinfo_t *jobinfo, uid_t pgid,
 		info("(%s: %d: %s) alpsc_compact_mem: %s", THIS_FILE, __LINE__, __FUNCTION__, errMsg);
 		free(errMsg);
 	}
+	 */
 
 	return SLURM_SUCCESS;
 }
