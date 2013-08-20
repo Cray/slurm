@@ -256,6 +256,7 @@ int switch_p_build_jobinfo(switch_jobinfo_t *switch_job,
 		else {
 			error("(%s: %d: %s) alpsc_lease_cookies failed: No error message present.", THIS_FILE, __LINE__, __FUNCTION__);
 		}
+		xfree(nodes);
 		return SLURM_ERROR;
 	}
 	if (errMsg) {
