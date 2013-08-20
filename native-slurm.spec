@@ -39,7 +39,7 @@
 
 # Define some defaults for rpmbuild
 %define _prefix /opt/slurm/%{version}-%{release}
-%define _sysconfdir %{_prefix}/etc
+%define _sysconfdir /etc/opt/slurm/%{version}-%{release}
 %define _mandir %{_prefix}/share/man
 %define _infodir %{_prefix}/share/info
 
@@ -192,7 +192,7 @@ partition management, job management, scheduling and accounting modules
 #  Allow override of sysconfdir via _slurm_sysconfdir.
 #  Note 'global' instead of 'define' needed here to work around apparent
 #   bug in rpm macro scoping (or something...)
-%{!?_slurm_sysconfdir: %global _slurm_sysconfdir %{_prefix}/etc}
+%{!?_slurm_sysconfdir: %global _slurm_sysconfdir /etc/opt/slurm/%{version}-%{release}}
 %define _sysconfdir %_slurm_sysconfdir
 
 #  Allow override of datadir via _slurm_datadir.
