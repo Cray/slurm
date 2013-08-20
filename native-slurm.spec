@@ -39,7 +39,7 @@
 
 # Define some defaults for rpmbuild
 %define _prefix /opt/slurm/%{version}-%{release}
-%define _sysconfdir /etc/opt/slurm/%{version}-%{release}
+%define _sysconfdir /etc/opt/slurm/
 %define _mandir %{_prefix}/share/man
 %define _infodir %{_prefix}/share/info
 
@@ -192,7 +192,7 @@ partition management, job management, scheduling and accounting modules
 #  Allow override of sysconfdir via _slurm_sysconfdir.
 #  Note 'global' instead of 'define' needed here to work around apparent
 #   bug in rpm macro scoping (or something...)
-%{!?_slurm_sysconfdir: %global _slurm_sysconfdir /etc/opt/slurm/%{version}-%{release}}
+%{!?_slurm_sysconfdir: %global _slurm_sysconfdir /etc/opt/slurm/}
 %define _sysconfdir %_slurm_sysconfdir
 
 #  Allow override of datadir via _slurm_datadir.
@@ -440,7 +440,7 @@ Gives the ability for SLURM to use Berkeley Lab Checkpoint/Restart
 # Skip configure if possible
 if [ ! -f "config.status" -o "%{reconfigure}" = "1" ]; then
 ./autogen.sh
-export CFLAGS="-Werror -O0 -g"
+export CFLAGS="$RPM_OPT_FLAGS -Werror -O0 -g"
 %configure \
 	%{?slurm_with_debug:--enable-debug} \
 	%{?slurm_with_partial_attach:--enable-partial-attach} \
