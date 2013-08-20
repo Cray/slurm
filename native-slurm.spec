@@ -440,7 +440,7 @@ Gives the ability for SLURM to use Berkeley Lab Checkpoint/Restart
 # Skip configure if possible
 if [ ! -f "config.status" -o "%{reconfigure}" = "1" ]; then
 ./autogen.sh
-export CFLAGS="-Werror"
+export CFLAGS="-Werror -O0 -g"
 %configure \
 	%{?slurm_with_debug:--enable-debug} \
 	%{?slurm_with_partial_attach:--enable-partial-attach} \
