@@ -1272,43 +1272,6 @@ extern int switch_p_slurmd_init(void)
 	int rc = 0;
 	char *errMsg = NULL;
 
-	// Create the ALPS directories
-	rc = system("mkdir -p " ALPS_DIR);
-	if (rc) {
-		error("(%s: %d: %s) mkdir -p %s failed: %s", THIS_FILE, __LINE__,
-				__FUNCTION__, ALPS_DIR, strerror(errno));
-		return SLURM_ERROR;
-	}
-	rc = chmod(ALPS_DIR, 755);
-	if (rc) {
-		error("(%s: %d: %s) chmod 755 %s failed: %s", THIS_FILE, __LINE__,
-				__FUNCTION__, ALPS_DIR, strerror(errno));
-		return SLURM_ERROR;
-	}
-
-	rc = system("mkdir -p " LEGACY_SPOOL_DIR);
-	if (rc) {
-		error("(%s: %d: %s) mkdir -p %s failed: %s", THIS_FILE, __LINE__,
-				__FUNCTION__, LEGACY_SPOOL_DIR, strerror(errno));
-		return SLURM_ERROR;
-	}
-
-	rc = chmod(LEGACY_SPOOL_DIR, 755);
-	if (rc) {
-		error("(%s: %d: %s) chmod 755 %s failed: %s", THIS_FILE, __LINE__,
-				__FUNCTION__, LEGACY_SPOOL_DIR, strerror(errno));
-		return SLURM_ERROR;
-	}
-
-	// Create the symlink to the real directory
-	rc = symlink(ALPS_DIR , LEGACY_SPOOL_DIR "alps");
-	if (!rc) {
-		error("(%s: %d: %s) Failed to create symlink %s "
-				"-> %s/alps", THIS_FILE, __LINE__, __FUNCTION__, ALPS_DIR,
-				LEGACY_SPOOL_DIR);
-		return SLURM_ERROR;
-	}
-
 	// Establish GPU's default state
 	rc = alpsc_establish_GPU_mps_def_state(&errMsg);
 	if (rc != 1) {
