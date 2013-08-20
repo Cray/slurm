@@ -1533,7 +1533,7 @@ int PMIi_WriteSimpleCommand( int fd, PMI2_Command *resp, const char cmd[], PMI2_
     }
 
     /* prepend the buffer length stripping off the trailing '\0' */
-    cmdlen = PMII_MAX_COMMAND_LEN - remaining_len;
+    cmdlen = PMII_MAX_COMMAND_LEN - PMII_COMMANDLEN_SIZE - remaining_len;
     ret = snprintf(cmdlenbuf, sizeof(cmdlenbuf), "%d", cmdlen);
     PMI2U_ERR_CHKANDJUMP(ret >= PMII_COMMANDLEN_SIZE, pmi2_errno, PMI2_ERR_OTHER, "**intern %s", "Command length won't fit in length buffer");
 
