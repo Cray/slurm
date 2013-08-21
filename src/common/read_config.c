@@ -207,6 +207,7 @@ s_p_options_t slurm_conf_options[] = {
 	{"InactiveLimit", S_P_UINT16},
 	{"JobAcctGatherType", S_P_STRING},
 	{"JobAcctGatherFrequency", S_P_STRING},
+	{"JobAcctGatherParams", S_P_STRING},
 	{"JobCheckpointDir", S_P_STRING},
 	{"JobCompHost", S_P_STRING},
 	{"JobCompLoc", S_P_STRING},
@@ -2115,6 +2116,7 @@ free_slurm_conf (slurm_ctl_conf_t *ctl_conf_ptr, bool purge_node_hash)
 	xfree (ctl_conf_ptr->health_check_program);
 	xfree (ctl_conf_ptr->job_acct_gather_freq);
 	xfree (ctl_conf_ptr->job_acct_gather_type);
+	xfree (ctl_conf_ptr->job_acct_gather_params);
 	xfree (ctl_conf_ptr->job_ckpt_dir);
 	xfree (ctl_conf_ptr->job_comp_host);
 	xfree (ctl_conf_ptr->job_comp_loc);
@@ -2234,6 +2236,7 @@ init_slurm_conf (slurm_ctl_conf_t *ctl_conf_ptr)
 	ctl_conf_ptr->inactive_limit		= (uint16_t) NO_VAL;
 	xfree (ctl_conf_ptr->job_acct_gather_freq);
 	xfree (ctl_conf_ptr->job_acct_gather_type);
+	xfree (ctl_conf_ptr->job_acct_gather_params);
 	xfree (ctl_conf_ptr->job_ckpt_dir);
 	xfree (ctl_conf_ptr->job_comp_loc);
 	xfree (ctl_conf_ptr->job_comp_pass);
@@ -2876,6 +2879,9 @@ _validate_and_set_defaults(slurm_ctl_conf_t *conf, s_p_hashtbl_t *hashtbl)
 			   "JobAcctGatherType", hashtbl))
 		conf->job_acct_gather_type =
 			xstrdup(DEFAULT_JOB_ACCT_GATHER_TYPE);
+
+	s_p_get_string(&conf->job_acct_gather_params, "JobAcctGatherParams",
+		       hashtbl);
 
 	if (!s_p_get_string(&conf->job_ckpt_dir, "JobCheckpointDir", hashtbl))
 		conf->job_ckpt_dir = xstrdup(DEFAULT_JOB_CKPT_DIR);
@@ -3889,6 +3895,15 @@ extern char * debug_flags2str(uint32_t debug_flags)
 {
 	char *rc = NULL;
 
+	/* When adding to this please attempt to keep flags in
+	 * alphabetical order.
+	 */
+
+	if (debug_flags & DEBUG_FLAG_BACKFILL) {
+		if (rc)
+			xstrcat(rc, ",");
+		xstrcat(rc, "Backfill");
+	}
 	if (debug_flags & DEBUG_FLAG_BG_ALGO) {
 		if (rc)
 			xstrcat(rc, ",");
@@ -3898,11 +3913,6 @@ extern char * debug_flags2str(uint32_t debug_flags)
 		if (rc)
 			xstrcat(rc, ",");
 		xstrcat(rc, "BGBlockAlgoDeep");
-	}
-	if (debug_flags & DEBUG_FLAG_BACKFILL) {
-		if (rc)
-			xstrcat(rc, ",");
-		xstrcat(rc, "Backfill");
 	}
 	if (debug_flags & DEBUG_FLAG_BG_PICK) {
 		if (rc)
@@ -3929,6 +3939,11 @@ extern char * debug_flags2str(uint32_t debug_flags)
 			xstrcat(rc, ",");
 		xstrcat(rc, "ExtSensors");
 	}
+	if (debug_flags & DEBUG_FLAG_FILESYSTEM) {
+		if (rc)
+			xstrcat(rc, ",");
+		xstrcat(rc, "Filesystem");
+	}
 	if (debug_flags & DEBUG_FLAG_FRONT_END) {
 		if (rc)
 			xstrcat(rc, ",");
@@ -3948,11 +3963,6 @@ extern char * debug_flags2str(uint32_t debug_flags)
 		if (rc)
 			xstrcat(rc, ",");
 		xstrcat(rc, "Infiniband");
-	}
-	if (debug_flags & DEBUG_FLAG_FILESYSTEM) {
-		if (rc)
-			xstrcat(rc, ",");
-		xstrcat(rc, "Filesystem");
 	}
 	if (debug_flags & DEBUG_FLAG_JOB_CONT) {
 		if (rc)
@@ -3998,6 +4008,11 @@ extern char * debug_flags2str(uint32_t debug_flags)
 		if (rc)
 			xstrcat(rc, ",");
 		xstrcat(rc, "Switch");
+	}
+	if (debug_flags & DEBUG_FLAG_THREADID) {
+		if (rc)
+			xstrcat(rc, ",");
+		xstrcat(rc, "ThreadID");
 	}
 	if (debug_flags & DEBUG_FLAG_TRIGGERS) {
 		if (rc)

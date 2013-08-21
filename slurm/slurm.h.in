@@ -2043,6 +2043,7 @@ typedef struct slurm_ctl_conf {
 	char *job_acct_gather_freq; /* poll frequency for job accounting
 					* gather plugins */
 	char *job_acct_gather_type; /* job accounting gather type */
+	char *job_acct_gather_params; /* job accounting gather parameters */
 	char *job_ckpt_dir;	/* directory saving job record checkpoint */
 	char *job_comp_host;	/* job completion logging host */
 	char *job_comp_loc;	/* job completion logging location */
@@ -2898,6 +2899,15 @@ extern void slurm_free_job_info_msg PARAMS((job_info_msg_t * job_buffer_ptr));
  * RET 0 or -1 on error
  */
 extern int slurm_get_end_time PARAMS((uint32_t jobid, time_t *end_time_ptr));
+
+/* Given a job record pointer, return its stderr path */
+extern void slurm_get_job_stderr(char *buf, int buf_size, job_info_t * job_ptr);
+
+/* Given a job record pointer, return its stdin path */
+extern void slurm_get_job_stdin(char *buf, int buf_size, job_info_t * job_ptr);
+
+/* Given a job record pointer, return its stdout path */
+extern void slurm_get_job_stdout(char *buf, int buf_size, job_info_t * job_ptr);
 
 /*
  * slurm_get_rem_time - get the expected time remaining for a given job
