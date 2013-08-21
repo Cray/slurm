@@ -352,7 +352,7 @@ switch_jobinfo_t *switch_p_copy_jobinfo(switch_jobinfo_t *switch_job)
 	*(new->step_layout) = *(old->step_layout);
 	new->step_layout->node_list = xstrdup(old->step_layout->node_list);
 	new->step_layout->tasks = xmalloc(old->step_layout->node_cnt *
-				sizeof(new->step_layout->tasks));
+				sizeof(*(new->step_layout->tasks)));
 	memcpy(new->step_layout->tasks, old->step_layout->tasks,
 			sizeof(*(old->step_layout->tasks)) * old->step_layout->node_cnt);
 	new->step_layout->tids = xmalloc(sizeof(old->step_layout->tids) *
