@@ -218,6 +218,7 @@ int switch_p_build_jobinfo(switch_jobinfo_t *switch_job,
 	uint32_t *s_cookie_ids;
 	slurm_cray_jobinfo_t *job = (slurm_cray_jobinfo_t *)switch_job;
 
+	xassert(job->magic == CRAY_JOBINFO_MAGIC);
 	rc = node_list_str_to_array(step_layout->node_cnt, step_layout->node_list, &nodes);
 	if (rc < 0) {
 		error("(%s: %d: %s) node_list_str_to_array failed", THIS_FILE, __LINE__, __FUNCTION__);
@@ -277,7 +278,7 @@ int switch_p_build_jobinfo(switch_jobinfo_t *switch_job,
 	memcpy(s_cookie_ids, cookie_ids, sizeof(uint32_t) * num_cookies);
 	free(cookie_ids);
 
-	s_cookies = xmalloc(sizeof(char *) * num_cookies);
+	s_cookies = xmalloc(sizeof(char **) * num_cookies);
 	memcpy(s_cookies, cookies, sizeof(char *) * num_cookies);
 	for (i=0; i<num_cookies; i++) {
 		s_cookies[i] = xstrdup(cookies[i]);
@@ -285,29 +286,17 @@ int switch_p_build_jobinfo(switch_jobinfo_t *switch_job,
 	}
 	free(cookies);
 
-	if (rc) {
-		if (errMsg) {
-			error("(%s: %d: %s) Failed to obtain %d cookie%s: Errno: %d -- %s",
-					THIS_FILE, __LINE__, __FUNCTION__, num_cookies,
-					(num_cookies == 1) ? "" : "s", rc, errMsg);
-		} else {
-			error("(%s: %d: %s) Failed to obtain %d cookie%s: No error message present.  Errno: %d", THIS_FILE, __LINE__, __FUNCTION__, num_cookies,
-					(num_cookies == 1) ? "" : "s", rc);
-		}
-		return SLURM_ERROR;
-	}
-	if (errMsg) {
-		info("(%s: %d: %s) alpsc_establish_GPU_mps_def_state: %s", THIS_FILE, __LINE__, __FUNCTION__, errMsg);
-		free(errMsg);
-	}
-
 	/*
 	 * Populate the switch_jobinfo_t struct
+	 * Make a copy of the step_layout, so that switch_p_free_jobinfo can
+	 * consistently free it later whether it's dealing with a copy that was
+	 * created by this function or any other like switch_p_copy_jobinfo or
+	 * switch_p_unpack_jobinfo.
 	 */
 	job->num_cookies = num_cookies;
 	job->cookies = s_cookies;
 	job->cookie_ids = s_cookie_ids;
-	job->step_layout = step_layout;
+	job->step_layout = slurm_step_layout_copy(step_layout);
 
 	/*
 	 * Inform the system that an application (i.e. job step) is starting.
@@ -345,22 +334,10 @@ switch_jobinfo_t *switch_p_copy_jobinfo(switch_jobinfo_t *switch_job)
 	for(i=0; i<old->num_cookies; i++) {
 		new->cookies[i] = xstrdup(old->cookies[i]);
 	}
-	new->cookie_ids = xmalloc(old->num_cookies * sizeof(new->cookie_ids));
-	memcpy(new->cookie_ids, old->cookie_ids, old->num_cookies * sizeof(uint32_t));
+	new->cookie_ids = xmalloc(old->num_cookies * sizeof(*(new->cookie_ids)));
+	memcpy(new->cookie_ids, old->cookie_ids, old->num_cookies * sizeof(*(new->cookie_ids)));
 
-	new->step_layout = xmalloc(sizeof(slurm_step_layout_t));
-	*(new->step_layout) = *(old->step_layout);
-	new->step_layout->node_list = xstrdup(old->step_layout->node_list);
-	new->step_layout->tasks = xmalloc(old->step_layout->node_cnt *
-				sizeof(*(new->step_layout->tasks)));
-	memcpy(new->step_layout->tasks, old->step_layout->tasks,
-			sizeof(*(old->step_layout->tasks)) * old->step_layout->node_cnt);
-	new->step_layout->tids = xmalloc(sizeof(old->step_layout->tids) *
-			old->step_layout->node_cnt);
-	for (i=0; i<old->step_layout->node_cnt; i++) {
-		new->step_layout->tids[i] = xmalloc(sizeof(*(*(old->step_layout->tids))) * old->step_layout->tasks[i]);
-		memcpy(new->step_layout->tids[i], old->step_layout->tids[i], old->step_layout->tasks[i]);
-	}
+	new->step_layout = slurm_step_layout_copy(old->step_layout);
 
 	return (switch_jobinfo_t *)new;
 }
@@ -403,9 +380,7 @@ void switch_p_free_jobinfo(switch_jobinfo_t *switch_job)
 		}
 	}
 
-	if(run_in_daemon("slurmd,slurmstepd")) {
-		slurm_step_layout_destroy(job->step_layout);
-	}
+	slurm_step_layout_destroy(job->step_layout);
 
 	xfree(job);
 
@@ -655,6 +630,7 @@ int switch_p_job_preinit(switch_jobinfo_t *jobinfo)
 extern int switch_p_job_init(stepd_step_rec_t *job)
 {
 	slurm_cray_jobinfo_t *sw_job = (slurm_cray_jobinfo_t *)job->switch_job;
+	xassert(sw_job->magic == CRAY_JOBINFO_MAGIC);
 	int rc, numPTags, cmdIndex, num_app_cpus, i, j;
 	int mem_scaling, cpu_scaling;
 	int total_cpus = 0;
@@ -756,8 +732,8 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 			total_mem = meminfo_value;
 			break;
 		}
-		free(lin);
 	}
+	free(lin);
 	fclose(f);
 
 	if (total_mem == 0) {
@@ -1032,6 +1008,7 @@ extern int switch_p_job_resume(void *suspend_info, int max_wait)
 int switch_p_job_fini(switch_jobinfo_t *jobinfo)
 {
 	slurm_cray_jobinfo_t *job = (slurm_cray_jobinfo_t *)jobinfo;
+	xassert(job->magic == CRAY_JOBINFO_MAGIC);
 	int rc;
 	char *apid_dir = NULL;
 	rc = asprintf(&apid_dir, "/var/spool/alps/%" PRIu64, job->apid);
@@ -1587,9 +1564,13 @@ static int get_cpu_total(void) {
 					number1 = strtol(token1, &endptr, 10);
 					if ((number1 == LONG_MIN) || (number1 == LONG_MAX)) {
 						printf("Error: %s", strerror(errno));
+						free(lin);
+						TEMP_FAILURE_RETRY(fclose(f));
 						return -1;
 					} else if (endptr == token1) {
 						printf("Error: Not a number: %s\n", endptr);
+						free(lin);
+						TEMP_FAILURE_RETRY(fclose(f));
 						return -1;
 					}
 
@@ -1598,9 +1579,13 @@ static int get_cpu_total(void) {
 						number2 = strtol(token2, &endptr, 10);
 						if ((number2 == LONG_MIN) || (number2 == LONG_MAX)) {
 							printf("Error: %s", strerror(errno));
+							free(lin);
+							TEMP_FAILURE_RETRY(fclose(f));
 							return -1;
 						} else if (endptr == token2) {
 							printf("Error: Not a number: '%s'\n", endptr);
+							free(lin);
+							TEMP_FAILURE_RETRY(fclose(f));
 							return -1;
 						}
 
@@ -1610,9 +1595,9 @@ static int get_cpu_total(void) {
 					}
 				}
 			}
-			free(lin);
 		}
 	}
-	fclose(f);
+	free(lin);
+	TEMP_FAILURE_RETRY(fclose(f));
 	return total;
 }
