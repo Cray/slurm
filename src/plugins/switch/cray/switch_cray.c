@@ -213,9 +213,9 @@ int switch_p_build_jobinfo(switch_jobinfo_t *switch_job,
 	int i, rc;
 	int num_cookies = 2;
 	char *errMsg = NULL;
-	char **cookies, **s_cookies;
-	int32_t *nodes, *cookie_ids;
-	uint32_t *s_cookie_ids;
+	char **cookies = NULL, **s_cookies = NULL;
+	int32_t *nodes = NULL, *cookie_ids = NULL;
+	uint32_t *s_cookie_ids = NULL;
 	slurm_cray_jobinfo_t *job = (slurm_cray_jobinfo_t *)switch_job;
 
 	xassert(job->magic == CRAY_JOBINFO_MAGIC);
@@ -261,7 +261,7 @@ int switch_p_build_jobinfo(switch_jobinfo_t *switch_job,
 		return SLURM_ERROR;
 	}
 	if (errMsg) {
-		info("(%s: %d: %s) alpsc_establish_GPU_mps_def_state: %s", THIS_FILE, __LINE__, __FUNCTION__, errMsg);
+		info("(%s: %d: %s) alpsc_lease_cookies: %s", THIS_FILE, __LINE__, __FUNCTION__, errMsg);
 		free(errMsg);
 	}
 
@@ -279,7 +279,6 @@ int switch_p_build_jobinfo(switch_jobinfo_t *switch_job,
 	free(cookie_ids);
 
 	s_cookies = xmalloc(sizeof(char **) * num_cookies);
-	memcpy(s_cookies, cookies, sizeof(char *) * num_cookies);
 	for (i=0; i<num_cookies; i++) {
 		s_cookies[i] = xstrdup(cookies[i]);
 		free(cookies[i]);
@@ -330,7 +329,7 @@ switch_jobinfo_t *switch_p_copy_jobinfo(switch_jobinfo_t *switch_job)
 	// Copy over non-malloced memory.
 	*new = *old;
 
-	new->cookies = xmalloc(old->num_cookies * sizeof(char *));
+	new->cookies = xmalloc(old->num_cookies * sizeof(char **));
 	for(i=0; i<old->num_cookies; i++) {
 		new->cookies[i] = xstrdup(old->cookies[i]);
 	}
@@ -391,6 +390,7 @@ void switch_p_free_jobinfo(switch_jobinfo_t *switch_job)
  * pack_test
  * Description:
  * Tests the packing by doing some unpacking.
+ * TO DO: I need to carefully free the memory that I allocate here.
  */
 int pack_test(Buf buffer, uint32_t job_id, uint32_t step_id) {
 
@@ -407,7 +407,7 @@ int pack_test(Buf buffer, uint32_t job_id, uint32_t step_id) {
 	if (rc != SLURM_SUCCESS) {
 		error("(%s: %d: %s) unpack32 failed. Return code: %d", THIS_FILE,
 				__LINE__, __FUNCTION__, rc);
-		return SLURM_ERROR;
+		goto error_exit;
 	}
 	xassert(job->magic == CRAY_JOBINFO_MAGIC);
 	/*
@@ -418,25 +418,25 @@ int pack_test(Buf buffer, uint32_t job_id, uint32_t step_id) {
 	if (rc != SLURM_SUCCESS) {
 		error("(%s: %d: %s) unpack32 failed. Return code: %d", THIS_FILE,
 				__LINE__, __FUNCTION__, rc);
-		return SLURM_ERROR;
+		goto error_exit;
 	}
 	rc = unpackstr_array(&(job->cookies), &num_cookies, buffer);
 	if (rc != SLURM_SUCCESS) {
 		error("(%s: %d: %s) unpackstr_array failed. Return code: %d", THIS_FILE,
 				__LINE__, __FUNCTION__, rc);
-		return SLURM_ERROR;
+		goto error_exit;
 	}
 	if (num_cookies != job->num_cookies) {
 		error("(%s: %d: %s) Wrong number of cookies received.  Expected: %"
 				PRIu32 "Received: %" PRIu32, THIS_FILE, __LINE__, __FUNCTION__,
 				job->num_cookies, num_cookies);
-		return SLURM_ERROR;
+		goto error_exit;
 	}
 	rc = unpack32_array(&(job->cookie_ids), &(job->num_cookies), buffer);
 	if (rc != SLURM_SUCCESS) {
 		error("(%s: %d: %s) unpack32_array failed. Return code: %d", THIS_FILE,
 				__LINE__, __FUNCTION__, rc);
-		return SLURM_ERROR;
+		goto error_exit;
 	}
 
 	/*
@@ -446,13 +446,17 @@ int pack_test(Buf buffer, uint32_t job_id, uint32_t step_id) {
 	if (rc != SLURM_SUCCESS) {
 		error("(%s: %d: %s) unpack32 failed. Return code: %d", THIS_FILE,
 				__LINE__, __FUNCTION__, rc);
-		return SLURM_ERROR;
+		goto error_exit;
 	}
 
 	info("(%s:%d: %s) switch_jobinfo_t contents:", THIS_FILE, __LINE__, __FUNCTION__);
 	_print_jobinfo(job);
 
 	return SLURM_SUCCESS;
+
+	error_exit:
+	switch_p_free_jobinfo(pre_job);
+	return SLURM_ERROR;
 }
 
 /*
