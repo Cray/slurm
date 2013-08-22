@@ -473,7 +473,6 @@ int switch_p_pack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer,
 			  uint16_t protocol_version)
 {
 	int i;
-	int rc;
 
 	slurm_cray_jobinfo_t *job= (slurm_cray_jobinfo_t *)switch_job;
 
@@ -598,9 +597,6 @@ int switch_p_unpack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer,
 	}
        
 	return SLURM_SUCCESS;
- unpack_error:
-    error("Cray switch plugin: switch_p_unpack_jobinfo failed");
-	return SLURM_ERROR;
 }
 
 void switch_p_print_jobinfo(FILE *fp, switch_jobinfo_t *jobinfo)
@@ -654,7 +650,6 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 	char *lin = NULL;
 	char meminfo_str[1024];
 	int meminfo_value, gpu_enable = 0;
-	hostlist_t hl;
 	uint32_t task;
 	int32_t *task_to_nodes_map = NULL;
 	int32_t *nodes = NULL;
@@ -1232,7 +1227,7 @@ extern int switch_p_job_step_complete(switch_jobinfo_t *jobinfo,
 
 	/* Release the cookies */
 
-	rc = alpsc_release_cookies(&errMsg, job->cookie_ids, job->num_cookies);
+	rc = alpsc_release_cookies(&errMsg, (int32_t *)job->cookie_ids, (int32_t)job->num_cookies);
 
 	if (rc != 0) {
 
@@ -1407,7 +1402,7 @@ static int node_list_str_to_array(uint32_t node_cnt, char *node_list,
 	/*
 	 * Create an integer array of nodes_ptr in the same order as in the node_list.
 	 */
-	nodes_ptr = *nodes = (uint32_t *) xmalloc(node_cnt * sizeof(uint32_t));
+	nodes_ptr = *nodes = xmalloc(node_cnt * sizeof(uint32_t));
 	if (nodes_ptr == NULL) {
 		error("(%s: %d: %s) xmalloc failed", THIS_FILE, __LINE__, __FUNCTION__);
 		hostlist_destroy(hl);
@@ -1520,11 +1515,12 @@ static int get_cpu_total(void) {
 	FILE *f;
 	char * token, *token1, *token2, *lin=NULL, *ptr;
 	char *saveptr, *saveptr1, *endptr;
-	int total = 0, lsz;
+	int total = 0;
+	ssize_t lsz;
 	size_t sz;
 	long int number1, number2;
 
-	f = TEMP_FAILURE_RETRY(fopen("/sys/devices/system/cpu/online", "r"));
+	f = fopen("/sys/devices/system/cpu/online", "r");
 
 	if (f == NULL) {
 		printf("Failed to open file /sys/devices/system/cpu/online: %s\n", strerror(errno));

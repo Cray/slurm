@@ -40,8 +40,6 @@ static int get_first_pe(uint32_t nodeid, uint32_t task_count,
 		uint32_t **host_to_task_map, int32_t *first_pe);
 static int node_list_str_to_array(uint32_t node_cnt, char *node_list, int32_t **nodes);
 static void recursiveRmdir(const char *dirnm);
-static void do_drop_caches(void);
-static int mkdir_safe(const char *pathname, mode_t mode);
 static int get_cpu_total(void);
 
 #endif /* SWITCH_CRAY_H_ */
