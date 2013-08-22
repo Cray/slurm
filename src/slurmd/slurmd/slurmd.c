@@ -677,6 +677,7 @@ _fill_registration_msg(slurm_node_registration_status_msg_t *msg)
 			close(fd);
 			continue;
 		}
+
 		close(fd);
 		if (stepd->stepid == NO_VAL)
 			debug("found apparently running job %u", stepd->jobid);

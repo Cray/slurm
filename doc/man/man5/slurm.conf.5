@@ -807,6 +807,16 @@ Users can override this value on a per job basis using the \fB\-\-acctg\-freq\fR
 option when submitting the job.
 
 .TP
+\fBJobAcctGatherParams\fR
+Arbitrary parameters for the job account gather plugin
+Acceptable values at present include:
+.RS
+.TP 20
+fB\NoShared\fR
+Exclude shared memory from accounting.
+.RE
+
+.TP
 \fBJobCheckpointDir\fR
 Specifies the default directory for storing or reading job checkpoint
 information. The data stored here is only a few thousand bytes per job
@@ -878,10 +888,10 @@ NOTE: The \fBJobContainerPlugin\fR applies to a job allocation, while
 Acceptable values at present include:
 .RS
 .TP 20
-\job_container/cncu\fR
+\fBjob_container/cncu\fR
 used only for Cray systems (CNCU = Compute Node Clean Up)
 .TP
-\job_container/none\fR
+\fBjob_container/none\fR
 used for all other system types
 .RE
 
@@ -1734,7 +1744,7 @@ Multiple options may be comma separated.
 The default number of jobs to attempt scheduling (i.e. the queue depth) when a
 running job completes or other routine actions occur. The full queue will be
 tested on a less frequent basis. The default value is 100.
-In the case of large clusters (more than 1000 nodes), configuring a relatively
+In the case of large clusters, configuring a relatively
 small value may be desirable.
 .TP
 \fBdefer\fR
@@ -1790,9 +1800,8 @@ The maximum number of jobs to attempt backfill scheduling for
 Higher values result in more overhead and less responsiveness.
 Until an attempt is made to backfill schedule a job, its expected
 initiation time value will not be set.
-The default value is 50.
-In the case of large clusters (more than 1000 nodes) configured with
-\fBSelectType=select/cons_res\fR, configuring a relatively small value may be
+The default value is 100.
+In the case of large clusters, configuring a relatively small value may be
 desirable.
 This option applies only to \fBSchedulerType=sched/backfill\fR.
 .TP

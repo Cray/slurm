@@ -1225,9 +1225,7 @@ int slurm_get_is_association_based_accounting(void)
 		if (!strcasecmp(conf->accounting_storage_type,
 			       "accounting_storage/slurmdbd") ||
 		    !strcasecmp(conf->accounting_storage_type,
-				"accounting_storage/mysql") ||
-		    !strcasecmp(conf->accounting_storage_type,
-				"accounting_storage/pgsql"))
+				"accounting_storage/mysql"))
 			enforce = 1;
 		slurm_conf_unlock();
 	}
@@ -1371,6 +1369,24 @@ char *slurm_get_jobacct_gather_type(void)
 		slurm_conf_unlock();
 	}
 	return jobacct_type;
+}
+
+/* slurm_get_jobacct_gather_params
+ * returns the job accounting params from the slurmctld_conf object
+ * RET char *    - job accounting params,  MUST be xfreed by caller
+ */
+char *slurm_get_jobacct_gather_params(void)
+{
+	char *jobacct_params = NULL;
+	slurm_ctl_conf_t *conf;
+
+	if (slurmdbd_conf) {
+	} else {
+		conf = slurm_conf_lock();
+		jobacct_params = xstrdup(conf->job_acct_gather_params);
+		slurm_conf_unlock();
+	}
+	return jobacct_params;
 }
 
 /* slurm_get_jobacct_freq

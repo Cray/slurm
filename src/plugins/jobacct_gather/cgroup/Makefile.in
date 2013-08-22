@@ -57,8 +57,8 @@ target_triplet = @target@
 subdir = src/plugins/jobacct_gather/cgroup
 DIST_COMMON = $(srcdir)/Makefile.am $(srcdir)/Makefile.in
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
-am__aclocal_m4_deps = $(top_srcdir)/auxdir/acx_pthread.m4 \
-	$(top_srcdir)/auxdir/ax_lib_hdf5.m4 \
+am__aclocal_m4_deps = $(top_srcdir)/auxdir/ax_lib_hdf5.m4 \
+	$(top_srcdir)/auxdir/ax_pthread.m4 \
 	$(top_srcdir)/auxdir/libtool.m4 \
 	$(top_srcdir)/auxdir/ltoptions.m4 \
 	$(top_srcdir)/auxdir/ltsugar.m4 \
@@ -132,7 +132,8 @@ am__uninstall_files_from_dir = { \
   }
 am__installdirs = "$(DESTDIR)$(pkglibdir)"
 LTLIBRARIES = $(pkglib_LTLIBRARIES)
-jobacct_gather_cgroup_la_LIBADD =
+jobacct_gather_cgroup_la_DEPENDENCIES =  \
+	../common/libjobacct_gather_common.la
 am_jobacct_gather_cgroup_la_OBJECTS = jobacct_gather_cgroup.lo \
 	jobacct_gather_cgroup_cpuacct.lo \
 	jobacct_gather_cgroup_memory.lo
@@ -227,7 +228,6 @@ GTK_LIBS = @GTK_LIBS@
 H5CC = @H5CC@
 H5FC = @H5FC@
 HAVEMYSQLCONFIG = @HAVEMYSQLCONFIG@
-HAVEPGCONFIG = @HAVEPGCONFIG@
 HAVE_AIX = @HAVE_AIX@
 HAVE_MAN2HTML = @HAVE_MAN2HTML@
 HAVE_NRT = @HAVE_NRT@
@@ -291,8 +291,6 @@ PACKAGE_VERSION = @PACKAGE_VERSION@
 PAM_DIR = @PAM_DIR@
 PAM_LIBS = @PAM_LIBS@
 PATH_SEPARATOR = @PATH_SEPARATOR@
-PGSQL_CFLAGS = @PGSQL_CFLAGS@
-PGSQL_LIBS = @PGSQL_LIBS@
 PKG_CONFIG = @PKG_CONFIG@
 PKG_CONFIG_LIBDIR = @PKG_CONFIG_LIBDIR@
 PKG_CONFIG_PATH = @PKG_CONFIG_PATH@
@@ -351,6 +349,7 @@ am__leading_dot = @am__leading_dot@
 am__quote = @am__quote@
 am__tar = @am__tar@
 am__untar = @am__untar@
+ax_pthread_config = @ax_pthread_config@
 bindir = @bindir@
 build = @build@
 build_alias = @build_alias@
@@ -409,6 +408,7 @@ jobacct_gather_cgroup_la_SOURCES = jobacct_gather_cgroup.c \
                                    jobacct_gather_cgroup.h
 
 jobacct_gather_cgroup_la_LDFLAGS = $(SO_LDFLAGS) $(PLUGIN_FLAGS)
+jobacct_gather_cgroup_la_LIBADD = ../common/libjobacct_gather_common.la
 all: all-am
 
 .SUFFIXES:
@@ -721,6 +721,10 @@ uninstall-am: uninstall-pkglibLTLIBRARIES
 	mostlyclean-generic mostlyclean-libtool pdf pdf-am ps ps-am \
 	tags uninstall uninstall-am uninstall-pkglibLTLIBRARIES
 
+
+force:
+$(jobacct_gather_cgroup_la_LIBADD) : force
+	@cd `dirname $@` && $(MAKE) `basename $@`
 
 # Tell versions [3.59,3.63) of GNU make to not export all variables.
 # Otherwise a system limit (for SysV at least) may be exceeded.
