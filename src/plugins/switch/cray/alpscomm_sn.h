@@ -11,7 +11,7 @@
 
 #include <stdint.h>
 
-#ident "$Id: alpscomm_sn.h 8196 2013-07-16 14:27:01Z ben $"
+#ident "$Id: alpscomm_sn.h 8287 2013-08-07 19:56:10Z ben $"
 
 /*
  * libalpscomm_sn - an external library interface for service node
@@ -97,12 +97,13 @@ extern int alpsc_lease_cookies(char **errMsg,
  *      be released
  */
 extern int alpsc_release_cookies(char **errMsg,
-				 const int32_t *cookie_ids, int32_t num_cookie_ids);
+				 const int32_t *cookie_ids,
+				 int32_t num_cookie_ids);
 
 /*
- * alpsc_set_cookie_lease - sets the lease time for the cookies associated with the specified
- * cookie ids to a new value.  Either all cookies specified have their lease
- *  set to the new value or none of them are changed.
+ * alpsc_set_cookie_lease - sets the lease time for the cookies associated with
+ * the specified cookie ids to a new value.  Either all cookies specified have
+ * their lease set to the new value or none of them are changed.
  *
  * Arguments
  *   errMsg - returns a fatal error message; the caller is responsible
@@ -182,5 +183,162 @@ extern int alpsc_view_cookies(char **errMsg,
 			      const char *filter_owner, int64_t filter_domain,
 			      alpsc_cookie_row_t **results,
 			      int32_t *num_results);
+
+/* ***************************************************************
+ *                    Network Congestion Management APIs
+ * ***************************************************************/
+
+struct alpsc_ev_session_s;
+typedef struct alpsc_ev_session_s alpsc_ev_session_t;
+typedef enum {
+    ALPSC_EV_START = 1, /* Application started
+                           (also see alpsc_ev_create_session) */
+    ALPSC_EV_END,       /* Application ended */
+    ALPSC_EV_SUSPEND,   /* Application has been suspended
+                           (also see alpsc_ev_create_session) */
+    ALPSC_EV_RESUME     /* Application has been resumed */
+} alpsc_ev_app_state_e;
+
+typedef struct alpsc_ev_app_s {
+    int64_t apid;                 // System-unique application identifier
+    int32_t uid;                  // Userid of application owner
+    char *app_name;               // Name of application
+    char *batch_id;               // System-unique job or reservation identifier
+    alpsc_ev_app_state_e state;   // State of application
+    int32_t *nodes;               // Array of nodes where application is running
+                                  // *** Strongly recommended, but not required,
+                                  // to be in sorted ascending order
+    int32_t num_nodes;            // Number of entries in previous array
+} alpsc_ev_app_t;
+
+/*
+ * alpsc_ev_create_session - create an application event session.  When starting
+ * a session, you must include information on all applications that have a
+ * presence on a compute node.  There can only be one active application event
+ * session per Cray system.  A successful call to alpsc_ev_create_session() will
+ * invalidate any existing active application event session.
+ *
+ * Arguments
+ *   errMsg - returns a fatal error message if return != 0; the caller is
+ *            responsible to free the memory allocated for a message.
+ *   session - Double pointer to an alpsc_ev_session_t.  The function will fill
+ *             in state data here on success.
+ *   apps - An array of alpsc_ev_app_t representing the list of applications
+ *          that are resident on compute nodes at function call time.  The only
+ *          valid application states in this array are
+ *          ALPSC_EV_START -> application is actively running
+ *          ALPSC_EV_SUSPEND -> application is on a compute node but not running
+ *   num_apps - The number of applications listed in the previous argument.
+ *
+ *
+ * Returns
+ *    0 if successful, >0 failure (see below)
+ *    1 upon memory allocation failure
+ *    2 upon invalid argument (e.g., NULL session,
+ *                                   NULL apps and non-zero num_apps)
+ *    3 upon miscellaneous session error. Call alpsc_ev_destroy_session()
+ *      and establish a new session.
+ *    4 upon backend failure.  It is likely alpscomm is experiencing a failed
+ *      component somewhere.  Call alpsc_ev_destroy_session()
+ *      and establish a new session.
+ */
+extern int alpsc_ev_create_session(char **errMsg,
+                                   alpsc_ev_session_t **session,
+                                   const alpsc_ev_app_t *apps,
+                                   int32_t num_apps);
+
+/*
+ * alpsc_ev_destroy_session - destroy an application event session.
+ *
+ * Arguments
+ *   session - Pointer to an alpsc_ev_session_t.  The function will free any
+ *             memory associated with the session and otherwise destroy the
+ *             session.  The passed in object is no longer valid after sending
+ *             it to this function.
+ *
+ */
+extern void alpsc_ev_destroy_session(alpsc_ev_session_t *session);
+
+/*
+ * alpsc_ev_get_session_fd - get the file descriptor associated with the
+ * specified application event session.  You should poll on this file descriptor
+ * and then call alpsc_ev_get_session_state() upon file descriptor activity.
+ *
+ * Arguments
+ *   errMsg - returns a fatal error message if return != 0; the caller is
+ *            responsible to free the memory allocated for a message.
+ *   session - Pointer to an application event session prepared by
+ *             alpsc_ev_create_session().
+ *   fd - Pointer to a file descriptor.  The function will write the provided
+ *        session's file descriptor to the supplied location on success.
+ *
+ * Returns
+ *    0 if successful, >0 failure (see below)
+ *    1 upon memory allocation failure
+ *    2 upon invalid argument (e.g., NULL session, NULL fd)
+ *    3 upon miscellaneous session error. Call alpsc_ev_destroy_session()
+ *      and establish a new session.
+ */
+extern int alpsc_ev_get_session_fd(char **errMsg,
+                                   alpsc_ev_session_t *session,
+                                   int *fd);
+
+/*
+ * alpsc_ev_get_session_state - the state of a session is extracted.
+ *
+ * Arguments
+ *   errMsg - returns a fatal error message if return != 0; the caller is
+ *            responsible to free the memory allocated for a message.
+ *   session - Pointer to an application event session prepared by
+ *             alpsc_ev_create_session().
+ *
+ *
+ * Returns
+ *  <=0 if successful
+ *    0 if the session is active
+ *   -1 if the session has closed, usually due to a request by the backend.
+ *      Call alpsc_ev_destroy_session() and establish a new session.
+ *   >0 on failure
+ *    1 upon memory allocation failure
+ *    2 upon invalid argument (e.g., NULL session)
+ *    3 upon miscellaneous session error. Call alpsc_ev_destroy_session()
+ *      and establish a new session.
+ */
+extern int alpsc_ev_get_session_state(char **errMsg,
+                                      alpsc_ev_session_t *session);
+
+/*
+ * alpsc_ev_set_application_info - associate an application event with an
+ * active application event session (created by alpsc_ev_create_session).
+ * Application events should be associated with an active application event as
+ * quickly as possible after they happen, and all attempts should be made to
+ * send the events in chronological order.
+ *
+ * Arguments
+ *   errMsg - returns a fatal error message if return != 0; the caller is
+ *            responsible to free the memory allocated for a message.
+ *   session - Pointer to an application event session prepared by
+ *             alpsc_ev_create_session().
+ *   apps - An array of alpsc_ev_app_t representing a list of application
+ *          events.  If multiple events are supplied, they should be supplied in
+ *          chronologically ascending order (though this isn't strictly
+ *          required).
+ *   num_apps - The number of applications listed in the previous argument.
+ *
+ *
+ * Returns
+ *    0 if successful, >0 failure (see below)
+ *    1 upon memory allocation failure
+ *    2 upon invalid argument (e.g., NULL session, NULL apps, <=0 for num_apps)
+ *    3 upon miscellaneous session error. Call alpsc_ev_destroy_session()
+ *      and establish a new session.
+ *    4 upon backend failure.  It is likely alpscomm is experiencing a failed
+ *      component somewhere.  Call alpsc_ev_destroy_session()
+ *      and establish a new session.
+ */
+extern int alpsc_ev_set_application_info(char **errMsg,
+                                         alpsc_ev_session_t *session,
+                                         const alpsc_ev_app_t *apps,
+                                         int32_t num_apps);
 
 #endif /* __ALPSCOMM_SN_H */
