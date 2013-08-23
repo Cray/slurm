@@ -98,13 +98,14 @@ static void _print_jobinfo(slurm_cray_jobinfo_t *job)
 	int i, j, rc;
 	int32_t *nodes;
 
-	xassert(job);
-	xassert(job->magic == CRAY_JOBINFO_MAGIC);
+
 
 	if (NULL == job) {
 		error("(%s: %d: %s) job pointer was NULL", THIS_FILE, __LINE__, __FUNCTION__);
 		return;
 	}
+
+	xassert(job->magic == CRAY_JOBINFO_MAGIC);
 
 	info("Address of slurm_cray_jobinfo_t structure: %p", job);
 	info("--Begin Jobinfo--");
@@ -218,6 +219,11 @@ int switch_p_build_jobinfo(switch_jobinfo_t *switch_job,
 	uint32_t *s_cookie_ids = NULL;
 	slurm_cray_jobinfo_t *job = (slurm_cray_jobinfo_t *)switch_job;
 
+	if (NULL == switch_job) {
+		error("(%s: %d: %s) switch_job was NULL", THIS_FILE, __LINE__, __FUNCTION__);
+		return SLURM_ERROR;
+	}
+
 	xassert(job->magic == CRAY_JOBINFO_MAGIC);
 	rc = node_list_str_to_array(step_layout->node_cnt, step_layout->node_list, &nodes);
 	if (rc < 0) {
@@ -318,7 +324,10 @@ switch_jobinfo_t *switch_p_copy_jobinfo(switch_jobinfo_t *switch_job)
 	slurm_cray_jobinfo_t *new;
 	size_t sz;
 
-	xassert(switch_job);
+	if (NULL == switch_job) {
+		error("(%s: %d: %s) switch_job was NULL", THIS_FILE, __LINE__, __FUNCTION__);
+		return SLURM_ERROR;
+	}
 	xassert(((slurm_cray_jobinfo_t *)switch_job)->magic == CRAY_JOBINFO_MAGIC);
 
 	if (switch_p_alloc_jobinfo(&new_init, old->jobid, old->stepid)) {
@@ -476,9 +485,10 @@ int switch_p_pack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer,
 
 	slurm_cray_jobinfo_t *job= (slurm_cray_jobinfo_t *)switch_job;
 
-	// sleep(60);
-
-	xassert(job);
+	if (NULL == switch_job) {
+		error("(%s: %d: %s) switch_job was NULL", THIS_FILE, __LINE__, __FUNCTION__);
+		return SLURM_ERROR;
+	}
 	xassert(job->magic == CRAY_JOBINFO_MAGIC);
 	xassert(buffer);
 
@@ -542,8 +552,13 @@ int switch_p_unpack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer,
 	while(DEBUG_WAIT);
 	*/
 
+	if (NULL == switch_job) {
+		error("(%s: %d: %s) switch_job was NULL", THIS_FILE, __LINE__, __FUNCTION__);
+		return SLURM_ERROR;
+	}
+
 	slurm_cray_jobinfo_t *job = (slurm_cray_jobinfo_t *)switch_job;
-	xassert(job);
+
 	xassert(job->magic == CRAY_JOBINFO_MAGIC);
 	xassert(buffer);
 	rc = unpack32(&job->magic, buffer);
@@ -635,6 +650,11 @@ int switch_p_job_preinit(switch_jobinfo_t *jobinfo)
 
 extern int switch_p_job_init(stepd_step_rec_t *job)
 {
+	if (NULL == job) {
+		error("(%s: %d: %s) job was NULL", THIS_FILE, __LINE__, __FUNCTION__);
+		return SLURM_ERROR;
+	}
+
 	slurm_cray_jobinfo_t *sw_job = (slurm_cray_jobinfo_t *)job->switch_job;
 	xassert(sw_job->magic == CRAY_JOBINFO_MAGIC);
 	int rc, numPTags, cmdIndex, num_app_cpus, i, j;
@@ -656,6 +676,8 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 	int32_t firstPeHere;
 	gni_ntt_descriptor_t *ntt_desc_ptr = NULL;
 	int gpu_cnt = 0;
+	char *buff;
+	int cleng = 0;
 
 	/*
 	 * 	sleep(60);
@@ -971,6 +993,49 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 	}
 
 	/*
+	 * Write the CRAY_NUM_COOKIES and CRAY_COOKIES variables out, too.
+	 */
+	rc = asprintf(buff, "%" PRIu32, sw_job->num_cookies);
+	if (-1 == rc) {
+		error("(%s: %d: %s) asprintf failed", THIS_FILE, __LINE__,
+				__FUNCTION__);
+		return SLURM_ERROR;
+	}
+	rc = env_array_overwrite(&job->env,"CRAY_NUM_COOKIES", buff);
+	if (rc == 0) {
+		info("Failed to set env variable CRAY_NUM_COOKIES");
+		free(buff);
+		return SLURM_ERROR;
+	}
+	free(buff);
+
+	/*
+	 * Create the CRAY_COOKIES environment variable in the application's
+	 * environment.
+	 * Create one string containing a comma separated list of cookies.
+	 */
+	for (i = 0; i < sw_job->num_cookies; i++) {
+		// Add one for a trailing comma or null byte.
+		cleng += strlen(sw_job->cookies[i]) + 1;
+	}
+	buff = (char *) xmalloc(cleng * sizeof(char));
+	buff[0] = '\0';
+	for (i = 0; i < sw_job->num_cookies; i++) {
+		if (i > 0) {
+			strlcat(buff, ",", cleng + 1);
+		}
+		strlcat(buff, sw_job->cookies[i], cleng + 1);
+	}
+
+	rc = env_array_overwrite(&job->env,"CRAY_COOKIES", buff);
+	if (rc == 0) {
+		info("Failed to set env variable CRAY_COOKIES");
+		return SLURM_ERROR;
+	}
+	xfree(buff);
+
+
+	/*
 	 * Query the generic resources to see if the GPU should be allocated
 	 * TO DO: Determine whether the proxy should be enabled or disabled by
 	 * reading the user's environment variable.
@@ -1043,6 +1108,12 @@ extern int switch_p_job_resume(void *suspend_info, int max_wait)
 
 int switch_p_job_fini(switch_jobinfo_t *jobinfo)
 {
+
+	if (NULL == jobinfo) {
+		error("(%s: %d: %s) jobinfo was NULL", THIS_FILE, __LINE__, __FUNCTION__);
+		return SLURM_ERROR;
+	}
+
 	slurm_cray_jobinfo_t *job = (slurm_cray_jobinfo_t *)jobinfo;
 	xassert(job->magic == CRAY_JOBINFO_MAGIC);
 	int rc;
@@ -1070,6 +1141,11 @@ int switch_p_job_postfini(switch_jobinfo_t *jobinfo, uid_t pgid,
 {
 	int rc;
 	char *errMsg = NULL;
+
+	if (NULL == jobinfo) {
+		error("(%s: %d: %s) jobinfo was NULL", THIS_FILE, __LINE__, __FUNCTION__);
+		return SLURM_ERROR;
+	}
 
 	/*
 	 *  Kill all processes in the job's session
@@ -1223,6 +1299,11 @@ extern int switch_p_job_step_complete(switch_jobinfo_t *jobinfo,
 	slurm_cray_jobinfo_t *job = (slurm_cray_jobinfo_t *)jobinfo;
 	char *errMsg = NULL;
 	int rc = 0;
+
+	if (NULL == jobinfo) {
+		error("(%s: %d: %s) jobinfo was NULL", THIS_FILE, __LINE__, __FUNCTION__);
+		return SLURM_ERROR;
+	}
 
 	if (slurm_get_debug_flags() & DEBUG_FLAG_SWITCH) {
 		info("(%s:%d: %s) switch_p_job_step_complete", THIS_FILE, __LINE__, __FUNCTION__);

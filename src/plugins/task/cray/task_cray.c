@@ -192,7 +192,6 @@ extern int task_p_pre_launch (stepd_step_rec_t *job)
 	rc = env_array_overwrite(&job->env,"ALPS_APP_PE", buff);
 
 	if (rc == 0) {
-		// Should reword this error because I'm peering behind the abstraction barrier here.
 		info("Failed to set env variable ALPS_APP_PE");
 		return SLURM_ERROR;
 	}
