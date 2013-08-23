@@ -326,7 +326,7 @@ switch_jobinfo_t *switch_p_copy_jobinfo(switch_jobinfo_t *switch_job)
 
 	if (NULL == switch_job) {
 		error("(%s: %d: %s) switch_job was NULL", THIS_FILE, __LINE__, __FUNCTION__);
-		return SLURM_ERROR;
+		return NULL;
 	}
 	xassert(((slurm_cray_jobinfo_t *)switch_job)->magic == CRAY_JOBINFO_MAGIC);
 
@@ -995,7 +995,7 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 	/*
 	 * Write the CRAY_NUM_COOKIES and CRAY_COOKIES variables out, too.
 	 */
-	rc = asprintf(buff, "%" PRIu32, sw_job->num_cookies);
+	rc = asprintf(&buff, "%" PRIu32, sw_job->num_cookies);
 	if (-1 == rc) {
 		error("(%s: %d: %s) asprintf failed", THIS_FILE, __LINE__,
 				__FUNCTION__);
@@ -1022,9 +1022,9 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 	buff[0] = '\0';
 	for (i = 0; i < sw_job->num_cookies; i++) {
 		if (i > 0) {
-			strlcat(buff, ",", cleng + 1);
+			strcat(buff, ",");
 		}
-		strlcat(buff, sw_job->cookies[i], cleng + 1);
+		strcat(buff, sw_job->cookies[i]);
 	}
 
 	rc = env_array_overwrite(&job->env,"CRAY_COOKIES", buff);
