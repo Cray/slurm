@@ -746,10 +746,12 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 
 	while (!feof(f)) {
 		lsz = getline(&lin, &sz, f);
-		sscanf(lin, "%s %d", meminfo_str, &meminfo_value);
-		if(!strcmp(meminfo_str, "MemTotal:")) {
-			total_mem = meminfo_value;
-			break;
+		if (lsz > 0) {
+			sscanf(lin, "%s %d", meminfo_str, &meminfo_value);
+			if(!strcmp(meminfo_str, "MemTotal:")) {
+				total_mem = meminfo_value;
+				break;
+			}
 		}
 	}
 	free(lin);
@@ -923,6 +925,7 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 	 */
 	alpsc_peInfo.nodeCpuArray = calloc(sizeof(int), sw_job->step_layout->node_cnt);
 	if (sw_job->step_layout->node_cnt && (alpsc_peInfo.nodeCpuArray == NULL)) {
+		free(alpsc_peInfo.peCmdMapArray);
 		error("(%s: %d: %s) failed to calloc nodeCpuArray.", THIS_FILE, __LINE__, __FUNCTION__);
 		return SLURM_ERROR;
 	}
@@ -1387,7 +1390,7 @@ static int node_list_str_to_array(uint32_t node_cnt, char *node_list,
 	if ((hl = hostlist_create(node_list)) == NULL) {
 		error("hostlist_create error on %s",
 				node_list);
-		return ESLURM_INVALID_NODE_NAME;
+		return -1;
 	}
 
 	num_nodes_in_node_list = hostlist_count(hl);
@@ -1512,9 +1515,9 @@ recursiveRmdir(const char *dirnm)
  *  Returns the number of online cpus on the node.  On error, it returns -1.
  */
 static int get_cpu_total(void) {
-	FILE *f;
-	char * token, *token1, *token2, *lin=NULL, *ptr;
-	char *saveptr, *saveptr1, *endptr;
+	FILE *f = NULL;
+	char * token = NULL, *token1 = NULL, *token2 = NULL, *lin=NULL;
+	char *saveptr = NULL, *saveptr1 = NULL, *endptr = NULL;
 	int total = 0;
 	ssize_t lsz;
 	size_t sz;
@@ -1529,11 +1532,9 @@ static int get_cpu_total(void) {
 
 	while (!feof(f)) {
 		lsz = getline(&lin, &sz, f);
-		ptr = lin;
 		if (lsz > 0) {
+			token = strtok_r(lin, ",", &saveptr);
 			while (token) {
-				token = strtok_r(ptr, ",", &saveptr);
-				ptr = NULL;
 				// Check for ranged sub-list
 				token1 = strtok_r(token, "-", &saveptr1);
 				if (token1) {
@@ -1570,6 +1571,7 @@ static int get_cpu_total(void) {
 						total += 1;
 					}
 				}
+				token = strtok_r(NULL, ",", &saveptr);
 			}
 		}
 	}
