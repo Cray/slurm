@@ -550,7 +550,7 @@ static void *_rollup_handler(void *db_conn)
 		/* run the roll up */
 		slurm_mutex_lock(&rollup_lock);
 		running_rollup = 1;
-		debug2("running rollup at %s", ctime(&start_time));
+		debug2("running rollup at %s", slurm_ctime(&start_time));
 		acct_storage_g_roll_usage(db_conn, 0, 0, 1);
 		running_rollup = 0;
 		slurm_mutex_unlock(&rollup_lock);
@@ -606,6 +606,8 @@ static int _send_slurmctld_register_req(slurmdb_cluster_rec_t *cluster_rec)
 		slurm_msg_t_init(&out_msg);
 		out_msg.msg_type = ACCOUNTING_REGISTER_CTLD;
 		out_msg.flags = SLURM_GLOBAL_AUTH_KEY;
+		out_msg.protocol_version
+			= slurmdbd_translate_rpc(cluster_rec->rpc_version);
 		slurm_send_node_msg(fd, &out_msg);
 		/* We probably need to add matching recv_msg function
 		 * for an arbitray fd or should these be fire

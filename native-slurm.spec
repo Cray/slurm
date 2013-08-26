@@ -38,8 +38,8 @@
 %define slurm_with() %{expand:%%{?slurm_with_%{1}:1}%%{!?slurm_with_%{1}:0}}
 
 # Define some defaults for rpmbuild
-%define _prefix /opt/slurm/%{version}
-%define _sysconfdir %{_prefix}/etc
+%define _prefix /opt/slurm/%{version}-%{release}
+%define _sysconfdir /etc/opt/slurm/
 %define _mandir %{_prefix}/share/man
 %define _infodir %{_prefix}/share/info
 
@@ -192,7 +192,7 @@ partition management, job management, scheduling and accounting modules
 #  Allow override of sysconfdir via _slurm_sysconfdir.
 #  Note 'global' instead of 'define' needed here to work around apparent
 #   bug in rpm macro scoping (or something...)
-%{!?_slurm_sysconfdir: %global _slurm_sysconfdir %{_prefix}/etc}
+%{!?_slurm_sysconfdir: %global _slurm_sysconfdir /etc/opt/slurm/}
 %define _sysconfdir %_slurm_sysconfdir
 
 #  Allow override of datadir via _slurm_datadir.
@@ -440,6 +440,7 @@ Gives the ability for SLURM to use Berkeley Lab Checkpoint/Restart
 # Skip configure if possible
 if [ ! -f "config.status" -o "%{reconfigure}" = "1" ]; then
 ./autogen.sh
+export CFLAGS="$RPM_OPT_FLAGS -Werror -O0 -g"
 %configure \
 	%{?slurm_with_debug:--enable-debug} \
 	%{?slurm_with_partial_attach:--enable-partial-attach} \
@@ -481,8 +482,8 @@ DESTDIR="$RPM_BUILD_ROOT" make install-contrib
 %endif
 
 %if %{slurm_with cray} || %{slurm_with cray_alps}
-   install -D -m644 contribs/cray/opt_modulefiles_slurm $RPM_BUILD_ROOT/opt/modulefiles/slurm/%{version}
-   echo -e '#%Module\nset ModulesVersion "%{version}"' > $RPM_BUILD_ROOT/opt/modulefiles/slurm/.version 
+   install -D -m644 contribs/cray/opt_modulefiles_slurm $RPM_BUILD_ROOT/opt/modulefiles/slurm/%{version}-%{release}
+   echo -e '#%Module\nset ModulesVersion "%{version}-%{release}"' > $RPM_BUILD_ROOT/opt/modulefiles/slurm/.version 
 %else
    rm -f contribs/cray/opt_modulefiles_slurm
 %endif
@@ -751,7 +752,7 @@ rm -rf $RPM_BUILD_ROOT
 %if %{slurm_with cray} || %{slurm_with cray_alps}
 %dir /opt/modulefiles/slurm
 /opt/modulefiles/slurm/.version
-/opt/modulefiles/slurm/%{version}
+/opt/modulefiles/slurm/%{version}-%{release}
 %endif
 %config %{_sysconfdir}/slurm.conf.example
 %config %{_sysconfdir}/cgroup.conf.example

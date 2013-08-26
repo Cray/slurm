@@ -4670,6 +4670,7 @@ _pack_slurm_ctl_conf_msg(slurm_ctl_conf_info_msg_t * build_ptr, Buf buffer,
 
 		packstr(build_ptr->job_acct_gather_freq, buffer);
 		packstr(build_ptr->job_acct_gather_type, buffer);
+		packstr(build_ptr->job_acct_gather_params, buffer);
 
 		packstr(build_ptr->job_ckpt_dir, buffer);
 
@@ -5354,6 +5355,8 @@ _unpack_slurm_ctl_conf_msg(slurm_ctl_conf_info_msg_t **build_buffer_ptr,
 		safe_unpackstr_xmalloc(&build_ptr->job_acct_gather_freq,
 				       &uint32_tmp, buffer);
 		safe_unpackstr_xmalloc(&build_ptr->job_acct_gather_type,
+				       &uint32_tmp, buffer);
+		safe_unpackstr_xmalloc(&build_ptr->job_acct_gather_params,
 				       &uint32_tmp, buffer);
 
 		safe_unpackstr_xmalloc(&build_ptr->job_ckpt_dir,
@@ -8038,7 +8041,7 @@ _unpack_update_job_step_msg(step_update_request_msg_t ** msg_ptr, Buf buffer,
 		safe_unpack8(&with_jobacct, buffer);
 		if (with_jobacct)
 			if (jobacctinfo_unpack(&msg->jobacct, protocol_version,
-					       PROTOCOL_TYPE_SLURM, buffer)
+					       PROTOCOL_TYPE_SLURM, buffer, 1)
 			    != SLURM_SUCCESS)
 				goto unpack_error;
 		safe_unpackstr_xmalloc(&msg->name, &uint32_tmp, buffer);
@@ -8119,7 +8122,7 @@ _unpack_complete_batch_script_msg(
 
 	if (protocol_version >= SLURM_2_5_PROTOCOL_VERSION) {
 		if (jobacctinfo_unpack(&msg->jobacct, protocol_version,
-				       PROTOCOL_TYPE_SLURM, buffer)
+				       PROTOCOL_TYPE_SLURM, buffer, 1)
 		    != SLURM_SUCCESS)
 			goto unpack_error;
 		safe_unpack32(&msg->job_id, buffer);
@@ -8165,7 +8168,7 @@ _unpack_job_step_stat(job_step_stat_t ** msg_ptr, Buf buffer,
 	safe_unpack32(&msg->return_code, buffer);
 	safe_unpack32(&msg->num_tasks, buffer);
 	if (jobacctinfo_unpack(&msg->jobacct, protocol_version,
-			       PROTOCOL_TYPE_SLURM, buffer)
+			       PROTOCOL_TYPE_SLURM, buffer, 1)
 	    != SLURM_SUCCESS)
 		goto unpack_error;
 	rc = _unpack_job_step_pids(&msg->step_pids, buffer, protocol_version);
@@ -8269,7 +8272,7 @@ _unpack_step_complete_msg(step_complete_msg_t ** msg_ptr, Buf buffer,
 	safe_unpack32(&msg->range_last, buffer);
 	safe_unpack32(&msg->step_rc, buffer);
 	if (jobacctinfo_unpack(&msg->jobacct, protocol_version,
-			       PROTOCOL_TYPE_SLURM, buffer)
+			       PROTOCOL_TYPE_SLURM, buffer, 1)
 	    != SLURM_SUCCESS)
 		goto unpack_error;
 

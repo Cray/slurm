@@ -30,7 +30,7 @@ HIGHLIGHTS
  -- Added the ability to perform load based scheduling. Allocating resources to
     jobs on the nodes with the largest number if idle CPUs.
  -- Add mechanism for job_submit plugin to generate error message for srun,
-    salloc or sbatch to log. New argument added to job_submit function in
+    salloc or sbatch to stderr. New argument added to job_submit function in
     the plugin.
  -- Support for Postgres database has long since been out of date and
     problimatic, so it has been removed entirely.  If you would like to
@@ -51,6 +51,12 @@ CONFIGURATION FILE CHANGES (see "man slurm.conf" for details)
  -- SelectType: select/cray has been renamed select/alps.
  -- Added SchedulingParameters paramter of "CR_LLN" and partition parameter of
     "LLN=yes|no" to enable loadbased scheduling.
+ -- In "SchedulerParameters", change default max_job_bf value from 50 to 100.
+ -- Added "JobAcctGatherParams" configuration parameter. Value of "NoShare"
+    disables accounting for shared memory.
+ -- Added fields to "scontrol show job" output: boards_per_node,
+    sockets_per_board, ntasks_per_node, ntasks_per_board, ntasks_per_socket,
+    ntasks_per_core, and nice.
 
 DBD CONFIGURATION FILE CHANGES (see "man slurmdbd.conf" for details)
 ====================================================================
@@ -65,6 +71,7 @@ COMMAND CHANGES (see man pages for details)
  -- Add StdIn, StdOut, and StdErr paths to job information dumped with
     "scontrol show job".
  -- Permit Slurm administrator to submit a batch job as any user.
+ -- Added -I|--item-extract option to sh5util to extract data item from series.
 
 OTHER CHANGES
 =============
