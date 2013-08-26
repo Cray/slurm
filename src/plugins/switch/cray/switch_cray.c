@@ -899,6 +899,10 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 		for (j=0; j < sw_job->step_layout->tasks[i]; j++) {
 			task = sw_job->step_layout->tids[i][j];
 			task_to_nodes_map[task] = nodes[i];
+			if (slurm_get_debug_flags() & DEBUG_FLAG_SWITCH) {
+				info("(%s:%d: %s) peNidArray:\tTask: %d\tNode: %d", THIS_FILE,
+						__LINE__, __FUNCTION__, task, nodes[i]);
+			}
 		}
 	}
 	alpsc_peInfo.peNidArray = task_to_nodes_map;
