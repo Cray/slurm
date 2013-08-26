@@ -1,10 +1,9 @@
 /*****************************************************************************\
- *  backup.h - backup slurm dbd
+ *  common_jag.h - slurm job accounting gather common plugin functions.
  *****************************************************************************
- *  Copyright (C) 2009  Lawrence Livermore National Security.
- *  Produced at Lawrence Livermore National Laboratory (cf, DISCLAIMER).
- *  Written by Danny Auble <da@llnl.gov>
- *  CODE-OCEC-09-009. All rights reserved.
+ *  Copyright (C) 2013 SchedMD LLC
+ *  Written by Danny Auble <da@schedmd.com>, who borrowed heavily
+ *  from the original code in jobacct_gather/linux
  *
  *  This file is part of SLURM, a resource management program.
  *  For details, see <http://slurm.schedmd.com/>.
@@ -34,22 +33,45 @@
  *  You should have received a copy of the GNU General Public License along
  *  with SLURM; if not, write to the Free Software Foundation, Inc.,
  *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA.
+ *
+ *  This file is patterned after jobcomp_linux.c, written by Morris Jette and
+ *  Copyright (C) 2002 The Regents of the University of California.
 \*****************************************************************************/
 
-#ifndef _DBDBACKUP_H
-#define _DBDBACKUP_H
+#ifndef __COMMON_JAG_H__
+#define __COMMON_JAG_H__
 
-#include "src/slurmdbd/read_config.h"
-#include "src/slurmdbd/rpc_mgr.h"
-#include "src/slurmdbd/slurmdbd.h"
+#include "src/common/list.h"
 
-extern bool primary_resumed;
-extern bool backup;
-extern bool have_control;
+typedef struct jag_prec {	/* process record */
+	int	act_cpufreq;	/* actual average cpu frequency */
+	double	disk_read;	/* local disk read */
+	double	disk_write;	/* local disk write */
+	int	last_cpu;	/* last cpu */
+	int     pages;  /* pages */
+	pid_t	pid;
+	pid_t	ppid;
+	int	rss;	/* rss */
+	int     ssec;   /* system cpu time */
+	int     usec;   /* user cpu time */
+	int	vsize;	/* virtual size */
+} jag_prec_t;
 
-/* run_dbd_backup - this is the backup dbd, it should run in standby
- *	mode, assuming control when the primary dbd stops responding */
-extern void run_dbd_backup(void);
+typedef struct jag_callbacks {
+	void (*prec_extra) (jag_prec_t *prec, int pagesize);
+	List (*get_precs) (List task_list, bool pgid_plugin, uint64_t cont_id,
+			   struct jag_callbacks *callbacks);
+	void (*get_offspring_data) (List prec_list,
+				    jag_prec_t *ancestor, pid_t pid);
+} jag_callbacks_t;
 
+extern void jag_common_init(long in_hertz);
+extern void jag_common_fini(void);
+extern void destroy_jag_prec(void *object);
+extern void print_jag_prec(jag_prec_t *prec);
+
+extern void jag_common_poll_data(
+	List task_list, bool pgid_plugin, uint64_t cont_id,
+	jag_callbacks_t *callbacks);
 
 #endif

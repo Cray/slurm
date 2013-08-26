@@ -462,7 +462,7 @@ int main(int argc, char *argv[])
 			    slurmctld_conf.backup_controller) == 0)) {
 			slurm_sched_fini();	/* make sure shutdown */
 			primary = 0;
-			run_backup();
+			run_backup(&callbacks);
 		} else if (_valid_controller()) {
 			(void) _shutdown_backup_controller(SHUTDOWN_WAIT);
 			trigger_primary_ctld_res_ctrl();
@@ -587,6 +587,9 @@ int main(int argc, char *argv[])
 		pthread_join(slurmctld_config.thread_id_sig,  NULL);
 		pthread_join(slurmctld_config.thread_id_rpc,  NULL);
 		pthread_join(slurmctld_config.thread_id_save, NULL);
+		slurmctld_config.thread_id_sig  = (pthread_t) 0;
+		slurmctld_config.thread_id_rpc  = (pthread_t) 0;
+		slurmctld_config.thread_id_save = (pthread_t) 0;
 
 		if (running_cache) {
 			/* break out and end the association cache

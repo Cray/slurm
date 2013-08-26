@@ -882,10 +882,6 @@ static int _get_node_cnt(job_info_t * job)
 				node_cnt = num_tasks;
 			else if (!node_cnt)
 				node_cnt = 1;
-		} else {
-			int round = job->num_cpus + params.max_cpus - 1;
-			round /= params.max_cpus;	/* round up */
-			node_cnt = MAX(node_cnt, round);
 		}
 	} else
 		node_cnt = _nodes_in_list(job->nodes);
@@ -1257,6 +1253,31 @@ int _print_job_reservation(job_info_t * job, int width, bool right_justify,
 		printf("%s", suffix);
 	return SLURM_SUCCESS;
 }
+
+int _print_job_command(job_info_t * job, int width, bool right_justify,
+			char* suffix)
+{
+	if (job == NULL)
+		_print_str("COMMAND", width, right_justify, true);
+	else
+		_print_str(job->command, width, right_justify, true);
+	if (suffix)
+		printf("%s", suffix);
+	return SLURM_SUCCESS;
+}
+
+int _print_job_work_dir(job_info_t * job, int width, bool right_justify,
+			char* suffix)
+{
+	if (job == NULL)
+		_print_str("WORK_DIR", width, right_justify, true);
+	else
+		_print_str(job->work_dir, width, right_justify, true);
+	if (suffix)
+		printf("%s", suffix);
+	return SLURM_SUCCESS;
+}
+
 
 /*****************************************************************************
  * Job Step Print Functions

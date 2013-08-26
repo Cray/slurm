@@ -167,6 +167,11 @@ static int _run_nhc(uint64_t id, char *nodelist, bool step)
 		info("Calling NHC for id %"PRIu64" on nodes %s(%s)",
 		     id, nodelist, argv[3]);
 
+	if (!nodelist || !argv[3]) {
+		/* already done */
+		goto fini;
+	}
+
 	if ((cpid = fork()) < 0) {
 		error("_run_nhc fork error: %m");
 		goto fini;
@@ -860,6 +865,10 @@ extern char *select_p_select_jobinfo_sprint(select_jobinfo_t *jobinfo,
 			error("select/cray jobinfo_sprint: jobinfo bad");
 			return NULL;
 		}
+		/* FIXME: in the future print out the header here (if needed) */
+		/* snprintf(buf, size, "%s", header); */
+
+		return buf;
 	}
 
 	switch (mode) {
@@ -888,6 +897,10 @@ extern char *select_p_select_jobinfo_xstrdup(select_jobinfo_t *jobinfo,
 			error("select/cray jobinfo_xstrdup: jobinfo bad");
 			return NULL;
 		}
+		/* FIXME: in the future copy the header here (if needed) */
+		/* xstrcat(buf, header); */
+
+		return buf;
 	}
 
 	switch (mode) {

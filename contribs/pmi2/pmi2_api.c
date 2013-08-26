@@ -1485,10 +1485,12 @@ int PMIi_WriteSimpleCommand( int fd, PMI2_Command *resp, const char cmd[], PMI2_
     /* leave space for length field */
     memset(c, ' ', PMII_COMMANDLEN_SIZE);
     c += PMII_COMMANDLEN_SIZE;
+    remaining_len -= PMII_COMMANDLEN_SIZE;
 
     PMI2U_ERR_CHKANDJUMP(strlen(cmd) > PMI2_MAX_VALLEN, pmi2_errno, PMI2_ERR_OTHER, "**cmd_too_long");
 
-    ret = snprintf(c, remaining_len, "cmd=%s;", cmd);
+    ret = sprintf(c, "cmd=%s;", cmd);
+
     PMI2U_ERR_CHKANDJUMP(ret >= remaining_len, pmi2_errno, PMI2_ERR_OTHER, "**intern %s", "Ran out of room for command");
     c += ret;
     remaining_len -= ret;
@@ -1532,7 +1534,7 @@ int PMIi_WriteSimpleCommand( int fd, PMI2_Command *resp, const char cmd[], PMI2_
     }
 
     /* prepend the buffer length stripping off the trailing '\0' */
-    cmdlen = PMII_MAX_COMMAND_LEN - remaining_len;
+    cmdlen = PMII_MAX_COMMAND_LEN - PMII_COMMANDLEN_SIZE - remaining_len;
     ret = snprintf(cmdlenbuf, sizeof(cmdlenbuf), "%d", cmdlen);
     PMI2U_ERR_CHKANDJUMP(ret >= PMII_COMMANDLEN_SIZE, pmi2_errno, PMI2_ERR_OTHER, "**intern %s", "Command length won't fit in length buffer");
 

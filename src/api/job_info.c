@@ -63,6 +63,55 @@
 #include "src/common/uid.h"
 #include "src/common/xstring.h"
 
+/* Perform file name substitutions
+ * %A - Job array's master job allocation number.
+ * %a - Job array ID (index) number.
+ * %j - Job ID
+ * %u - User name
+ */
+static void _fname_format(char *buf, int buf_size, job_info_t * job_ptr,
+			  char *fname)
+{
+	char *ptr, *tmp, *tmp2 = NULL, *user;
+
+	tmp = xstrdup(fname);
+	while ((ptr = strstr(tmp, "%A"))) {
+		ptr[0] = '\0';
+		xstrfmtcat(tmp2, "%s%u%s", tmp, job_ptr->array_job_id, ptr+2);
+		xfree(tmp);	/* transfer the results */
+		tmp = tmp2;
+		tmp2 = NULL;
+	}
+	while ((ptr = strstr(tmp, "%a"))) {
+		ptr[0] = '\0';
+		xstrfmtcat(tmp2, "%s%u%s", tmp, job_ptr->array_task_id, ptr+2);
+		xfree(tmp);	/* transfer the results */
+		tmp = tmp2;
+		tmp2 = NULL;
+	}
+	while ((ptr = strstr(tmp, "%j"))) {
+		ptr[0] = '\0';
+		xstrfmtcat(tmp2, "%s%u%s", tmp, job_ptr->job_id, ptr+2);
+		xfree(tmp);	/* transfer the results */
+		tmp = tmp2;
+		tmp2 = NULL;
+	}
+	while ((ptr = strstr(tmp, "%u"))) {
+		ptr[0] = '\0';
+		user = uid_to_string((uid_t) job_ptr->user_id);
+		xstrfmtcat(tmp2, "%s%s%s", tmp, user, ptr+2);
+		xfree(user);
+		xfree(tmp);	/* transfer the results */
+		tmp = tmp2;
+		tmp2 = NULL;
+	}
+	if (tmp[0] == '/')
+		snprintf(buf, buf_size, "%s", tmp);
+	else
+		snprintf(buf, buf_size, "%s/%s", job_ptr->work_dir, tmp);
+	xfree(tmp);
+}
+
 /* Given a job record pointer, return its stderr path in buf */
 extern void slurm_get_job_stderr(char *buf, int buf_size, job_info_t * job_ptr)
 {
@@ -70,9 +119,15 @@ extern void slurm_get_job_stderr(char *buf, int buf_size, job_info_t * job_ptr)
 		snprintf(buf, buf_size, "%s", "job pointer is NULL");
 	else if (job_ptr->std_err)
 		snprintf(buf, buf_size, "%s", job_ptr->std_err);
+	else if (job_ptr->batch_flag == 0)
+		snprintf(buf, buf_size, "%s", "");
 	else if (job_ptr->std_out)
-		snprintf(buf, buf_size, "%s", job_ptr->std_out);
-	else {
+		_fname_format(buf, buf_size, job_ptr, job_ptr->std_out);
+	else if (job_ptr->array_job_id) {
+		snprintf(buf, buf_size, "%s/slurm-%u_%u.out",
+			 job_ptr->work_dir,
+			 job_ptr->array_job_id, job_ptr->array_task_id);
+	} else {
 		snprintf(buf, buf_size, "%s/slurm-%u.out",
 			 job_ptr->work_dir, job_ptr->job_id);
 	}
@@ -84,7 +139,9 @@ extern void slurm_get_job_stdin(char *buf, int buf_size, job_info_t * job_ptr)
 	if (job_ptr == NULL)
 		snprintf(buf, buf_size, "%s", "job pointer is NULL");
 	else if (job_ptr->std_in)
-		snprintf(buf, buf_size, "%s", job_ptr->std_in);
+		_fname_format(buf, buf_size, job_ptr, job_ptr->std_in);
+	else if (job_ptr->batch_flag == 0)
+		snprintf(buf, buf_size, "%s", "");
 	else
 		snprintf(buf, buf_size, "%s", "StdIn=/dev/null");
 }
@@ -95,8 +152,14 @@ extern void slurm_get_job_stdout(char *buf, int buf_size, job_info_t * job_ptr)
 	if (job_ptr == NULL)
 		snprintf(buf, buf_size, "%s", "job pointer is NULL");
 	else if (job_ptr->std_out)
-		snprintf(buf, buf_size, "%s", job_ptr->std_out);
-	else {
+		_fname_format(buf, buf_size, job_ptr, job_ptr->std_out);
+	else if (job_ptr->batch_flag == 0)
+		snprintf(buf, buf_size, "%s", "");
+	else if (job_ptr->array_job_id) {
+		snprintf(buf, buf_size, "%s/slurm-%u_%u.out",
+			 job_ptr->work_dir,
+			 job_ptr->array_job_id, job_ptr->array_task_id);
+	} else {
 		snprintf(buf, buf_size, "%s/slurm-%u.out",
 			 job_ptr->work_dir, job_ptr->job_id);
 	}
@@ -134,7 +197,7 @@ extern uint32_t slurm_xlate_job_id(char *job_id_str)
 		if (job_ptr->array_task_id == array_id) {
 			job_id = job_ptr->job_id;
 			break;
-		}	
+		}
 	}
 	slurm_free_job_info_msg(resp);
 	return job_id;
@@ -250,7 +313,7 @@ slurm_sprint_job_info ( job_info_t * job_ptr, int one_liner )
 	snprintf(tmp_line, sizeof(tmp_line), "JobId=%u ", job_ptr->job_id);
 	out = xstrdup(tmp_line);
 	if (job_ptr->array_job_id) {
-		snprintf(tmp_line, sizeof(tmp_line), 
+		snprintf(tmp_line, sizeof(tmp_line),
 			 "ArrayJobId=%u ArrayTaskId=%u ",
 			 job_ptr->array_job_id, job_ptr->array_task_id);
 		xstrcat(out, tmp_line);
@@ -700,7 +763,7 @@ line6:
 			     (last_mem_alloc !=
 			      job_resrcs->memory_allocated[rel_node_inx]))) {
 				if (hostlist_count(hl_last)) {
-					last_hosts = 
+					last_hosts =
 						hostlist_ranged_string_xmalloc(
 						hl_last);
 					snprintf(tmp_line, sizeof(tmp_line),
@@ -1194,7 +1257,7 @@ slurm_pid2jobid (pid_t job_pid, uint32_t *jobid)
 		slurm_free_job_id_response_msg(resp_msg.data);
 		break;
 	case RESPONSE_SLURM_RC:
-	        rc = ((return_code_msg_t *) resp_msg.data)->return_code;
+		rc = ((return_code_msg_t *) resp_msg.data)->return_code;
 		slurm_free_return_code_msg(resp_msg.data);
 		if (rc)
 			slurm_seterrno_ret(rc);
@@ -1419,4 +1482,3 @@ extern int slurm_job_cpus_allocated_on_node(job_resources_t *job_resrcs_ptr,
 
 	return slurm_job_cpus_allocated_on_node_id(job_resrcs_ptr, node_id);
 }
-
