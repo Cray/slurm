@@ -38,12 +38,24 @@
 #  include "config.h"
 #endif
 
+#ifndef _GNU_SOURCE
+#  define _GNU_SOURCE
+#endif
+
+#include <fcntl.h>
 #include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <sys/types.h>
+#include <unistd.h>
 
 #include "slurm/slurm_errno.h"
 #include "src/common/slurm_xlator.h"
 #include "src/slurmd/slurmstepd/slurmstepd_job.h"
+
+// TODO: can we get this from alps.h?
+#define LLI_STATUS_FILE	    "/var/opt/cray/alps/spool/status%d"
+#define LLI_STATUS_FILE_ENV "ALPS_LLI_STATUS_FILE"
 
 /*
  * These variables are required by the generic plugin interface.  If they
@@ -174,6 +186,8 @@ extern int task_p_pre_launch (stepd_step_rec_t *job)
 {
 	debug("task_p_pre_launch: %u.%u, task %d",
 	      job->jobid, job->stepid, job->envtp->procid);
+
+
 	return SLURM_SUCCESS;
 }
 
@@ -183,9 +197,72 @@ extern int task_p_pre_launch (stepd_step_rec_t *job)
  */
 extern int task_p_pre_launch_priv (stepd_step_rec_t *job)
 {
+	char *llifile = NULL;
+	int rv;
+	
 	debug("task_p_pre_launch_priv: %u.%u",
 	      job->jobid, job->stepid);
+	
+	// Get the lli file name 
+	rv = asprintf(&llifile, LLI_STATUS_FILE, job->envtp->procid);
+	if (rv == -1) {
+	    debug("%s: asprintf failed", __func__);
+	    return SLURM_ERROR;
+	}
+
+	// Make the file
+	rv = creat(llifile, 0644);
+	if (rv == -1) {
+	    debug("%s: creat(%s) failed: %m", __func__, llifile);
+	    free(llifile);
+	    return SLURM_ERROR;
+	}
+
+	// Change owner/group so app can write to it
+	rv = chown(llifile, job->uid, job->gid);
+	if (rv == -1) {
+	    debug("%s: chown(%s) failed: %m", __func__, llifile);
+	    free(llifile);
+	    return SLURM_ERROR;
+	}
+
+	// Send the filename to the application
+	rv = env_array_overwrite(&job->env, LLI_STATUS_FILE_ENV, llifile);
+	if (rv == 0) {
+	    debug("%s: Failed to set %s environment variable", 
+		    __func__, LLI_STATUS_FILE_ENV);
+	    free(llifile);
+	    return SLURM_ERROR;
+	}
+	info("Set %s to %s", LLI_STATUS_FILE_ENV, llifile);
+
+	free(llifile);
+	
 	return SLURM_SUCCESS;
+}
+
+/*
+ * match_line() - determine whether the next line in fp matches
+ *      the given string. Returns 0 on a match, 1 on mismatch,
+ *      and 2 on getline failure 
+ */
+static int match_line (FILE *fp, const char *filename, const char *match, 
+	char **line, size_t *linesiz)
+{
+	int rv;
+
+	// Read the file
+	rv = getline(line, linesiz, fp);
+	if (rv == -1) {
+		return 2;
+	}
+
+	if (strcmp(*line, match)) {
+		debug("%s: %s line %s doesn't match %s", 
+			__func__, filename, *line, match);
+		return 1;
+	}
+	return 0;
 }
 
 /*
@@ -195,8 +272,70 @@ extern int task_p_pre_launch_priv (stepd_step_rec_t *job)
  */
 extern int task_p_post_term (stepd_step_rec_t *job, stepd_step_task_info_t *task)
 {
+	char *llifile = NULL, *line = NULL;
+	size_t linesiz = 0;
+	int rv;
+	FILE *fp;
+
 	debug("task_p_post_term: %u.%u, task %d",
 	      job->jobid, job->stepid, job->envtp->procid);
+	
+	// Get the lli file name 
+	rv = asprintf(&llifile, LLI_STATUS_FILE, job->envtp->procid);
+	if (rv == -1) {
+	    debug("%s: asprintf failed", __func__);
+	    return SLURM_ERROR;
+	}
+
+	// Open the lli file.
+	errno = 0;
+	fp = fopen(llifile, "r");
+	if (fp == NULL) {
+		debug("%s: fopen(%s) failed: %m", __func__, llifile);
+		free(llifile);
+		return SLURM_ERROR;
+	}
+
+	// No matter what happens from here on, we want to unlink the file
+	rv = unlink(llifile);
+	if (rv == -1) {
+		debug("%s: unlink(%s) failed: %m", __func__, llifile);
+		// Continue on anyway
+	}
+
+	// Read the lli file
+	rv = match_line(fp, llifile, "starting\n", &line, &linesiz);
+	
+	// No starting message found, probably not an MPI app
+	if (rv == 2 || line == NULL || strlen(line) == 0) {
+		free(line);
+		free(llifile);
+		TEMP_FAILURE_RETRY(fclose(fp));
+		return SLURM_SUCCESS;	
+	} else if (rv == 1) {
+		debug("%s: %s no starting message found", __func__, llifile);
+		free(line);
+		free(llifile);
+		TEMP_FAILURE_RETRY(fclose(fp));
+		return SLURM_ERROR;
+	}
+
+	rv = match_line(fp, llifile, "exiting\n", &line, &linesiz);
+	if (rv) {
+		free(line);
+		free(llifile);
+		TEMP_FAILURE_RETRY(fclose(fp));
+
+		// Cancel the job step, since we didn't find the exiting msg
+		debug("Terminating job step, task %d improper exit", 
+			job->envtp->procid);
+		slurm_terminate_job_step(job->jobid, job->stepid);
+		return SLURM_ERROR;
+	}
+
+	free(line);
+	free(llifile);
+	TEMP_FAILURE_RETRY(fclose(fp));
 	return SLURM_SUCCESS;
 }
 
