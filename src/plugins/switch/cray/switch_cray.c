@@ -93,13 +93,13 @@ const char plugin_name[]        = "switch CRAY plugin";
 const char plugin_type[]        = "switch/cray";
 const uint32_t plugin_version   = 100;
 
-static void print_alpsc_peInfo(alpsc_peInfo_t info) {
+static void print_alpsc_peInfo(alpsc_peInfo_t alps_info) {
 	int i;
 	info("*************************alpsc_peInfo Start*************************");
 	info("totalPEs: %d\nfirstPeHere: %d\npesHere: %d\npeDepth: %d\n",
-			info.totalPEs, info.firstPeHere, info.pesHere, info.peDepth);
-	for (i=0; i<info.totaPes; i++) {
-		info("Task: %d\tNode: %d", i, info.peNidArray[i]);
+			alps_info.totalPEs, alps_info.firstPeHere, alps_info.pesHere, alps_info.peDepth);
+	for (i=0; i < alps_info.totalPEs; i++) {
+		info("Task: %d\tNode: %d", i, alps_info.peNidArray[i]);
 	}
 	info("*************************alpsc_peInfo Stop*************************");
 }
@@ -884,7 +884,7 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 	/*
 	 * Fill in alpsc_peInfo.firstPeHere
 	 */
-	rc = get_first_pe(job->nodeid, sw_job->step_layout->task_cnt,
+	rc = get_first_pe(job->nodeid, job->node_tasks,
 			sw_job->step_layout->tids, &firstPeHere);
 	if (rc < 0) {
 		error("(%s: %d: %s) get_first_pe failed", THIS_FILE, __LINE__, __FUNCTION__);
