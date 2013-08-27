@@ -219,11 +219,6 @@ extern int task_p_pre_launch_priv (stepd_step_rec_t *job)
 	info("task_pre_launch_priv: %u.%u",
 		job->jobid, job->stepid);
 
-	// Debug stuff
-	  info("(%s:%d) task_p_pre_launch_priv: %" PRIu32 ".%" PRIu32
-			  "ALPS_APP_PE (i.e. rank): %s", THIS_FILE, __LINE__, job->jobid,
-			  job->stepid, getenv("PMI_NO_FORK"));
-
 	return SLURM_SUCCESS;
 }
 

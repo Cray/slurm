@@ -93,6 +93,17 @@ const char plugin_name[]        = "switch CRAY plugin";
 const char plugin_type[]        = "switch/cray";
 const uint32_t plugin_version   = 100;
 
+static void print_alpsc_peInfo(alpsc_peInfo_t info) {
+	int i;
+	info("*************************alpsc_peInfo Start*************************");
+	info("totalPEs: %d\nfirstPeHere: %d\npesHere: %d\npeDepth: %d\n",
+			info.totalPEs, info.firstPeHere, info.pesHere, info.peDepth);
+	for (i=0; i<info.totaPes; i++) {
+		info("Task: %d\tNode: %d", i, info.peNidArray[i]);
+	}
+	info("*************************alpsc_peInfo Stop*************************");
+}
+
 static void _print_jobinfo(slurm_cray_jobinfo_t *job)
 {
 	int i, j, rc;
@@ -967,13 +978,18 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 	 */
 	controlSoc.sin_port = 0;
 	controlSoc.sin_addr.s_addr = 0;
-	alpsc_branchInfo.tAddr = controlSoc; // Just assing controlSoc because it's already zero.
+	/* Just assigning controlSoc because it's already zero. */
+	alpsc_branchInfo.tAddr = controlSoc;
 	alpsc_branchInfo.tIndex = 0;
 	alpsc_branchInfo.tLen = 0;
 	alpsc_branchInfo.targ = 0;
 
 	rc = alpsc_write_placement_file(&errMsg, sw_job->apid, cmdIndex, &alpsc_peInfo,
 			controlNid, controlSoc, numBranches, &alpsc_branchInfo);
+
+	if (slurm_get_debug_flags() & DEBUG_FLAG_SWITCH) {
+		print_alpsc_peInfo(alpsc_peInfo);
+	}
 
 	/* Clean up */
 	xfree(task_to_nodes_map);
