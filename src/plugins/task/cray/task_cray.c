@@ -38,14 +38,25 @@
 #  include "config.h"
 #endif
 
+#ifndef _GNU_SOURCE
+#  define _GNU_SOURCE
+#endif
+
+#include <fcntl.h>
 #include <signal.h>
-#include <sys/types.h>
+#include <stdio.h>
 #include <stdlib.h>
+#include <sys/types.h>
+#include <unistd.h>
 #include <sys/param.h>
 
 #include "slurm/slurm_errno.h"
 #include "src/common/slurm_xlator.h"
 #include "src/slurmd/slurmstepd/slurmstepd_job.h"
+
+// TODO: can we get this from alps.h?
+#define LLI_STATUS_FILE	    "/var/opt/cray/alps/spool/status%d"
+#define LLI_STATUS_FILE_ENV "ALPS_LLI_STATUS_FILE"
 
 /*
  * These variables are required by the generic plugin interface.  If they
@@ -103,7 +114,7 @@ extern int fini (void)
 extern int task_p_slurmd_batch_request (uint32_t job_id,
 					batch_job_launch_msg_t *req)
 {
-	info("task_p_slurmd_batch_request: %u", job_id);
+	debug("task_p_slurmd_batch_request: %u", job_id);
 	return SLURM_SUCCESS;
 }
 
@@ -114,7 +125,7 @@ extern int task_p_slurmd_launch_request (uint32_t job_id,
 					 launch_tasks_request_msg_t *req,
 					 uint32_t node_id)
 {
-	info("task_p_slurmd_launch_request: %u.%u %u",
+	debug("task_p_slurmd_launch_request: %u.%u %u",
 	      job_id, req->job_step_id, node_id);
 	return SLURM_SUCCESS;
 }
@@ -126,7 +137,7 @@ extern int task_p_slurmd_reserve_resources (uint32_t job_id,
 					    launch_tasks_request_msg_t *req,
 					    uint32_t node_id)
 {
-	info("task_p_slurmd_reserve_resources: %u %u", job_id, node_id);
+	debug("task_p_slurmd_reserve_resources: %u %u", job_id, node_id);
 	return SLURM_SUCCESS;
 }
 
@@ -135,7 +146,7 @@ extern int task_p_slurmd_reserve_resources (uint32_t job_id,
  */
 extern int task_p_slurmd_suspend_job (uint32_t job_id)
 {
-	info("task_p_slurmd_suspend_job: %u", job_id);
+	debug("task_p_slurmd_suspend_job: %u", job_id);
 	return SLURM_SUCCESS;
 }
 
@@ -144,7 +155,7 @@ extern int task_p_slurmd_suspend_job (uint32_t job_id)
  */
 extern int task_p_slurmd_resume_job (uint32_t job_id)
 {
-	info("task_p_slurmd_resume_job: %u", job_id);
+	debug("task_p_slurmd_resume_job: %u", job_id);
 	return SLURM_SUCCESS;
 }
 
@@ -153,7 +164,7 @@ extern int task_p_slurmd_resume_job (uint32_t job_id)
  */
 extern int task_p_slurmd_release_resources (uint32_t job_id)
 {
-	info("task_p_slurmd_release_resources: %u", job_id);
+	debug("task_p_slurmd_release_resources: %u", job_id);
 	return SLURM_SUCCESS;
 }
 
@@ -164,7 +175,7 @@ extern int task_p_slurmd_release_resources (uint32_t job_id)
  */
 extern int task_p_pre_setuid (stepd_step_rec_t *job)
 {
-	info("task_p_pre_setuid: %u.%u",
+	debug("task_p_pre_setuid: %u.%u",
 		job->jobid, job->stepid);
 
 	return SLURM_SUCCESS;
@@ -180,10 +191,9 @@ extern int task_p_pre_launch (stepd_step_rec_t *job)
 	int rc = 0;
 	char buff[1024];
 
-	info("task_p_pre_launch: %u.%u, task %d",
+	debug("task_p_pre_launch: %u.%u, task %d",
 	      job->jobid, job->stepid, job->envtp->procid);
 
-	// sleep(60);
 
 	/*
 	 * Send the rank to the application's PMI layer via an environment variable.
@@ -192,7 +202,7 @@ extern int task_p_pre_launch (stepd_step_rec_t *job)
 	rc = env_array_overwrite(&job->env,"ALPS_APP_PE", buff);
 
 	if (rc == 0) {
-		info("Failed to set env variable ALPS_APP_PE");
+		debug("Failed to set env variable ALPS_APP_PE");
 		return SLURM_ERROR;
 	}
 
@@ -202,8 +212,7 @@ extern int task_p_pre_launch (stepd_step_rec_t *job)
 	rc = env_array_overwrite(&job->env,"PMI_NO_FORK", "1");
 
 	if (rc == 0) {
-		// Should reword this error because I'm peering behind the abstraction barrier here.
-		info("Failed to set env variable ALPS_APP_PE");
+		debug("Failed to set env variable ALPS_APP_PE");
 		return SLURM_ERROR;
 	}
 
@@ -216,10 +225,72 @@ extern int task_p_pre_launch (stepd_step_rec_t *job)
  */
 extern int task_p_pre_launch_priv (stepd_step_rec_t *job)
 {
-	info("task_pre_launch_priv: %u.%u",
-		job->jobid, job->stepid);
+	char *llifile = NULL;
+	int rv;
+	
+	debug("task_p_pre_launch_priv: %u.%u",
+	      job->jobid, job->stepid);
+	
+	// Get the lli file name 
+	rv = asprintf(&llifile, LLI_STATUS_FILE, job->envtp->procid);
+	if (rv == -1) {
+	    debug("%s: asprintf failed", __func__);
+	    return SLURM_ERROR;
+	}
 
+	// Make the file
+	rv = creat(llifile, 0644);
+	if (rv == -1) {
+	    debug("%s: creat(%s) failed: %m", __func__, llifile);
+	    free(llifile);
+	    return SLURM_ERROR;
+	}
+
+	// Change owner/group so app can write to it
+	rv = chown(llifile, job->uid, job->gid);
+	if (rv == -1) {
+	    debug("%s: chown(%s) failed: %m", __func__, llifile);
+	    free(llifile);
+	    return SLURM_ERROR;
+	}
+
+	// Send the filename to the application
+	rv = env_array_overwrite(&job->env, LLI_STATUS_FILE_ENV, llifile);
+	if (rv == 0) {
+	    debug("%s: Failed to set %s environment variable", 
+		    __func__, LLI_STATUS_FILE_ENV);
+	    free(llifile);
+	    return SLURM_ERROR;
+	}
+	info("Set %s to %s", LLI_STATUS_FILE_ENV, llifile);
+
+	free(llifile);
+	
 	return SLURM_SUCCESS;
+}
+
+/*
+ * match_line() - determine whether the next line in fp matches
+ *      the given string. Returns 0 on a match, 1 on mismatch,
+ *      and 2 on getline failure 
+ */
+static int match_line (FILE *fp, const char *filename, const char *match, 
+	char **line, size_t *linesiz)
+{
+	int rv;
+
+	// Read the file
+	rv = getline(line, linesiz, fp);
+	if (rv == -1) {
+		return 2;
+	}
+
+	if (strcmp(*line, match)) {
+		debug("%s: %s line %s doesn't match %s", 
+			__func__, filename, *line, match);
+		return 1;
+	}
+	return 0;
 }
 
 /*
@@ -229,8 +300,70 @@ extern int task_p_pre_launch_priv (stepd_step_rec_t *job)
  */
 extern int task_p_post_term (stepd_step_rec_t *job, stepd_step_task_info_t *task)
 {
-	info("task_p_post_term: %u.%u, task %d",
+	char *llifile = NULL, *line = NULL;
+	size_t linesiz = 0;
+	int rv;
+	FILE *fp;
+
+	debug("task_p_post_term: %u.%u, task %d",
 	      job->jobid, job->stepid, job->envtp->procid);
+	
+	// Get the lli file name 
+	rv = asprintf(&llifile, LLI_STATUS_FILE, job->envtp->procid);
+	if (rv == -1) {
+	    debug("%s: asprintf failed", __func__);
+	    return SLURM_ERROR;
+	}
+
+	// Open the lli file.
+	errno = 0;
+	fp = fopen(llifile, "r");
+	if (fp == NULL) {
+		debug("%s: fopen(%s) failed: %m", __func__, llifile);
+		free(llifile);
+		return SLURM_ERROR;
+	}
+
+	// No matter what happens from here on, we want to unlink the file
+	rv = unlink(llifile);
+	if (rv == -1) {
+		debug("%s: unlink(%s) failed: %m", __func__, llifile);
+		// Continue on anyway
+	}
+
+	// Read the lli file
+	rv = match_line(fp, llifile, "starting\n", &line, &linesiz);
+	
+	// No starting message found, probably not an MPI app
+	if (rv == 2 || line == NULL || strlen(line) == 0) {
+		free(line);
+		free(llifile);
+		TEMP_FAILURE_RETRY(fclose(fp));
+		return SLURM_SUCCESS;	
+	} else if (rv == 1) {
+		debug("%s: %s no starting message found", __func__, llifile);
+		free(line);
+		free(llifile);
+		TEMP_FAILURE_RETRY(fclose(fp));
+		return SLURM_ERROR;
+	}
+
+	rv = match_line(fp, llifile, "exiting\n", &line, &linesiz);
+	if (rv) {
+		free(line);
+		free(llifile);
+		TEMP_FAILURE_RETRY(fclose(fp));
+
+		// Cancel the job step, since we didn't find the exiting msg
+		debug("Terminating job step, task %d improper exit", 
+			job->envtp->procid);
+		slurm_terminate_job_step(job->jobid, job->stepid);
+		return SLURM_ERROR;
+	}
+
+	free(line);
+	free(llifile);
+	TEMP_FAILURE_RETRY(fclose(fp));
 	return SLURM_SUCCESS;
 }
 
