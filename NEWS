@@ -8,6 +8,9 @@ documents those changes that are of interest to users and admins.
  -- Added fields to "scontrol show job" output: boards_per_node,
     sockets_per_board, ntasks_per_node, ntasks_per_board, ntasks_per_socket,
     ntasks_per_core, and nice.
+ -- Add squeue output format options for job command and working directory
+    (%o and %Z respectively).
+ -- Add stdin/out/err to sview job output.
 
 * Changes in Slurm 13.12.0pre1
 ==============================
@@ -60,6 +63,11 @@ documents those changes that are of interest to users and admins.
  -- Fix of wrong node/job state problem after reconfig
  -- Allow users who are coordinators update their own limits in the accounts
     they are coordinators over.
+ -- BackupController - Make sure we have a connection to the DBD first thing
+    to avoid it thinking we don't have a cluster name.
+ -- Correct value of min_nodes returned by loading job information to consider
+    the job's task count and maximum CPUs per node.
+ -- If running jobacct_gather/none fix issue on unpacking step completion.
 
 * Changes in Slurm 2.6.1
 ========================
