@@ -840,8 +840,10 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 						__FUNCTION__, mem_scaling);
 		info("(%s:%d: %s) --Network Scaling End--", THIS_FILE, __LINE__,
 				__FUNCTION__);
-	}
 
+		info("(%s:%d: %s) --PAGG Job Container ID: %" PRIx64 "--", THIS_FILE, __LINE__,
+						__FUNCTION__, job->cont_id);
+	}
 
 	rc = alpsc_configure_nic(&errMsg, 0, cpu_scaling,
 	    mem_scaling, job->cont_id, sw_job->num_cookies,
