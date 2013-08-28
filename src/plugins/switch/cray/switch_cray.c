@@ -570,7 +570,6 @@ int switch_p_unpack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer,
 
 	slurm_cray_jobinfo_t *job = (slurm_cray_jobinfo_t *)switch_job;
 
-	xassert(job->magic == CRAY_JOBINFO_MAGIC);
 	xassert(buffer);
 	rc = unpack32(&job->magic, buffer);
 	if (rc != SLURM_SUCCESS) {
