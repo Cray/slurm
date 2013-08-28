@@ -723,6 +723,8 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 
 	/*
 	 * Create APID directory
+	 * Make its owner be the user who launched the application and under which
+	 * the application will run.
 	 */
 	rc = asprintf(&apid_dir, "/var/spool/alps/%" PRIu64, sw_job->apid);
 	if (rc == -1) {
@@ -736,6 +738,14 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 		error("(%s: %d: %s) mkdir failed: %s", THIS_FILE, __LINE__, __FUNCTION__, strerror(errno));
 		return SLURM_ERROR;
 	}
+
+	rc = chown(apid_dir, job->uid, job->gid);
+	if (rc) {
+		free(apid_dir);
+		error("(%s: %d: %s) chown failed: %s", THIS_FILE, __LINE__, __FUNCTION__, strerror(errno));
+		return SLURM_ERROR;
+	}
+
 	free(apid_dir);
 	/*
 	 * Not defined yet -- This one may be skipped because we may not need to
