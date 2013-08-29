@@ -1770,6 +1770,12 @@ static int init_port() {
 static int assign_port(uint32_t *ret_port) {
 	int port, tmp, attempts = 0;
 
+	if(port_resv == NULL) {
+		error("(%s: %d: %s) Reserved PMI Port Table not initialized",
+				THIS_FILE, __LINE__, __FUNCTION__);
+				return -1;
+	}
+
 	port = ++last_alloc_port % MAX_PORT;
 
 	/*
@@ -1797,6 +1803,13 @@ static int assign_port(uint32_t *ret_port) {
 static int release_port(uint32_t real_port) {
 
 	uint32_t port = real_port - MIN_PORT;
+
+	if(port_resv == NULL) {
+		error("(%s: %d: %s) Reserved PMI Port Table not initialized",
+				THIS_FILE, __LINE__, __FUNCTION__);
+		return -1;
+	}
+
 	if (port_resv[port]) {
 		port_resv[port] = 0;
 	} else {
