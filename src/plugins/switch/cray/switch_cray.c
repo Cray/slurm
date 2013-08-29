@@ -122,6 +122,7 @@ static void _print_jobinfo(slurm_cray_jobinfo_t *job)
 	info("--Begin Jobinfo--");
 	info("  Magic: %" PRIx32, job->magic);
 	info("  APID: %" PRIu64, job->apid);
+	info("  PMI Port: %" PRIu32, job->port);
 	info("  num_cookies: %" PRIu32, job->num_cookies);
 	info("  --- cookies ---");
 	for (i = 0; i < job->num_cookies; i++) {
