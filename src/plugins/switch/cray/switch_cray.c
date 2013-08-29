@@ -545,6 +545,7 @@ int switch_p_pack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer,
 		}
 	}
 	pack32_array(job->cookie_ids, job->num_cookies, buffer);
+	pack32(job->port, buffer);
 	pack_slurm_step_layout(job->step_layout, buffer, SLURM_PROTOCOL_VERSION);
 
 	/*
@@ -618,6 +619,13 @@ int switch_p_unpack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer,
 		error("(%s: %d: %s) Wrong number of cookie IDs received.  Expected: %"
 				PRIu32 "Received: %" PRIu32, THIS_FILE, __LINE__, __FUNCTION__,
 				job->num_cookies, num_cookies);
+		return SLURM_ERROR;
+	}
+
+	rc = unpack32(&job->port, buffer);
+	if (rc != SLURM_SUCCESS) {
+		error("(%s: %d: %s) unpack32 failed. Return code: %d", THIS_FILE,
+				__LINE__, __FUNCTION__, rc);
 		return SLURM_ERROR;
 	}
 
@@ -1753,7 +1761,7 @@ static int init_port() {
 	last_alloc_port = 0;
 	port_resv = xmalloc((MAX_PORT - MIN_PORT) * sizeof(uint32_t));
 
-	for (i=0; i<MAX_PORT; i) {
+	for (i=0; i<MAX_PORT; i++) {
 		port_resv[i]=0;
 	}
 	return 0;
