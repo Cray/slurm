@@ -28,6 +28,7 @@ struct slurm_cray_jobinfo {
 	char     **cookies;
 	/* The array itself must be free()d when this struct is destroyed. */
 	uint32_t *cookie_ids;
+	uint32_t port;/* Port for PMI Communications */
 	uint32_t       jobid;  /* Current SLURM job id */
 	uint32_t       stepid; /* Current step id */
 	/* Cray Application ID -- A unique combination of the job id and step id*/
