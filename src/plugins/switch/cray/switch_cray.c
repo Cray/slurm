@@ -1741,7 +1741,7 @@ static uint32_t *port_resv = NULL;
 static int port_cnt = -1;
 static uint32_t last_alloc_port = 0;
 
-int init_port() {
+static int init_port() {
 
 	int i;
 	if (MAX_PORT < MIN_PORT) {
@@ -1759,7 +1759,7 @@ int init_port() {
 	return 0;
 }
 
-int assign_port(uint32_t *ret_port) {
+static int assign_port(uint32_t *ret_port) {
 	int port, tmp, attempts = 0;
 
 	port = ++last_alloc_port % MAX_PORT;
@@ -1786,7 +1786,7 @@ int assign_port(uint32_t *ret_port) {
 	return 0;
 }
 
-int release_port(uint32_t real_port) {
+static int release_port(uint32_t real_port) {
 
 	uint32_t port = real_port - MIN_PORT;
 	if (port_resv[port]) {

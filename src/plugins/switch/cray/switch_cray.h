@@ -42,5 +42,8 @@ static int get_first_pe(uint32_t nodeid, uint32_t task_count,
 static int node_list_str_to_array(uint32_t node_cnt, char *node_list, int32_t **nodes);
 static void recursiveRmdir(const char *dirnm);
 static int get_cpu_total(void);
+static int init_port();
+static int assign_port(uint32_t *ret_port);
+static int release_port(uint32_t real_port);
 
 #endif /* SWITCH_CRAY_H_ */
