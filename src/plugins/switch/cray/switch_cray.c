@@ -1769,9 +1769,9 @@ static int init_port() {
 
 	port_cnt = MAX_PORT - MIN_PORT;
 	last_alloc_port = 0;
-	port_resv = xmalloc((MAX_PORT - MIN_PORT) * sizeof(uint32_t));
+	port_resv = xmalloc(port_cnt * sizeof(uint32_t));
 
-	for (i=0; i<MAX_PORT; i++) {
+	for (i=0; i<port_cnt; i++) {
 		port_resv[i]=0;
 	}
 	return 0;
@@ -1825,6 +1825,7 @@ static int assign_port(uint32_t *ret_port) {
 
 static int release_port(uint32_t real_port) {
 
+	int rc;
 	uint32_t port = real_port - MIN_PORT;
 
 	if(port_resv == NULL) {
