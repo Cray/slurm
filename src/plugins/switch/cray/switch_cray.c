@@ -1085,6 +1085,25 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 	}
 	xfree(buff);
 
+	/*
+	 * Write the PMI_CONTROL_PORT
+	 * Cray's PMI uses this is the port to communicate its control tree
+	 * information.
+	 */
+	rc = asprintf(&buff, "%" PRIu32, sw_job->port);
+	if (-1 == rc) {
+		error("(%s: %d: %s) asprintf failed", THIS_FILE, __LINE__,
+				__FUNCTION__);
+		return SLURM_ERROR;
+	}
+	rc = env_array_overwrite(&job->env,"PMI_CONTROL_PORT", buff);
+	if (rc == 0) {
+		info("Failed to set env variable PMI_CONTROL_PORT");
+		free(buff);
+		return SLURM_ERROR;
+	}
+	free(buff);
+
 
 	/*
 	 * Query the generic resources to see if the GPU should be allocated
@@ -1754,6 +1773,12 @@ static int get_cpu_total(void) {
 static uint32_t *port_resv = NULL;
 static int port_cnt = -1;
 static uint32_t last_alloc_port = 0;
+
+/*
+ * TODO: Once we have the SchedMD code that actually calls
+ * switch_p_slurmctld_init, I should take out the safety checks that
+ * re-initialize the port reservation table.
+ */
 
 static int init_port() {
 
