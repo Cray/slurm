@@ -1784,7 +1784,7 @@ static int assign_port(uint32_t *ret_port) {
 		info("(%s: %d: %s) Reserved PMI Port Table not initialized",
 				THIS_FILE, __LINE__, __FUNCTION__);
 		rc = init_port();
-		if (rc != 1) {
+		if (rc) {
 			error("(%s: %d: %s) Initializing PMI reserve port table failed",
 					THIS_FILE, __LINE__, __FUNCTION__);
 			return -1;
@@ -1832,7 +1832,7 @@ static int release_port(uint32_t real_port) {
 		info("(%s: %d: %s) Reserved PMI Port Table not initialized",
 				THIS_FILE, __LINE__, __FUNCTION__);
 		rc = init_port();
-		if (rc != 1) {
+		if (rc) {
 			error("(%s: %d: %s) Initializing PMI reserve port table failed",
 					THIS_FILE, __LINE__, __FUNCTION__);
 			return -1;
