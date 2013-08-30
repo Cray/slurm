@@ -1431,7 +1431,7 @@ extern int switch_p_job_step_complete(switch_jobinfo_t *jobinfo,
 	 */
 	rc = release_port(job->port);
 	if (rc != 0) {
-		error("(%s: %d: %s) Releasing port %" PRIu32 "failed.", THIS_FILE,
+		error("(%s: %d: %s) Releasing port %" PRIu32 " failed.", THIS_FILE,
 				__LINE__, __FUNCTION__, job->port);
 		// return SLURM_ERROR;
 	}
@@ -1863,7 +1863,7 @@ static int assign_port(uint32_t *real_port) {
 	 * number of times
 	 */
 	while (port_resv[port]==1) {
-		tmp = port++ % (MAX_PORT - MIN_PORT);
+		tmp = port++ % port_cnt;
 		port = tmp;
 		attempts++;
 		if ((attempts / port_cnt) >= ATTEMPTS) {
@@ -1874,6 +1874,7 @@ static int assign_port(uint32_t *real_port) {
 		}
 	}
 
+	port_resv[port] = 1;
 	last_alloc_port = port;
 
 	/*
