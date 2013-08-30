@@ -54,7 +54,11 @@
 #include "src/common/slurm_xlator.h"
 #include "src/slurmd/slurmstepd/slurmstepd_job.h"
 
-// Filename to write status information to 
+// Filename to write status information to
+// This file consists of job->node_tasks + 1 bytes. Each byte will
+// be either 1 or 0, indicating that that particular event has occured.
+// The first byte indicates the starting LLI message, and the next bytes
+// indicate the exiting LLI messages for each task
 #define LLI_STATUS_FILE	    "/var/opt/cray/alps/spool/status%"PRIu64
 
 // Size of buffer which is guaranteed to hold an LLI_STATUS_FILE
@@ -193,8 +197,8 @@ extern int task_p_pre_setuid (stepd_step_rec_t *job)
  */
 extern int task_p_pre_launch (stepd_step_rec_t *job)
 {
-	int rv;
-	char offset[20];
+	int rc;
+	char buff[1024];
 
 	debug("task_p_pre_launch: %u.%u, task %d",
 	      job->jobid, job->stepid, job->envtp->procid);
@@ -204,7 +208,6 @@ extern int task_p_pre_launch (stepd_step_rec_t *job)
 	 */
 	snprintf(buff, sizeof(buff), "%d", job->envtp->procid);
 	rc = env_array_overwrite(&job->env,"ALPS_APP_PE", buff);
-
 	if (rc == 0) {
 		debug("Failed to set env variable ALPS_APP_PE");
 		return SLURM_ERROR;
@@ -214,21 +217,16 @@ extern int task_p_pre_launch (stepd_step_rec_t *job)
 	 * Send the rank to the application's PMI layer via an environment variable.
 	 */
 	rc = env_array_overwrite(&job->env,"PMI_NO_FORK", "1");
-
 	if (rc == 0) {
-		debug("Failed to set env variable ALPS_APP_PE");
+		debug("Failed to set env variable PMI_NO_FORK");
 		return SLURM_ERROR;
 	}
 
-	return SLURM_SUCCESS;
-
 	// Notify the task which offset to use
-	// Each task writes two bytes, one for starting, one for finishing
-	// TODO: this assumes localids start at 0 and increase by 1
-	snprintf(offset, sizeof(offset), "%d", job->envtp->localid * 2);
-	rv = env_array_overwrite(&job->env, LLI_STATUS_OFFS_ENV, offset);
-	if (rv == 0) {
-		debug("%s: Failed to set %s", __func__, LLI_STATUS_OFFS_ENV);
+	snprintf(buff, sizeof(buff), "%d", job->envtp->localid + 1);
+	rc = env_array_overwrite(&job->env, LLI_STATUS_OFFS_ENV, buff);
+	if (rc == 0) {
+		debug("Failed to set env variable %s", LLI_STATUS_OFFS_ENV);
 		return SLURM_ERROR;
 	}
 
@@ -263,11 +261,10 @@ extern int task_p_pre_launch_priv (stepd_step_rec_t *job)
 		return SLURM_ERROR;
 	}
 
-	// Resize it to 2 bytes per task to make room for writing
-	rv = ftruncate(fd, job->node_tasks * 2);
+	// Resize it to job->node_tasks + 1
+	rv = ftruncate(fd, job->node_tasks + 1);
 	if (rv == -1) {
-		debug("%s: ftruncate(%s, %"PRIu32") failed: %m",
-			__func__, llifile, job->node_tasks * 2);
+		debug("%s: ftruncate(%s) failed: %m", __func__, llifile);
 		TEMP_FAILURE_RETRY(close(fd));
 		return SLURM_ERROR;
 	}
@@ -285,101 +282,6 @@ extern int task_p_pre_launch_priv (stepd_step_rec_t *job)
 	return SLURM_SUCCESS;
 }
 
-#if 0
-/*
- * match_line() - determine whether the next line in fp matches
- *      the given string. Returns 0 on a match, 1 on mismatch,
- *      and 2 on getline failure 
- */
-static int match_line (FILE *fp, const char *filename, const char *match, 
-	char **line, size_t *linesiz)
-{
-	int rv;
-
-	// Read the file
-	rv = getline(line, linesiz, fp);
-	if (rv == -1) {
-		return 2;
-	}
-
-	if (strcmp(*line, match)) {
-		debug("%s: %s line %s doesn't match %s", 
-			__func__, filename, *line, match);
-		return 1;
-	}
-	return 0;
-}
-
-/*
- * task_term() is called after termination of application task.
- *	It is preceded by --task-epilog (from srun command line)
- *	followed by TaskEpilog program (from slurm.conf).
- */
-extern int task_p_post_term (stepd_step_rec_t *job, stepd_step_task_info_t *task)
-{
-	char *llifile = NULL, *line = NULL;
-	size_t linesiz = 0;
-	int rv;
-	FILE *fp;
-
-	debug("task_p_post_term: %u.%u, task %d",
-	      job->jobid, job->stepid, job->envtp->procid);
-	
-	// Get the lli file name 
-	rv = asprintf(&llifile, LLI_STATUS_FILE, 
-		SLURM_ID_HASH(job->jobid, job->stepid));
-	if (rv == -1) {
-	    debug("%s: asprintf failed", __func__);
-	    return SLURM_ERROR;
-	}
-
-	// Open the lli file.
-	errno = 0;
-	fp = fopen(llifile, "r");
-	if (fp == NULL) {
-		debug("%s: fopen(%s) failed: %m", __func__, llifile);
-		free(llifile);
-		return SLURM_ERROR;
-	}
-
-
-	// Read the lli file
-	rv = match_line(fp, llifile, "starting\n", &line, &linesiz);
-	
-	// No starting message found, probably not an MPI app
-	if (rv == 2 || line == NULL || strlen(line) == 0) {
-		free(line);
-		free(llifile);
-		TEMP_FAILURE_RETRY(fclose(fp));
-		return SLURM_SUCCESS;	
-	} else if (rv == 1) {
-		debug("%s: %s no starting message found", __func__, llifile);
-		free(line);
-		free(llifile);
-		TEMP_FAILURE_RETRY(fclose(fp));
-		return SLURM_ERROR;
-	}
-
-	rv = match_line(fp, llifile, "exiting\n", &line, &linesiz);
-	if (rv) {
-		free(line);
-		free(llifile);
-		TEMP_FAILURE_RETRY(fclose(fp));
-
-		// Cancel the job step, since we didn't find the exiting msg
-		debug("Terminating job step, task %d improper exit", 
-			job->envtp->procid);
-		slurm_terminate_job_step(job->jobid, job->stepid);
-		return SLURM_ERROR;
-	}
-
-	free(line);
-	free(llifile);
-	TEMP_FAILURE_RETRY(fclose(fp));
-	return SLURM_SUCCESS;
-}
-#endif
-
 /*
  * task_term() is called after termination of application task.
  *	It is preceded by --task-epilog (from srun command line)
@@ -388,7 +290,7 @@ extern int task_p_post_term (stepd_step_rec_t *job, stepd_step_task_info_t *task
 extern int task_p_post_term (stepd_step_rec_t *job, stepd_step_task_info_t *task)
 {
 	char llifile[LLI_STATUS_FILE_BUF_SIZE];
-	char status[2];
+	char status;
 	int rv, fd;
 
 	debug("task_p_post_term: %u.%u, task %d",
@@ -405,29 +307,40 @@ extern int task_p_post_term (stepd_step_rec_t *job, stepd_step_task_info_t *task
 		return SLURM_ERROR;
 	}
 
-	// Seek to the correct position (job->envtp->localid * 2)
-	rv = lseek(fd, job->envtp->localid * 2, SEEK_SET);
+	// Read the first byte (indicates starting)
+	rv = read(fd, &status, sizeof(status));
+	if (rv == -1) {
+		debug("%s: read failed: %m", __func__);	
+		return SLURM_ERROR;
+	}
+
+	// If the first byte is 0, we either aren't an MPI app or
+	// it didn't make it past pmi_init, in any case, return success
+	if (status == 0) {
+		TEMP_FAILURE_RETRY(close(fd));
+		return SLURM_SUCCESS;
+	}
+
+	// Seek to the correct offset (job->envtp->localid + 1)
+	rv = lseek(fd, job->envtp->localid + 1, SEEK_SET);
 	if (rv == -1) {
 		debug("%s: lseek failed: %m", __func__);
 		TEMP_FAILURE_RETRY(close(fd));
 		return SLURM_ERROR;
 	}
 
-	// Read two bytes
-	rv = read(fd, status, sizeof(status));
+	// Read the exiting byte
+	rv = read(fd, &status, sizeof(status));
 	TEMP_FAILURE_RETRY(close(fd));
 	if (rv == -1) {
 		debug("%s: read failed: %m", __func__);	
 		return SLURM_SUCCESS;
 	}
 
-	debug("Got LLI status %s %s", status[0] ? "starting" : "", 
-		status[1] ? "finishing" : "");
-
 	// Check the result
-	if (status[0] == 1 && status[1] == 0) {
+	if (status == 0) {
 		// Cancel the job step, since we didn't find the exiting msg
-		debug("Terminating job step, task %d improper exit", 
+		fprintf(stderr, "Terminating job step, task %d improper exit\n", 
 			job->envtp->procid);
 		slurm_terminate_job_step(job->jobid, job->stepid);
 	}
@@ -453,6 +366,8 @@ extern int task_p_post_step (stepd_step_rec_t *job)
 	rv = unlink(llifile);
 	if (rv == -1 && errno != ENOENT) {
 		debug("%s: unlink(%s) failed: %m", __func__, llifile);
+	} else if (rv == 0) {
+		info("Unlinked %s", llifile);
 	}
 
 	return SLURM_SUCCESS;
