@@ -122,6 +122,7 @@ static void _print_jobinfo(slurm_cray_jobinfo_t *job)
 	info("--Begin Jobinfo--");
 	info("  Magic: %" PRIx32, job->magic);
 	info("  APID: %" PRIu64, job->apid);
+	info("  PMI Port: %" PRIu32, job->port);
 	info("  num_cookies: %" PRIu32, job->num_cookies);
 	info("  --- cookies ---");
 	for (i = 0; i < job->num_cookies; i++) {
@@ -223,6 +224,7 @@ int switch_p_build_jobinfo(switch_jobinfo_t *switch_job,
 {
 
 	int i, rc;
+	uint32_t port = 0;
 	int num_cookies = 2;
 	char *errMsg = NULL;
 	char **cookies = NULL, **s_cookies = NULL;
@@ -303,6 +305,15 @@ int switch_p_build_jobinfo(switch_jobinfo_t *switch_job,
 	free(cookies);
 
 	/*
+	 * Get a unique port for PMI communications
+	 */
+	 rc = assign_port(&port);
+	if (rc < 0) {
+		info("(%s: %d: %s) assign_port failed", THIS_FILE, __LINE__, __FUNCTION__);
+		return SLURM_ERROR;
+	}
+
+	/*
 	 * Populate the switch_jobinfo_t struct
 	 * Make a copy of the step_layout, so that switch_p_free_jobinfo can
 	 * consistently free it later whether it's dealing with a copy that was
@@ -312,6 +323,7 @@ int switch_p_build_jobinfo(switch_jobinfo_t *switch_job,
 	job->num_cookies = num_cookies;
 	job->cookies = s_cookies;
 	job->cookie_ids = s_cookie_ids;
+	job->port = port;
 	job->step_layout = slurm_step_layout_copy(step_layout);
 
 	/*
@@ -533,6 +545,7 @@ int switch_p_pack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer,
 		}
 	}
 	pack32_array(job->cookie_ids, job->num_cookies, buffer);
+	pack32(job->port, buffer);
 	pack_slurm_step_layout(job->step_layout, buffer, SLURM_PROTOCOL_VERSION);
 
 	/*
@@ -606,6 +619,13 @@ int switch_p_unpack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer,
 		error("(%s: %d: %s) Wrong number of cookie IDs received.  Expected: %"
 				PRIu32 "Received: %" PRIu32, THIS_FILE, __LINE__, __FUNCTION__,
 				job->num_cookies, num_cookies);
+		return SLURM_ERROR;
+	}
+
+	rc = unpack32(&job->port, buffer);
+	if (rc != SLURM_SUCCESS) {
+		error("(%s: %d: %s) unpack32 failed. Return code: %d", THIS_FILE,
+				__LINE__, __FUNCTION__, rc);
 		return SLURM_ERROR;
 	}
 
@@ -1148,16 +1168,38 @@ int switch_p_job_fini(switch_jobinfo_t *jobinfo)
 	slurm_cray_jobinfo_t *job = (slurm_cray_jobinfo_t *)jobinfo;
 	xassert(job->magic == CRAY_JOBINFO_MAGIC);
 	int rc;
-	char *apid_dir = NULL;
-	rc = asprintf(&apid_dir, "/var/spool/alps/%" PRIu64, job->apid);
+	char *path_name = NULL;
+
+	/*
+	 * Remove the APID directory /var/spool/alps/<APID>
+	 */
+	rc = asprintf(&path_name, "/var/spool/alps/%" PRIu64, job->apid);
 	if (rc == -1) {
 		error("(%s: %d: %s) asprintf failed", THIS_FILE, __LINE__, __FUNCTION__);
 		return SLURM_ERROR;
 	}
 
 	// Stolen from ALPS
-	recursiveRmdir(apid_dir);
-	free(apid_dir);
+	recursiveRmdir(path_name);
+	free(path_name);
+
+	/*
+	 * Remove the ALPS placement file.
+	 * /var/spool/alps/places<APID>
+	 */
+	rc = asprintf(&path_name, "/var/spool/alps/places%" PRIu64, job->apid);
+	if (rc == -1) {
+		error("(%s: %d: %s) asprintf failed", THIS_FILE, __LINE__, __FUNCTION__);
+		return SLURM_ERROR;
+	}
+
+	rc = remove(path_name);
+	if (rc) {
+		error("(%s: %d: %s) remove %s failed: %s", THIS_FILE, __LINE__,
+				__FUNCTION__, path_name, strerror(errno));
+		return SLURM_ERROR;
+	}
+	free(path_name);
 
 	/*
 	 * TO DO:
@@ -1364,15 +1406,15 @@ extern int switch_p_job_step_complete(switch_jobinfo_t *jobinfo,
 		free(errMsg);
 	}
 
-
 	/*
-	 * Inform the system that an application (i.e. job step) is terminating.
-	 * This is for tracking purposes for congestion management and power
-	 * management.
-	 *
-	 * TODO: Implement the actual call.
+	 * Release the reserved PMI port
 	 */
-	// alpsc_put_app_end_info();
+	rc = release_port(job->port);
+	if (rc != 0) {
+		error("(%s: %d: %s) Releasing port failed.", THIS_FILE, __LINE__,
+				__FUNCTION__);
+		return SLURM_ERROR;
+	}
 
 	return SLURM_SUCCESS;
 }
@@ -1396,6 +1438,19 @@ extern int switch_p_job_step_allocated(switch_jobinfo_t *jobinfo,
 
 extern int switch_p_slurmctld_init(void)
 {
+	int rc;
+	/*
+	 *  Initialize the port reservations.
+	 *  Each job step will be allocated one port from amongst this set of
+	 *  reservations for use by Cray's PMI for control tree communications.
+	 */
+	rc = init_port();
+	if (rc != 1) {
+		error("(%s: %d: %s) Initializing PMI reserve port table failed",
+				THIS_FILE, __LINE__, __FUNCTION__);
+		return SLURM_ERROR;
+	}
+
 	return SLURM_SUCCESS;
 }
 
@@ -1690,4 +1745,114 @@ static int get_cpu_total(void) {
 	free(lin);
 	TEMP_FAILURE_RETRY(fclose(f));
 	return total;
+}
+
+#define MIN_PORT	20000
+#define MAX_PORT	30000
+#define ATTEMPTS	2
+
+static uint32_t *port_resv = NULL;
+static int port_cnt = -1;
+static uint32_t last_alloc_port = 0;
+
+static int init_port() {
+
+	extern uint32_t *port_resv;
+	extern int port_cnt;
+	extern uint32_t last_alloc_port;
+
+	int i;
+	if (MAX_PORT < MIN_PORT) {
+		error("(%s: %d: %s) MAX_PORT: %d < MIN_PORT: %d", THIS_FILE, __LINE__, __FUNCTION__, MAX_PORT, MIN_PORT);
+		return -1;
+	}
+
+	port_cnt = MAX_PORT - MIN_PORT;
+	last_alloc_port = 0;
+	port_resv = xmalloc((MAX_PORT - MIN_PORT) * sizeof(uint32_t));
+
+	for (i=0; i<MAX_PORT; i++) {
+		port_resv[i]=0;
+	}
+	return 0;
+}
+
+static int assign_port(uint32_t *ret_port) {
+	int port, tmp, attempts = 0, rc;
+
+	if(port_resv == NULL) {
+		info("(%s: %d: %s) Reserved PMI Port Table not initialized",
+				THIS_FILE, __LINE__, __FUNCTION__);
+		rc = init_port();
+		if (rc != 1) {
+			error("(%s: %d: %s) Initializing PMI reserve port table failed",
+					THIS_FILE, __LINE__, __FUNCTION__);
+			return -1;
+		}
+		/*
+		 * This is the code that I think should be here, but until we resolve
+		 * when and if switch_p_slurmctld_init is called, the above is a
+		 * safe-guard.
+		error("(%s: %d: %s) Reserved PMI Port Table not initialized",
+				THIS_FILE, __LINE__, __FUNCTION__);
+		return -1;
+		*/
+	}
+
+	port = ++last_alloc_port % MAX_PORT;
+
+	/*
+	 * Find an unreserved port to assign.
+	 * Abandon the attempt if we've been through the available ports ATTEMPT
+	 * number of times
+	 */
+	while (port_resv[port]==1) {
+		tmp = port++ % (MAX_PORT - MIN_PORT);
+		port = tmp;
+		attempts++;
+		if ((attempts / port_cnt) >= ATTEMPTS) {
+			error("(%s: %d: %s) No free ports among %d ports.  Went through "
+					"entire port list %d times", THIS_FILE, __LINE__,
+					__FUNCTION__, port_cnt, ATTEMPTS);
+			return -1;
+		}
+	}
+
+	last_alloc_port = port;
+	*ret_port = (port + MIN_PORT);
+	return 0;
+}
+
+static int release_port(uint32_t real_port) {
+
+	uint32_t port = real_port - MIN_PORT;
+
+	if(port_resv == NULL) {
+		info("(%s: %d: %s) Reserved PMI Port Table not initialized",
+				THIS_FILE, __LINE__, __FUNCTION__);
+		rc = init_port();
+		if (rc != 1) {
+			error("(%s: %d: %s) Initializing PMI reserve port table failed",
+					THIS_FILE, __LINE__, __FUNCTION__);
+			return -1;
+		}
+
+		/*
+		 * This is the code that I think should be here, but until we resolve
+		 * when and if switch_p_slurmctld_init is called, the above is a
+		 * safe-guard.
+		error("(%s: %d: %s) Reserved PMI Port Table not initialized",
+				THIS_FILE, __LINE__, __FUNCTION__);
+		return -1;
+		*/
+	}
+
+	if (port_resv[port]) {
+		port_resv[port] = 0;
+	} else {
+		error("(%s: %d: %s) Port %d was not reserved. ", THIS_FILE, __LINE__,
+							__FUNCTION__, real_port);
+		return -1;
+	}
+	return 0;
 }
