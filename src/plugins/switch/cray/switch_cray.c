@@ -1427,12 +1427,13 @@ extern int switch_p_job_step_complete(switch_jobinfo_t *jobinfo,
 
 	/*
 	 * Release the reserved PMI port
+	 * If this fails, do not exit with an error.
 	 */
 	rc = release_port(job->port);
 	if (rc != 0) {
-		error("(%s: %d: %s) Releasing port failed.", THIS_FILE, __LINE__,
-				__FUNCTION__);
-		return SLURM_ERROR;
+		error("(%s: %d: %s) Releasing port %" PRIu32 "failed.", THIS_FILE,
+				__LINE__, __FUNCTION__, job->port);
+		// return SLURM_ERROR;
 	}
 
 	return SLURM_SUCCESS;
@@ -1772,9 +1773,20 @@ static int get_cpu_total(void) {
 
 static uint32_t *port_resv = NULL;
 static int port_cnt = -1;
-static uint32_t last_alloc_port = 0;
+static uint32_t last_alloc_port;
 
 /*
+ * Function: init_port
+ * Description:
+ *  Mallocs space for and initializes the reserved ports table.
+ *  0 in the table means free and 1 means reserved.
+ *  port_cnt is the total number of ports in the table.
+ *  last_alloc_port is the last allocated port, and it is using the table's
+ *  index, not the real port number.
+ *
+ * Returns
+ *  0 on success and -1 on failure.
+ *
  * TODO: Once we have the SchedMD code that actually calls
  * switch_p_slurmctld_init, I should take out the safety checks that
  * re-initialize the port reservation table.
@@ -1793,7 +1805,7 @@ static int init_port() {
 	}
 
 	port_cnt = MAX_PORT - MIN_PORT;
-	last_alloc_port = 0;
+	last_alloc_port = port_cnt;
 	port_resv = xmalloc(port_cnt * sizeof(uint32_t));
 
 	for (i=0; i<port_cnt; i++) {
@@ -1802,8 +1814,23 @@ static int init_port() {
 	return 0;
 }
 
-static int assign_port(uint32_t *ret_port) {
+/*
+ * Function: assign_port
+ * Description:
+ *  Looks for and assigns the next free port.
+ *  If there are no free ports, then it loops through the entire table
+ *  ATTEMPTS number of times before declaring a failure.
+ * Returns:
+ *  0 on success and -1 on failure.
+*/
+static int assign_port(uint32_t *real_port) {
 	int port, tmp, attempts = 0, rc;
+
+	if (real_port == NULL) {
+		error("(%s: %d: %s) real_port address was NULL.",
+				THIS_FILE, __LINE__, __FUNCTION__);
+		return -1;
+	}
 
 	if(port_resv == NULL) {
 		info("(%s: %d: %s) Reserved PMI Port Table not initialized",
@@ -1824,7 +1851,11 @@ static int assign_port(uint32_t *ret_port) {
 		*/
 	}
 
-	port = ++last_alloc_port % MAX_PORT;
+	/*
+	 * Ports is an index into the reserved port table.
+	 * The ports range from 0 up to port_cnt.
+	 */
+	port = ++last_alloc_port % port_cnt;
 
 	/*
 	 * Find an unreserved port to assign.
@@ -1844,14 +1875,35 @@ static int assign_port(uint32_t *ret_port) {
 	}
 
 	last_alloc_port = port;
-	*ret_port = (port + MIN_PORT);
+
+	/*
+	 * The port index must be scaled up by the MIN_PORT.
+	 */
+	*real_port = (port + MIN_PORT);
 	return 0;
 }
 
+/*
+ * Function: release_port
+ * Description:
+ *  Release the port.
+ *
+ * Returns:
+ *  0 on success and -1 on failure.
+*/
 static int release_port(uint32_t real_port) {
 
 	int rc;
-	uint32_t port = real_port - MIN_PORT;
+	uint32_t port;
+
+	if ((real_port < MIN_PORT) || (real_port >= MAX_PORT)) {
+		error("(%s: %d: %s) Port %" PRIu32 "outside of valid range %" PRIu32
+				": %" PRIu32, THIS_FILE, __LINE__, __FUNCTION__, real_port,
+				MIN_PORT, MAX_PORT);
+		return -1;
+	}
+
+	port = real_port - MIN_PORT;
 
 	if(port_resv == NULL) {
 		info("(%s: %d: %s) Reserved PMI Port Table not initialized",
@@ -1876,8 +1928,8 @@ static int release_port(uint32_t real_port) {
 	if (port_resv[port]) {
 		port_resv[port] = 0;
 	} else {
-		error("(%s: %d: %s) Port %d was not reserved. ", THIS_FILE, __LINE__,
-							__FUNCTION__, real_port);
+		error("(%s: %d: %s) Attempting to release port %d, but it was not "
+				"reserved. ", THIS_FILE, __LINE__, __FUNCTION__, real_port);
 		return -1;
 	}
 	return 0;
