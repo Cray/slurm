@@ -1438,12 +1438,18 @@ extern int switch_p_job_step_allocated(switch_jobinfo_t *jobinfo,
 
 extern int switch_p_slurmctld_init(void)
 {
+	int rc;
 	/*
 	 *  Initialize the port reservations.
 	 *  Each job step will be allocated one port from amongst this set of
 	 *  reservations for use by Cray's PMI for control tree communications.
 	 */
-	init_port();
+	rc = init_port();
+	if (rc != 1) {
+		error("(%s: %d: %s) Initializing PMI reserve port table failed",
+				THIS_FILE, __LINE__, __FUNCTION__);
+		return SLURM_ERROR;
+	}
 
 	return SLURM_SUCCESS;
 }
@@ -1751,6 +1757,10 @@ static uint32_t last_alloc_port = 0;
 
 static int init_port() {
 
+	extern uint32_t *port_resv;
+	extern int port_cnt;
+	extern uint32_t last_alloc_port;
+
 	int i;
 	if (MAX_PORT < MIN_PORT) {
 		error("(%s: %d: %s) MAX_PORT: %d < MIN_PORT: %d", THIS_FILE, __LINE__, __FUNCTION__, MAX_PORT, MIN_PORT);
@@ -1768,12 +1778,25 @@ static int init_port() {
 }
 
 static int assign_port(uint32_t *ret_port) {
-	int port, tmp, attempts = 0;
+	int port, tmp, attempts = 0, rc;
 
 	if(port_resv == NULL) {
+		info("(%s: %d: %s) Reserved PMI Port Table not initialized",
+				THIS_FILE, __LINE__, __FUNCTION__);
+		rc = init_port();
+		if (rc != 1) {
+			error("(%s: %d: %s) Initializing PMI reserve port table failed",
+					THIS_FILE, __LINE__, __FUNCTION__);
+			return -1;
+		}
+		/*
+		 * This is the code that I think should be here, but until we resolve
+		 * when and if switch_p_slurmctld_init is called, the above is a
+		 * safe-guard.
 		error("(%s: %d: %s) Reserved PMI Port Table not initialized",
 				THIS_FILE, __LINE__, __FUNCTION__);
-				return -1;
+		return -1;
+		*/
 	}
 
 	port = ++last_alloc_port % MAX_PORT;
@@ -1805,9 +1828,23 @@ static int release_port(uint32_t real_port) {
 	uint32_t port = real_port - MIN_PORT;
 
 	if(port_resv == NULL) {
+		info("(%s: %d: %s) Reserved PMI Port Table not initialized",
+				THIS_FILE, __LINE__, __FUNCTION__);
+		rc = init_port();
+		if (rc != 1) {
+			error("(%s: %d: %s) Initializing PMI reserve port table failed",
+					THIS_FILE, __LINE__, __FUNCTION__);
+			return -1;
+		}
+
+		/*
+		 * This is the code that I think should be here, but until we resolve
+		 * when and if switch_p_slurmctld_init is called, the above is a
+		 * safe-guard.
 		error("(%s: %d: %s) Reserved PMI Port Table not initialized",
 				THIS_FILE, __LINE__, __FUNCTION__);
 		return -1;
+		*/
 	}
 
 	if (port_resv[port]) {
