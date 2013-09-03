@@ -270,6 +270,7 @@ void delete_job_details(struct job_record *job_entry)
 	if (IS_JOB_FINISHED(job_entry))
 		_delete_job_desc_files(job_entry->job_id);
 
+	xfree(job_entry->details->acctg_freq);
 	for (i=0; i<job_entry->details->argc; i++)
 		xfree(job_entry->details->argv[i]);
 	xfree(job_entry->details->argv);
@@ -2789,13 +2790,15 @@ struct job_record *_job_rec_copy(struct job_record *job_ptr)
 	struct job_record *job_ptr_new = NULL, *save_job_next;
 	struct job_details *job_details, *details_new, *save_details;
 	uint32_t save_job_id;
+	priority_factors_object_t *save_prio_factors;
+	List save_step_list;
 	int error_code = SLURM_SUCCESS;
 	int i;
 
 	job_ptr_new = create_job_record(&error_code);
 	if (!job_ptr_new)     /* MaxJobCount checked when job array submitted */
 		fatal("job array create_job_record error");
-	if (!job_ptr_new || (error_code != SLURM_SUCCESS))
+	if (error_code != SLURM_SUCCESS)
 		return job_ptr_new;
 
 	/* Set job-specific ID and hash table */
@@ -2808,10 +2811,15 @@ struct job_record *_job_rec_copy(struct job_record *job_ptr)
 	save_job_id   = job_ptr_new->job_id;
 	save_job_next = job_ptr_new->job_next;
 	save_details  = job_ptr_new->details;
+	save_prio_factors = job_ptr_new->prio_factors;
+	save_step_list = job_ptr_new->step_list;
 	memcpy(job_ptr_new, job_ptr, sizeof(struct job_record));
 	job_ptr_new->job_id   = save_job_id;
 	job_ptr_new->job_next = save_job_next;
 	job_ptr_new->details  = save_details;
+	job_ptr_new->prio_factors = save_prio_factors;
+	job_ptr_new->step_list = save_step_list;
+
 	job_ptr_new->account = xstrdup(job_ptr->account);
 	job_ptr_new->alias_list = xstrdup(job_ptr->alias_list);
 	job_ptr_new->alloc_node = xstrdup(job_ptr->alloc_node);
@@ -2848,12 +2856,11 @@ struct job_record *_job_rec_copy(struct job_record *job_ptr)
 		job_ptr_new->node_bitmap_cg = bit_copy(job_ptr->node_bitmap_cg);
 	job_ptr_new->nodes_completing = xstrdup(job_ptr->nodes_completing);
 	job_ptr_new->partition = xstrdup(job_ptr->partition);
-	job_ptr_new->profile = job_ptr->profile;
 	job_ptr_new->part_ptr_list = part_list_copy(job_ptr->part_ptr_list);
-	if (job_ptr->prio_factors) {
-		i = sizeof(priority_factors_object_t);
-		job_ptr_new->prio_factors = xmalloc(i);
-		memcpy(job_ptr_new->prio_factors, job_ptr->prio_factors, i);
+	if (job_ptr->part_ptr_list) {
+		i = list_count(job_ptr->part_ptr_list) * sizeof(uint32_t);
+		job_ptr_new->priority_array = xmalloc(i);
+		memcpy(job_ptr_new->priority_array, job_ptr->priority_array, i);
 	}
 	job_ptr_new->resv_name = xstrdup(job_ptr->resv_name);
 	job_ptr_new->resp_host = xstrdup(job_ptr->resp_host);
@@ -2871,12 +2878,12 @@ struct job_record *_job_rec_copy(struct job_record *job_ptr)
 		}
 	}
 	job_ptr_new->state_desc = xstrdup(job_ptr->state_desc);
-	job_ptr_new->step_list = list_create(NULL);
 	job_ptr_new->wckey = xstrdup(job_ptr->wckey);
 
 	job_details = job_ptr->details;
 	details_new = job_ptr_new->details;
 	memcpy(details_new, job_details, sizeof(struct job_details));
+	details_new->acctg_freq = xstrdup(job_details->acctg_freq);
 	if (job_details->argc) {
 		details_new->argv =
 			xmalloc(sizeof(char *) * (job_details->argc + 1));
@@ -3195,9 +3202,10 @@ extern int job_allocate(job_desc_msg_t * job_specs, int immediate,
 /*
  * job_fail - terminate a job due to initiation failure
  * IN job_id - id of the job to be killed
+ * IN job_state - desired job state (JOB_BOOT_FAIL, JOB_NODE_FAIL, etc.)
  * RET 0 on success, otherwise ESLURM error code
  */
-extern int job_fail(uint32_t job_id)
+extern int job_fail(uint32_t job_id, uint16_t job_state)
 {
 	struct job_record *job_ptr;
 	time_t now = time(NULL);
@@ -3232,7 +3240,7 @@ extern int job_fail(uint32_t job_id)
 		} else
 			job_ptr->end_time       = now;
 		last_job_update                 = now;
-		job_ptr->job_state = JOB_FAILED | JOB_COMPLETING;
+		job_ptr->job_state = job_state | JOB_COMPLETING;
 		job_ptr->exit_code = 1;
 		job_ptr->state_reason = FAIL_LAUNCH;
 		xfree(job_ptr->state_desc);
@@ -5753,7 +5761,6 @@ static void _list_delete_job(void *job_entry)
 	xfree(job_ptr->resp_host);
 	xfree(job_ptr->resv_name);
 	free_job_resources(&job_ptr->job_resrcs);
-	select_g_select_jobinfo_free(job_ptr->select_jobinfo);
 	for (i=0; i<job_ptr->spank_job_env_size; i++)
 		xfree(job_ptr->spank_job_env[i]);
 	xfree(job_ptr->spank_job_env);
@@ -5762,6 +5769,9 @@ static void _list_delete_job(void *job_entry)
 		delete_step_records(job_ptr);
 		list_destroy(job_ptr->step_list);
 	}
+	/* select_jobinfo is used in delete_step_records so free it
+	   afterwards */
+	select_g_select_jobinfo_free(job_ptr->select_jobinfo);
 	xfree(job_ptr->wckey);
 	job_count--;
 	xfree(job_ptr);
@@ -10212,6 +10222,7 @@ extern int job_requeue (uid_t uid, uint32_t job_id, slurm_fd_t conn_fd,
 	job_ptr->pre_sus_time = (time_t) 0;
 	job_ptr->suspend_time = (time_t) 0;
 	job_ptr->tot_sus_time = (time_t) 0;
+
 	job_ptr->restart_cnt++;
 	/* Since the job completion logger removes the submit we need
 	 * to add it again. */

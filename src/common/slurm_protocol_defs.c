@@ -393,6 +393,7 @@ extern void slurm_free_job_desc_msg(job_desc_msg_t * msg)
 
 	if (msg) {
 		xfree(msg->account);
+		xfree(msg->acctg_freq);
 		xfree(msg->alloc_node);
 		if (msg->argv) {
 			for (i = 0; i < msg->argc; i++)
@@ -1270,6 +1271,8 @@ extern char *job_state_string(uint16_t inx)
 		return "NODE_FAIL";
 	case JOB_PREEMPTED:
 		return "PREEMPTED";
+	case JOB_BOOT_FAIL:
+		return "BOOT_FAIL";
 	default:
 		return "?";
 	}
@@ -1305,6 +1308,8 @@ extern char *job_state_string_compact(uint16_t inx)
 		return "NF";
 	case JOB_PREEMPTED:
 		return "PR";
+	case JOB_BOOT_FAIL:
+		return "BF";
 	default:
 		return "?";
 	}

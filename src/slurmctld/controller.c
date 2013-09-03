@@ -450,6 +450,8 @@ int main(int argc, char *argv[])
 		fatal( "failed to initialize job_submit plugin");
 	if (ext_sensors_init() != SLURM_SUCCESS )
 		fatal( "failed to initialize ext_sensors plugin");
+	if (switch_g_slurmctld_init() != SLURM_SUCCESS )
+		fatal( "failed to initialize switch plugin");
 
 	while (1) {
 		/* initialization for each primary<->backup switch */
@@ -665,6 +667,7 @@ int main(int argc, char *argv[])
 
 	/* Some plugins are needed to purge job/node data structures,
 	 * unplug after other data structures are purged */
+	ext_sensors_fini();
 	gres_plugin_fini();
 	job_submit_plugin_fini();
 	slurm_preempt_fini();
