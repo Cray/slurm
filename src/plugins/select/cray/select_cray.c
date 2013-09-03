@@ -34,6 +34,8 @@
  *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA.
 \*****************************************************************************/
 
+#define _GNU_SOURCE 1
+
 #ifdef HAVE_CONFIG_H
 #  include "config.h"
 #  if HAVE_STDINT_H
@@ -48,6 +50,7 @@
 #endif
 
 #include <stdio.h>
+#include <sys/poll.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -115,6 +118,22 @@ pthread_mutex_t aeld_mutex;		// Mutex for the above
 #define AELD_SESSION_INTERVAL	10	// aeld session create retry interval (s)
 #define AELD_SESSION_RETRIES	10	// aeld session create retries
 #define AELD_EVENT_INTERVAL		100	// aeld event sending interval (ms)
+
+/* Static functions used for aeld communication */
+static void _handle_aeld_error(const char *funcname, char *errMsg, int rv, 
+		alpsc_ev_session_t *session);
+static void _clear_event_list(void);
+static void _start_session(alpsc_ev_session_t **session, int *sessionfd); 
+static void *_aeld_event_loop(void *args);
+static void _initialize_event(alpsc_ev_app_t *event, 
+	struct job_record *job_ptr, struct step_record *step_ptr,
+	alpsc_ev_app_state_e state);
+static void _copy_event(alpsc_ev_app_t *dest, alpsc_ev_app_t *src);
+static void _free_event(alpsc_ev_app_t *event);
+static void _add_to_app_list(alpsc_ev_app_t **list, int32_t *size, 
+		size_t *capacity, alpsc_ev_app_t *app);
+static void _update_app(struct job_record *job_ptr, struct step_record *step_ptr,
+		alpsc_ev_app_state_e state);
 
 /* All current (2011) XT/XE installations have a maximum dimension of 3,
  * smaller systems deploy a 2D Torus which has no connectivity in
@@ -391,14 +410,13 @@ static void _initialize_event(alpsc_ev_app_t *event,
 	hostlist_t hl;
 	hostlist_iterator_t hlit;
 	char *node;
-	int32_t nid;
 	int rv;
 
 	event->apid = SLURM_ID_HASH(job_ptr->job_id, step_ptr->step_id);
 	event->uid = job_ptr->user_id;
 	event->app_name = xstrdup(step_ptr->name);
 	event->batch_id = xmalloc(20);	// More than enough to hold max uint32
-	snprintf(event->batchid, 20, "%"PRIu32, job_ptr->job_id);
+	snprintf(event->batch_id, 20, "%"PRIu32, job_ptr->job_id);
 	event->state = state;
 	event->nodes = NULL;
 	event->num_nodes = 0;
@@ -415,7 +433,7 @@ static void _initialize_event(alpsc_ev_app_t *event,
 			return;
 		}
 
-		event->nodes = xmalloc(step_ptr->step_layout->num_nodes 
+		event->nodes = xmalloc(step_ptr->step_layout->node_cnt 
 				* sizeof(int32_t));
 		
 		while ((node = hostlist_next(hlit)) != NULL) {
@@ -502,13 +520,14 @@ static void _update_app(struct job_record *job_ptr, struct step_record *step_ptr
 	pthread_mutex_lock(&aeld_mutex);
 
 	// Add it to the event list
-	_add_to_app_list(&event_list, &event_list_size, &event_list_capacity, app);
+	_add_to_app_list(&event_list, &event_list_size, &event_list_capacity, 
+			&app);
 	
 	// Now deal with the app list
 	switch(state) {
 	case ALPSC_EV_START:
 		// This is new, add to the app list
-		_add_to_app_list(&app_list, &app_list_size, &app_list_capacity, app);
+		_add_to_app_list(&app_list, &app_list_size, &app_list_capacity, &app);
 		break;
 	case ALPSC_EV_END:
 		// Search for the app matching this apid
@@ -915,12 +934,12 @@ extern int select_p_job_fini(struct job_record *job_ptr)
 extern int select_p_job_suspend(struct job_record *job_ptr, bool indf_susp)
 {
 	ListIterator i;
-	step_record *step_ptr = NULL;
+	struct step_record *step_ptr = NULL;
 
 	// Make an event for each job step
 	if (aeld_running) {
 		i = list_iterator_create(job_ptr->step_list);
-		while ((step_ptr = (step_record *)list_next(i)) != NULL) {
+		while ((step_ptr = (struct step_record *)list_next(i)) != NULL) {
 			_update_app(job_ptr, step_ptr, ALPSC_EV_SUSPEND);
 		}
 	}
@@ -931,12 +950,12 @@ extern int select_p_job_suspend(struct job_record *job_ptr, bool indf_susp)
 extern int select_p_job_resume(struct job_record *job_ptr, bool indf_susp)
 {
 	ListIterator i;
-	step_record *step_ptr = NULL;
+	struct step_record *step_ptr = NULL;
 
 	// Make an event for each job step
 	if (aeld_running) {
 		i = list_iterator_create(job_ptr->step_list);
-		while ((step_ptr = (step_record *)list_next(i)) != NULL) {
+		while ((step_ptr = (struct step_record *)list_next(i)) != NULL) {
 			_update_app(job_ptr, step_ptr, ALPSC_EV_RESUME);
 		}
 	}
