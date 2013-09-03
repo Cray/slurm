@@ -209,7 +209,7 @@ extern int task_p_pre_launch (stepd_step_rec_t *job)
 	snprintf(buff, sizeof(buff), "%d", job->envtp->procid);
 	rc = env_array_overwrite(&job->env,"ALPS_APP_PE", buff);
 	if (rc == 0) {
-		debug("Failed to set env variable ALPS_APP_PE");
+		error("Failed to set env variable ALPS_APP_PE");
 		return SLURM_ERROR;
 	}
 
@@ -218,7 +218,7 @@ extern int task_p_pre_launch (stepd_step_rec_t *job)
 	 */
 	rc = env_array_overwrite(&job->env,"PMI_NO_FORK", "1");
 	if (rc == 0) {
-		debug("Failed to set env variable PMI_NO_FORK");
+		error("Failed to set env variable PMI_NO_FORK");
 		return SLURM_ERROR;
 	}
 
@@ -226,7 +226,7 @@ extern int task_p_pre_launch (stepd_step_rec_t *job)
 	snprintf(buff, sizeof(buff), "%d", job->envtp->localid + 1);
 	rc = env_array_overwrite(&job->env, LLI_STATUS_OFFS_ENV, buff);
 	if (rc == 0) {
-		debug("Failed to set env variable %s", LLI_STATUS_OFFS_ENV);
+		error("Failed to set env variable %s", LLI_STATUS_OFFS_ENV);
 		return SLURM_ERROR;
 	}
 
@@ -257,14 +257,14 @@ extern int task_p_pre_launch_priv (stepd_step_rec_t *job)
 		if (errno == EEXIST) {
 		    return SLURM_SUCCESS;
 		}
-		debug("%s: creat(%s) failed: %m", __func__, llifile);
+		error("%s: creat(%s) failed: %m", __func__, llifile);
 		return SLURM_ERROR;
 	}
 
 	// Resize it to job->node_tasks + 1
 	rv = ftruncate(fd, job->node_tasks + 1);
 	if (rv == -1) {
-		debug("%s: ftruncate(%s) failed: %m", __func__, llifile);
+		error("%s: ftruncate(%s) failed: %m", __func__, llifile);
 		TEMP_FAILURE_RETRY(close(fd));
 		return SLURM_ERROR;
 	}
@@ -272,7 +272,7 @@ extern int task_p_pre_launch_priv (stepd_step_rec_t *job)
 	// Change owner/group so app can write to it
 	rv = fchown(fd, job->uid, job->gid);
 	if (rv == -1) {
-		debug("%s: chown(%s) failed: %m", __func__, llifile);
+		error("%s: chown(%s) failed: %m", __func__, llifile);
 		TEMP_FAILURE_RETRY(close(fd));
 		return SLURM_ERROR;
 	}
@@ -303,14 +303,14 @@ extern int task_p_post_term (stepd_step_rec_t *job, stepd_step_task_info_t *task
 	// Open the lli file.
 	fd = open(llifile, O_RDONLY);
 	if (fd == -1) {
-		debug("%s: open(%s) failed: %m", __func__, llifile);
+		error("%s: open(%s) failed: %m", __func__, llifile);
 		return SLURM_ERROR;
 	}
 
 	// Read the first byte (indicates starting)
 	rv = read(fd, &status, sizeof(status));
 	if (rv == -1) {
-		debug("%s: read failed: %m", __func__);	
+		error("%s: read failed: %m", __func__);
 		return SLURM_ERROR;
 	}
 
@@ -324,7 +324,7 @@ extern int task_p_post_term (stepd_step_rec_t *job, stepd_step_task_info_t *task
 	// Seek to the correct offset (job->envtp->localid + 1)
 	rv = lseek(fd, job->envtp->localid + 1, SEEK_SET);
 	if (rv == -1) {
-		debug("%s: lseek failed: %m", __func__);
+		error("%s: lseek failed: %m", __func__);
 		TEMP_FAILURE_RETRY(close(fd));
 		return SLURM_ERROR;
 	}
@@ -333,7 +333,7 @@ extern int task_p_post_term (stepd_step_rec_t *job, stepd_step_task_info_t *task
 	rv = read(fd, &status, sizeof(status));
 	TEMP_FAILURE_RETRY(close(fd));
 	if (rv == -1) {
-		debug("%s: read failed: %m", __func__);	
+		error("%s: read failed: %m", __func__);
 		return SLURM_SUCCESS;
 	}
 
@@ -365,7 +365,7 @@ extern int task_p_post_step (stepd_step_rec_t *job)
 	errno = 0; 
 	rv = unlink(llifile);
 	if (rv == -1 && errno != ENOENT) {
-		debug("%s: unlink(%s) failed: %m", __func__, llifile);
+		error("%s: unlink(%s) failed: %m", __func__, llifile);
 	} else if (rv == 0) {
 		info("Unlinked %s", llifile);
 	}
