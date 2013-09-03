@@ -2004,7 +2004,7 @@ extern int select_p_job_test(struct job_record *job_ptr, bitstr_t * bitmap,
 {
 	int rc = EINVAL;
 	uint16_t job_node_req;
-	bool debug_cpu_bind = false, debug_check = false;
+	static bool debug_cpu_bind = false, debug_check = false;
 
 	xassert(bitmap);
 
@@ -2589,7 +2589,7 @@ bitstr_t *sequential_pick(bitstr_t *avail_bitmap, uint32_t node_cnt,
 	/* We have these cases here:
 	 *	1) Reservation requests using just number of nodes
 	 *		- core_cnt is null
-	 *	2) Reservations request using  number of nodes + number of cores
+	 *	2) Reservations request using number of nodes + number of cores
 	 *	3) Reservations request using node list
 	 *		- node_cnt is 0
 	 *		- core_cnt is null
@@ -2608,7 +2608,7 @@ bitstr_t *sequential_pick(bitstr_t *avail_bitmap, uint32_t node_cnt,
 		int i;
 		bit_fmt(str, (sizeof(str) - 1), avail_bitmap);
 		debug2("Reserving cores from nodes: %s", str);
-		for (i=0; i < num_nodes; i++)
+		for (i = 0; (i < num_nodes) && core_cnt[i]; i++)
 			total_core_cnt += core_cnt[i];
 	}
 
@@ -2642,16 +2642,15 @@ bitstr_t *sequential_pick(bitstr_t *avail_bitmap, uint32_t node_cnt,
 			int cores_in_node;
 			int local_cores;
 
-			if (node_cnt == 0)
+			if (node_cnt == 0) {
 				cores_per_node = core_cnt[node_list_inx];
+				if (cores_per_node == 0)
+					break;
+			}
 
 			inx = bit_ffs(avail_bitmap);
-			if (inx < 0) {
-				info("reservation request can not be satisfied");
-				FREE_NULL_BITMAP(sp_avail_bitmap);
-				FREE_NULL_BITMAP(tmpcore);
-				return NULL;
-			}
+			if (inx < 0)
+				break;
 			debug2("Using node %d", inx);
 
 			coff = cr_get_coremap_offset(inx);
@@ -2698,18 +2697,17 @@ bitstr_t *sequential_pick(bitstr_t *avail_bitmap, uint32_t node_cnt,
 				debug2("Reservation NOT using node %d", inx);
 			}
 			node_list_inx++;
-
 		}
 		FREE_NULL_BITMAP(tmpcore);
-
-		bit_fmt(str, (sizeof(str) - 1), *core_bitmap);
-		info("sequential pick using coremap: %s", str);
 
 		if (total_core_cnt) {
 			info("reservation request can not be satisfied");
 			FREE_NULL_BITMAP(sp_avail_bitmap);
 			return NULL;
 		}
+
+		bit_fmt(str, (sizeof(str) - 1), *core_bitmap);
+		info("sequential pick using coremap: %s", str);
 
 	} else { /* Reservation is using full nodes */
 
@@ -2785,7 +2783,7 @@ extern bitstr_t * select_p_resv_test(bitstr_t *avail_bitmap, uint32_t node_cnt,
 
 	bitstr_t  *avail_nodes_bitmap = NULL;	/* nodes on any switch */
 	bitstr_t *sp_avail_bitmap;
-	int rem_nodes, rem_cores;		/* remaining resources desired */
+	int rem_nodes, rem_cores = 0;		/* remaining resources desired */
 	int i, j;
 	int best_fit_inx, first, last;
 	int best_fit_nodes;
@@ -2809,12 +2807,12 @@ extern bitstr_t * select_p_resv_test(bitstr_t *avail_bitmap, uint32_t node_cnt,
 		*core_bitmap = _make_core_bitmap_filtered(avail_bitmap, 0);
 
 	rem_nodes = node_cnt;
-	rem_cores = core_cnt[0];
 
 	/* Assuming symmetric cluster */
-	if (core_cnt)
+	if (core_cnt) {
+		rem_cores = core_cnt[0];
 		cores_per_node = core_cnt[0] / MAX(node_cnt, 1);
-	else if (cr_node_num_cores)
+	} else if (cr_node_num_cores)
 		cores_per_node = cr_node_num_cores[0];
 	else
 		cores_per_node = 1;
