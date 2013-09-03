@@ -721,7 +721,7 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 	alpsc_branchInfo_t alpsc_branchInfo;
 
 
-    rc = alpsc_attach_cncu_container(&errMsg, sw_job->apid, job->cont_id);
+    rc = alpsc_attach_cncu_container(&errMsg, sw_job->jobid, job->cont_id);
 
 	if (rc != 1) {
 		if (errMsg) {
