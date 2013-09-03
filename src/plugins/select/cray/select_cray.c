@@ -57,6 +57,8 @@
 #include "src/slurmctld/locks.h"
 #include "other_select.h"
 
+#include "alpscomm_sn.h"
+
 /**
  * struct select_jobinfo - data specific to Cray node selection plugin
  * @magic:		magic number, must equal %JOBINFO_MAGIC
