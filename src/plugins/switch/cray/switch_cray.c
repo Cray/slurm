@@ -1465,7 +1465,7 @@ extern int switch_p_slurmctld_init(void)
 	 *  reservations for use by Cray's PMI for control tree communications.
 	 */
 	rc = init_port();
-	if (rc != 1) {
+	if (rc) {
 		error("(%s: %d: %s) Initializing PMI reserve port table failed",
 				THIS_FILE, __LINE__, __FUNCTION__);
 		return SLURM_ERROR;
