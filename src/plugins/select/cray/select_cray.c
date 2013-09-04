@@ -121,8 +121,8 @@ pthread_mutex_t aeld_mutex;		// Mutex for the above
 
 /* Static functions used for aeld communication */
 static void _handle_aeld_error(const char *funcname, char *errMsg, int rv, 
-		alpsc_ev_session_t *session);
-static void _clear_event_list(void);
+		alpsc_ev_session_t **session);
+static void _clear_event_list(alpsc_ev_app_t *list, int32_t *size);
 static void _start_session(alpsc_ev_session_t **session, int *sessionfd); 
 static void *_aeld_event_loop(void *args);
 static void _initialize_event(alpsc_ev_app_t *event, 
@@ -257,18 +257,37 @@ static int _run_nhc(uint64_t id, char *nodelist, bool step)
 }
 
 /*
+ * Clean up after a fatal error
+ */
+static void _aeld_cleanup(void)
+{
+	aeld_running = 0;
+
+	// Free any used memory
+	pthread_mutex_lock(&aeld_mutex);
+	_clear_event_list(app_list, &app_list_size);
+	app_list_capacity = 0;
+	free(app_list);
+	_clear_event_list(event_list, &event_list_size);
+	event_list_capacity = 0;
+	free(event_list);
+	pthread_mutex_unlock(&aeld_mutex);
+}
+
+/*
  * Deal with an aeld error.
  */
 static void _handle_aeld_error(const char *funcname, char *errMsg, int rv, 
-		alpsc_ev_session_t *session)
+		alpsc_ev_session_t **session)
 {
 	error("%s failed: %s", funcname, errMsg);
 	free(errMsg);
-	alpsc_ev_destroy_session(session);
+	alpsc_ev_destroy_session(*session);
+	*session = NULL;
 
 	// Unrecoverable errors
 	if (rv == 1 || rv == 2) {
-		aeld_running = 0;
+		_aeld_cleanup();
 		pthread_exit(NULL);
 	}
 	return;
@@ -278,14 +297,14 @@ static void _handle_aeld_error(const char *funcname, char *errMsg, int rv,
  * Clear all events from the event list. Must already have the aeld_mutex
  * locked.
  */
-static void _clear_event_list(void)
+static void _clear_event_list(alpsc_ev_app_t *list, int32_t *size)
 {
 	int32_t i;
 
-	for (i = 0; i < event_list_size; i++) {
-		_free_event(&event_list[i]);
+	for (i = 0; i < *size; i++) {
+		_free_event(&list[i]);
 	}
-	event_list_size = 0;
+	*size = 0;
 	return;
 }
 
@@ -301,7 +320,7 @@ static void _start_session(alpsc_ev_session_t **session, int *sessionfd)
 		pthread_mutex_lock(&aeld_mutex);
 		
 		// Clear out the event list
-		_clear_event_list();
+		_clear_event_list(event_list, &event_list_size);
 		
 		// Create the session
 		rv = alpsc_ev_create_session(&errMsg, session, app_list, 
@@ -311,13 +330,13 @@ static void _start_session(alpsc_ev_session_t **session, int *sessionfd)
 		
 		if (rv) {
 			_handle_aeld_error("alpsc_ev_create_session", errMsg, rv, 
-					*session);
+					session);
 		} else {
 			// Get the session fd
 			rv = alpsc_ev_get_session_fd(&errMsg, *session, sessionfd);
 			if (rv) {
 				_handle_aeld_error("alpsc_ev_get_session_fd", errMsg, rv,
-						*session);
+						session);
 			} else {
 				break;
 			}
@@ -329,7 +348,7 @@ static void _start_session(alpsc_ev_session_t **session, int *sessionfd)
 
 	if (try == AELD_SESSION_RETRIES) {
 		error("aeld session retry limit reached");
-		aeld_running = 0;
+		_aeld_cleanup();
 		pthread_exit(NULL);
 	}
 	
@@ -344,7 +363,7 @@ static void _start_session(alpsc_ev_session_t **session, int *sessionfd)
 static void *_aeld_event_loop(void *args)
 {
 	int rv, sessionfd;
-	alpsc_ev_session_t *session;
+	alpsc_ev_session_t *session = NULL;
 	struct pollfd fds[1];
 	char *errMsg;
 
@@ -363,13 +382,14 @@ static void *_aeld_event_loop(void *args)
 			rv = alpsc_ev_get_session_state(&errMsg, session);
 			if (rv > 0) {
 				_handle_aeld_error("alpsc_ev_get_session_state", errMsg, rv,
-					   session);
+					   &session);
 				_start_session(&session, &sessionfd);
 				fds[0].fd = sessionfd;
 			} else if (rv == -1) {
 				// Sync event
 				debug("aeld sync event");
 				alpsc_ev_destroy_session(session);
+				session = NULL;
 				_start_session(&session, &sessionfd);
 				fds[0].fd = sessionfd;
 			}
@@ -384,11 +404,11 @@ static void *_aeld_event_loop(void *args)
 					event_list_size);
 
 			// Clear the event list
-			_clear_event_list();
+			_clear_event_list(event_list, &event_list_size);
 			pthread_mutex_unlock(&aeld_mutex);
 			if (rv > 0) {
 				_handle_aeld_error("alpsc_ev_set_application_info", errMsg, rv,
-						session);
+						&session);
 				_start_session(&session, &sessionfd);
 				fds[0].fd = sessionfd;
 			}
@@ -398,7 +418,7 @@ static void *_aeld_event_loop(void *args)
 	}
 
 	error("%s: poll failed: %m", __func__);
-	aeld_running = 0;
+	_aeld_cleanup();	
 	return NULL;
 }
 
