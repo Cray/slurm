@@ -348,6 +348,8 @@ static void *_aeld_event_loop(void *args)
 	struct pollfd fds[1];
 	char *errMsg;
 
+	aeld_running = 1;
+
 	// Start out by creating a session
 	_start_session(&session, &sessionfd);
 
@@ -747,8 +749,10 @@ extern int init ( void )
 		plugin_id = 108;
 	debug_flags = slurm_get_debug_flags();
 
-	// Spawn the aeld thread
-	_spawn_cleanup_thread(NULL, _aeld_event_loop);
+	// Spawn the aeld thread, only in slurmctld.
+	if (run_in_daemon("slurmctld")) {
+	    _spawn_cleanup_thread(NULL, _aeld_event_loop);
+	}
 
 	verbose("%s loaded", plugin_name);
 	return SLURM_SUCCESS;
