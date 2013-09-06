@@ -1142,15 +1142,17 @@ extern int select_p_select_jobinfo_set(select_jobinfo_t *jobinfo,
 	int rc = SLURM_SUCCESS;
 	uint16_t *uint16 = (uint16_t *) data;
 	struct step_record *step_ptr;
-//	uint64_t *uint64 = (uint64_t *) data;
 
-	if (jobinfo == NULL) {
-		error("select/cray jobinfo_set: jobinfo not set");
-		return SLURM_ERROR;
-	}
-	if (jobinfo->magic != JOBINFO_MAGIC) {
-		error("select/cray jobinfo_set: jobinfo magic bad");
-		return SLURM_ERROR;
+	// STEP_START doesn't use jobinfo, skip checks
+	if (data_type != SELECT_JOBDATA_STEP_START) {	
+		if (jobinfo == NULL) {
+			error("select/cray jobinfo_set: jobinfo not set");
+			return SLURM_ERROR;
+		}
+		if (jobinfo->magic != JOBINFO_MAGIC) {
+			error("select/cray jobinfo_set: jobinfo magic bad");
+			return SLURM_ERROR;
+		}
 	}
 
 	switch (data_type) {

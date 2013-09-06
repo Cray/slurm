@@ -2302,11 +2302,8 @@ step_create(job_step_create_request_msg_t *step_specs,
 
 #ifdef HAVE_NATIVE_CRAY
 	// Indicate to select/cray that the step has started
-	// Use a fake select_jobinfo, isn't actually used for STEP_START
-	select_jobinfo = select_g_select_jobinfo_alloc();
 	select_g_select_jobinfo_set(select_jobinfo, SELECT_JOBDATA_STEP_START, 
 			step_ptr);
-	select_g_select_jobinfo_free(select_jobinfo);
 #endif
 	jobacct_storage_g_step_start(acct_db_conn, step_ptr);
 	return SLURM_SUCCESS;
