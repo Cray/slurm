@@ -244,7 +244,7 @@ if __name__ == "__main__":
 	with open(slurmconf + ".template", "r") as template:
 		text = template.read()
 		replace = { 
-			'{slurmdir}' : "@prefix@", 
+			'{sysconfdir}' : "@sysconfdir@", 
 			'{spooldir}' : "/var/spool/slurm",
 			'{defmem}' : str(min(node[1] for node in nodes)),
 			'{maxmem}' : str(max(node[1] for node in nodes)),
