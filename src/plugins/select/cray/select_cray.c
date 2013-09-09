@@ -515,7 +515,7 @@ static void _add_to_app_list(alpsc_ev_app_t **list, int32_t *size,
 		} else {
 			*capacity *= 2;
 		}
-		*list = xrealloc(*list, *capacity * sizeof(alpsc_ev_app_t *));
+		*list = xrealloc(*list, *capacity * sizeof(alpsc_ev_app_t));
 	}
 	
 	// Copy the event to the destination 
