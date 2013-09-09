@@ -315,7 +315,7 @@ static void _clear_event_list(alpsc_ev_app_t *list, int32_t *size)
  */ 
 static void _start_session(alpsc_ev_session_t **session, int *sessionfd) 
 {
-	int rv, try;
+	int rv;
 	char *errMsg;
 
 	while (1) {
