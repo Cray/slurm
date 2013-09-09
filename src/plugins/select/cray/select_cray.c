@@ -267,10 +267,10 @@ static void _aeld_cleanup(void)
 	pthread_mutex_lock(&aeld_mutex);
 	_clear_event_list(app_list, &app_list_size);
 	app_list_capacity = 0;
-	free(app_list);
+	xfree(app_list);
 	_clear_event_list(event_list, &event_list_size);
 	event_list_capacity = 0;
-	free(event_list);
+	xfree(event_list);
 	pthread_mutex_unlock(&aeld_mutex);
 }
 
