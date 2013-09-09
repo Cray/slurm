@@ -112,11 +112,12 @@ size_t app_list_capacity = 0;		// Capacity of app list
 alpsc_ev_app_t *event_list = NULL;	// List of app state changes
 int32_t event_list_size = 0;		// Number of events
 size_t event_list_capacity = 0;		// Capacity of event list
-volatile sig_atomic_t aeld_running = 0;	// 1 if the aeld thread is running
+volatile sig_atomic_t aeld_running = 0;	// 0 if the aeld thread has exited
+										// 1 if the session is temporarily down
+										// 2 if the session is running
 pthread_mutex_t aeld_mutex;		// Mutex for the above
 
-#define AELD_SESSION_INTERVAL	10	// aeld session create retry interval (s)
-#define AELD_SESSION_RETRIES	10	// aeld session create retries
+#define AELD_SESSION_INTERVAL	60	// aeld session create retry interval (s)
 #define AELD_EVENT_INTERVAL		100	// aeld event sending interval (ms)
 
 /* Static functions used for aeld communication */
@@ -282,6 +283,7 @@ static void _handle_aeld_error(const char *funcname, char *errMsg, int rv,
 {
 	error("%s failed: %s", funcname, errMsg);
 	free(errMsg);
+	aeld_running = 1;
 	alpsc_ev_destroy_session(*session);
 	*session = NULL;
 
@@ -316,7 +318,7 @@ static void _start_session(alpsc_ev_session_t **session, int *sessionfd)
 	int rv, try;
 	char *errMsg;
 
-	for (try = 0; try < AELD_SESSION_RETRIES; try++) {
+	while (1) {
 		pthread_mutex_lock(&aeld_mutex);
 		
 		// Clear out the event list
@@ -338,6 +340,7 @@ static void _start_session(alpsc_ev_session_t **session, int *sessionfd)
 				_handle_aeld_error("alpsc_ev_get_session_fd", errMsg, rv,
 						session);
 			} else {
+				aeld_running = 2;
 				break;
 			}
 		}
@@ -346,12 +349,6 @@ static void _start_session(alpsc_ev_session_t **session, int *sessionfd)
 		sleep(AELD_SESSION_INTERVAL);
 	}
 
-	if (try == AELD_SESSION_RETRIES) {
-		error("aeld session retry limit reached");
-		_aeld_cleanup();
-		pthread_exit(NULL);
-	}
-	
 	debug("%s: Created aeld session fd %d", __func__, *sessionfd);
 	return;
 }
@@ -388,6 +385,7 @@ static void *_aeld_event_loop(void *args)
 			} else if (rv == -1) {
 				// Sync event
 				debug("aeld sync event");
+				aeld_running = 1;
 				alpsc_ev_destroy_session(session);
 				session = NULL;
 				_start_session(&session, &sessionfd);
@@ -536,16 +534,25 @@ static void _update_app(struct job_record *job_ptr, struct step_record *step_ptr
 	int32_t i;
 	alpsc_ev_app_t app;
 
+	// If aeld thread isn't running, do nothing
+	if (aeld_running == 0) {
+		return;
+	}
+
 	// Fill in the new event
 	_initialize_event(&app, job_ptr, step_ptr, state);
 
 	pthread_mutex_lock(&aeld_mutex);
 
-	// Add it to the event list
-	_add_to_app_list(&event_list, &event_list_size, &event_list_capacity, 
-			&app);
+	// Add it to the event list, only if aeld is up
+	if (aeld_running == 2) {
+		_add_to_app_list(&event_list, &event_list_size, &event_list_capacity, 
+				&app);
+	}
 	
 	// Now deal with the app list
+	// Maintain app list even if aeld is down, so we have it ready when
+	// it comes up.
 	switch(state) {
 	case ALPSC_EV_START:
 		// This is new, add to the app list
