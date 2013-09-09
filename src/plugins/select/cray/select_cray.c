@@ -966,6 +966,7 @@ extern int select_p_job_suspend(struct job_record *job_ptr, bool indf_susp)
 		while ((step_ptr = (struct step_record *)list_next(i)) != NULL) {
 			_update_app(job_ptr, step_ptr, ALPSC_EV_SUSPEND);
 		}
+		list_iterator_destroy(i);
 	}
 
 	return other_job_suspend(job_ptr, indf_susp);
@@ -982,6 +983,7 @@ extern int select_p_job_resume(struct job_record *job_ptr, bool indf_susp)
 		while ((step_ptr = (struct step_record *)list_next(i)) != NULL) {
 			_update_app(job_ptr, step_ptr, ALPSC_EV_RESUME);
 		}
+		list_iterator_destroy(i);
 	}
 
 	return other_job_resume(job_ptr, indf_susp);
