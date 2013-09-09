@@ -174,6 +174,7 @@ Requires: cray-MySQL-devel-enterprise
 BuildRequires: cray-MySQL-devel-enterprise
 BuildRequires: cray-libalpscomm_cn-devel
 BuildRequires: cray-libalpscomm_sn-devel
+BuildRequires: cray-libnuma-devel
 BuildRequires: cray-libjob-devel
 BuildRequires: gtk2-devel
 BuildRequires: glib2-devel
