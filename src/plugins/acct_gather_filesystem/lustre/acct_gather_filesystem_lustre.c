@@ -127,7 +127,7 @@ const char proc_base_path[] = "/proc/fs/lustre/";
 /**
  *  is lustre fs supported
  **/
-static int _check_lustre_fs()
+static int _check_lustre_fs(void)
 {
 	static bool set = false;
 	static int rc = SLURM_SUCCESS;
@@ -147,8 +147,9 @@ static int _check_lustre_fs()
 				debug2("not able to read %s",
 					lustre_directory);
 				rc = SLURM_FAILURE;
+			} else {
+				closedir(proc_dir);
 			}
-			closedir(proc_dir);
 		} else
 			rc = SLURM_ERROR;
 	}
@@ -332,5 +333,10 @@ extern void acct_gather_filesystem_p_conf_options(s_p_options_t **full_options,
 						  int *full_options_cnt)
 {
 
+	return;
+}
+
+extern void acct_gather_filesystem_p_conf_values(List *data)
+{
 	return;
 }

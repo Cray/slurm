@@ -52,17 +52,15 @@
 #include <inttypes.h>
 #include <fcntl.h>
 #include "limits.h"
-#include <linux/limits.h>
-#include <numa.h>
-#include <bits/sched.h>
 
+#include <job.h>	/* Cray's job module component */
 #include "slurm/slurm.h"
 #include "slurm/slurm_errno.h"
 #include "src/common/slurm_xlator.h"
 #include "src/plugins/switch/cray/switch_cray.h"
 #include "src/common/pack.h"
-#include "src/plugins/switch/cray/alpscomm_cn.h"
-#include "src/plugins/switch/cray/alpscomm_sn.h"
+#include "alpscomm_cn.h"
+#include "alpscomm_sn.h"
 #include "src/common/gres.h"
 
 /*
@@ -109,7 +107,7 @@ static void print_alpsc_peInfo(alpsc_peInfo_t alps_info) {
 
 static void _print_jobinfo(slurm_cray_jobinfo_t *job)
 {
-	int i, j, rc, cnt;
+	int i, j, rc;
 	int32_t *nodes;
 
 
@@ -146,16 +144,10 @@ static void _print_jobinfo(slurm_cray_jobinfo_t *job)
 		info("  ------");
 		info("  task_cnt: %" PRIu32, job->step_layout->task_cnt);
 		info("  --- hosts to task---");
-		rc = list_str_to_array(job->step_layout->node_list, &cnt, &nodes);
+		rc = node_list_str_to_array(job->step_layout->node_cnt, job->step_layout->node_list, &nodes);
 		if (rc) {
 			error("(%s: %d: %s) node_list_str_to_array failed", THIS_FILE, __LINE__, __FUNCTION__);
 		}
-		if  (job->step_layout->node_cnt != cnt) {
-			error("(%s: %d: %s) list_str_to_array returned count %"
-					PRIu32 "does not match expected count %d", THIS_FILE,
-					__LINE__, __FUNCTION__, cnt, job->step_layout->node_list);
-		}
-
 		for (i=0; i < job->step_layout->node_cnt; i++) {
 			info("Host: %d", i);
 			for (j=0; j < job->step_layout->tasks[i]; j++) {
@@ -232,7 +224,7 @@ int switch_p_build_jobinfo(switch_jobinfo_t *switch_job,
 			   char *network)
 {
 
-	int i, rc, cnt;
+	int i, rc;
 	uint32_t port = 0;
 	int num_cookies = 2;
 	char *errMsg = NULL;
@@ -247,17 +239,10 @@ int switch_p_build_jobinfo(switch_jobinfo_t *switch_job,
 	}
 
 	xassert(job->magic == CRAY_JOBINFO_MAGIC);
-
-	rc = list_str_to_array(step_layout->node_list, &cnt, &nodes);
-
+	rc = node_list_str_to_array(step_layout->node_cnt, step_layout->node_list, &nodes);
 	if (rc < 0) {
-		error("(%s: %d: %s) list_str_to_array failed", THIS_FILE, __LINE__, __FUNCTION__);
+		error("(%s: %d: %s) node_list_str_to_array failed", THIS_FILE, __LINE__, __FUNCTION__);
 		return SLURM_ERROR;
-	}
-	if  (step_layout->node_cnt != cnt) {
-		error("(%s: %d: %s) list_str_to_array returned count %"
-				PRIu32 "does not match expected count %d", THIS_FILE,
-				__LINE__, __FUNCTION__, cnt, job->step_layout->node_list);
 	}
 
 	/*
@@ -703,7 +688,7 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 
 	slurm_cray_jobinfo_t *sw_job = (slurm_cray_jobinfo_t *)job->switch_job;
 	xassert(sw_job->magic == CRAY_JOBINFO_MAGIC);
-	int rc, numPTags, cmdIndex, num_app_cpus, i, j, cnt;
+	int rc, numPTags, cmdIndex, num_app_cpus, i, j;
 	int mem_scaling, cpu_scaling;
 	int total_cpus = 0;
 	uint32_t total_mem = 0, app_mem = 0;
@@ -945,18 +930,12 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 	 * The peNidArray maps tasks to nodes.
 	 * Basically, reverse the tids variable which maps nodes to tasks.
 	 */
-	rc = list_str_to_array(sw_job->step_layout->node_list, &cnt, &nodes);
-
+	rc = node_list_str_to_array(sw_job->step_layout->node_cnt,
+			sw_job->step_layout->node_list, &nodes);
 	if (rc < 0) {
-		error("(%s: %d: %s) list_str_to_array failed", THIS_FILE, __LINE__, __FUNCTION__);
+		error("(%s: %d: %s) node_list_str_to_array failed", THIS_FILE, __LINE__, __FUNCTION__);
 		return SLURM_ERROR;
 	}
-	if  (sw_job->step_layout->node_cnt != cnt) {
-		error("(%s: %d: %s) list_str_to_array returned count %"
-				PRIu32 "does not match expected count %d", THIS_FILE,
-				__LINE__, __FUNCTION__, cnt, job->step_layout->node_list);
-	}
-
 	task_to_nodes_map = xmalloc(sw_job->step_layout->task_cnt * sizeof(int32_t));
 
 	for (i=0; i<sw_job->step_layout->node_cnt; i++) {
@@ -1250,25 +1229,17 @@ int switch_p_job_fini(switch_jobinfo_t *jobinfo)
 	return SLURM_SUCCESS;
 }
 
-int switch_p_job_postfini(switch_jobinfo_t *jobinfo, uid_t pgid,
-			   uint32_t job_id, uint32_t step_id)
+int switch_p_job_postfini(stepd_step_rec_t *job)
 {
-	int rc, sz, cnt, lsz;
-	int32_t *numa_nodes;
-	char *errMsg = NULL, path[PATH_MAX];
-	FILE *f = NULL;
-	slurm_cray_jobinfo_t *sw_job =(slurm_cray_jobinfo_t *)jobinfo;
-	char *lin = NULL;
-	/*
-	 *  TO DO -- This is just a place-holder until I can get the actual
-	 *  uid of the application.
-	 */
-	uid_t uid = 0;
+	int rc;
+	char *errMsg = NULL;
+	uid_t pgid = job->jmgr_pid;
 
-	if (NULL == jobinfo) {
+	if (NULL == job) {
 		error("(%s: %d: %s) jobinfo was NULL", THIS_FILE, __LINE__, __FUNCTION__);
 		return SLURM_ERROR;
 	}
+
 
 	/*
 	 *  Kill all processes in the job's session
@@ -1278,8 +1249,8 @@ int switch_p_job_postfini(switch_jobinfo_t *jobinfo, uid_t pgid,
 		       (unsigned long) pgid);
 		kill(-pgid, SIGKILL);
 	} else
-		info("Job %u.%u: Bad pid value %lu", job_id,
-		      step_id, (unsigned long) pgid);
+		info("Job %u.%u: Bad pid valud %lu", job->jobid,
+		      job->stepid, (unsigned long) pgid);
 	/*
 	 * Clean-up
 	 *
@@ -1317,41 +1288,10 @@ int switch_p_job_postfini(switch_jobinfo_t *jobinfo, uid_t pgid,
 	}
 	// do_drop_caches();
 
+	// Compact Memory
 	/*
-	 * Compact Memory
-	 * Determine which NUMA nodes an application is using.  Then, use that to
-	 * compact the memory.
-	 *
-	 * You'll find the NUMA node information in the following location.
-	 * /dev/cpuset/slurm/uid_<uid>/job_<jobID>/step_<stepID>/cpuset.mems
-	 */
-
-	rc = snprintf(path, sizeof(path), "/dev/cpuset/slurm/uid_%d/job_%" PRIu32
-			"/step_%" PRIu32, uid, job_id, step_id);
-	if (rc < 0) {
-		error("(%s: %d: %s) snprintf failed. Return code: %d",
-						THIS_FILE, __LINE__, __FUNCTION__, rc);
-		return SLURM_ERROR;
-	}
-
-	rc = get_numa_nodes(path, &cnt, &numa_nodes);
-	if (rc < 0) {
-		error("(%s: %d: %s) get_numa_nodes failed. Return code: %d",
-						THIS_FILE, __LINE__, __FUNCTION__, rc);
-		return SLURM_ERROR;
-	}
-
-	rc = get_cpu_masks(path, &cpuMasks);
-	if (rc < 0) {
-		error("(%s: %d: %s) get_cpu_masks failed. Return code: %d",
-				THIS_FILE, __LINE__, __FUNCTION__, rc);
-		return SLURM_ERROR;
-	}
-
-	alpsc_compact_mem(&errMsg, cnt, numa_nodes, cpuMasks, path);
-
-	xfree(numa_nodes);
-	xfree(cpuMasks);
+	alpsc_compact_mem(&errMsg, int numNodes, int *numaNodes,
+	    cpu_set_t *cpuMasks, const char *cpusetDir);
 
 	if (rc != 1) {
 		if (errMsg) {
@@ -1368,7 +1308,7 @@ int switch_p_job_postfini(switch_jobinfo_t *jobinfo, uid_t pgid,
 		info("(%s: %d: %s) alpsc_compact_mem: %s", THIS_FILE, __LINE__, __FUNCTION__, errMsg);
 		free(errMsg);
 	}
-
+	 */
 
 	return SLURM_SUCCESS;
 }
@@ -1612,72 +1552,74 @@ static int get_first_pe(uint32_t nodeid, uint32_t task_count,
 }
 
 /*
- * Function: list_str_to_array
+ * Function: node_list_str_to_array
  * Description:
- * 	Convert the list string into an array of integers.
+ * 	Convert the node_list string into an array of nid integers.
  *
- * IN list -- The list string
- * OUT cnt  -- The number of numbers in the list string
- * OUT numbers -- Array of integers;  Caller is responsible to xfree()
+ * IN node_cnt  -- The number of nodes in the node list string
+ * IN node_list -- The node_list string
+ * OUT nodes    -- Array of node_cnt nids;  Caller is responsible to xfree()
  *                 this.
  *
  * RETURNS
  * Returns 0 on success and -1 on failure.
  */
 
-static int list_str_to_array(char *list, *cnt, int32_t **numbers) {
+static int node_list_str_to_array(uint32_t node_cnt, char *node_list,
+		int32_t **nodes) {
 
-	int32_t *item_ptr = NULL;
+	int32_t *nodes_ptr = NULL;
 	hostlist_t hl;
-	int i, ret = 0, num_items;
-	char *str, *cptr;
+	int i, ret = 0, num_nodes_in_node_list;
+	char *node_str, *cptr;
 
 	/*
 	 * Create a hostlist
 	 */
-	if ((hl = hostlist_create(list)) == NULL) {
+	if ((hl = hostlist_create(node_list)) == NULL) {
 		error("hostlist_create error on %s",
-				list);
+				node_list);
 		return -1;
 	}
 
-	num_items = hostlist_count(hl);
-	*cnt = num_items;
-
-	if (num_items == 0) {
-		*numbers = NULL;
-		return 0;
+	num_nodes_in_node_list = hostlist_count(hl);
+	if (num_nodes_in_node_list != node_cnt) {
+		error("(%s: %d: %s) Node count does not match the number of nodes in "
+				"the node list: %" PRIu32 " vs %d", THIS_FILE, __LINE__,
+				__FUNCTION__, node_cnt, num_nodes_in_node_list);
+		hostlist_destroy(hl);
+		return -1;
 	}
 
 	/*
-	 * Create an integer array of item_ptr in the same order as in the list.
+	 * Create an integer array of nodes_ptr in the same order as in the node_list.
 	 */
-	item_ptr = *numbers = xmalloc(num_items * sizeof(uint32_t));
-	if (item_ptr == NULL) {
+	nodes_ptr = *nodes = xmalloc(node_cnt * sizeof(uint32_t));
+	if (nodes_ptr == NULL) {
 		error("(%s: %d: %s) xmalloc failed", THIS_FILE, __LINE__, __FUNCTION__);
 		hostlist_destroy(hl);
 		return -1;
 	}
-	for (i = 0; i < num_items; i++) {
-		// str must be freed using free(), not xfree()
-		str = hostlist_shift(hl);
-		if (str == NULL) {
+	for (i = 0; i < node_cnt; i++) {
+		// node_str must be freed using free(), not xfree()
+		node_str = hostlist_shift(hl);
+		if (node_str == NULL) {
 			error("(%s: %d: %s) hostlist_shift error", THIS_FILE, __LINE__, __FUNCTION__);
-			xfree(item_ptr);
+			xfree(nodes_ptr);
 			hostlist_destroy(hl);
 			return -1;
 		}
-		cptr = strpbrk(str, "0123456789");
+		cptr = strpbrk(node_str, "0123456789");
 		if (cptr == NULL) {
 			error("(%s: %d: %s) Error: Node was not recognizable: %s", THIS_FILE,
-					__LINE__, __FUNCTION__, str);
-			free(str);
-			xfree(item_ptr);
+					__LINE__, __FUNCTION__, node_str);
+			free(node_str);
+			xfree(nodes_ptr);
 			hostlist_destroy(hl);
 			return -1;
 		}
-		item_ptr[i] = atoll(cptr);
-		free(str);
+		nodes_ptr[i] = atoll(cptr);
+		free(node_str);
 	}
 
 	// Clean up
@@ -1993,151 +1935,5 @@ static int release_port(uint32_t real_port) {
 				"reserved. ", THIS_FILE, __LINE__, __FUNCTION__, real_port);
 		return -1;
 	}
-	return 0;
-}
-
-/*
- * Function: get_numa_nodes
- * Description:
- *  Returns a count of the NUMA nodes that the application is running on.
- *
- *  Returns an array of NUMA nodes that the application is running on.
- *
- *
- *  IN char* path -- The path to the directory containing the files containing
- *                   information about NUMA nodes.
- *
- *  OUT *cnt -- The number of NUMA nodes in the array
- *  OUT **numa_array -- An integer array containing the NUMA nodes.  This array must be xfreed
- *                      by the caller.
- *
- * RETURN
- *  0 on success and -1 on failure.
- */
-static int get_numa_nodes(char *path, int *cnt, int32_t **numa_array) {
-	  struct bitmask *bm;
-	  int i, index, rc;
-	  char *cpu_string, buffer[PATH_MAX];
-
-	  snprintf(buffer, sizeof(buffer), "%s/%s", path, "cpuset.mems");
-	  if (rc < 0) {
-		  error("(%s: %d: %s) snprintf failed. Return code: %d",
-				  THIS_FILE, __LINE__, __FUNCTION__, rc);
-	  }
-
-	  bm = numa_parse_nodestring(buffer);
-	  if (bm == NULL) {
-	    error("(%s: %d: %s)Error numa_parse_nodestring", THIS_FILE, __LINE__,
-	    		__FUNCTION__);
-	    return -1;
-	  }
-
-	  *cnt = numa_bitmask_weight(bm);
-
-	  if (*cnt == 0) {
-	    error("(%s: %d: %s)Error no NUMA Nodes found.", THIS_FILE, __LINE__,
-	    		__FUNCTION__);
-	    return -1;
-	  }
-
-	  if (slurm_get_debug_flags() & DEBUG_FLAG_SWITCH) {
-		  info("Btimask size: %lu\nSizeof(*(bm->maskp)):%zd\n"
-				  "Bitmask %#lx\nBitmask weight(number of bits set): %u\n",
-				  bm->size, sizeof(*(bm->maskp)), *(bm->maskp),
-		         *cnt);
-
-	  }
-
-	  *numa_array = xmalloc (*cnt * sizeof(int32_t));
-	  if (*numa_array == NULL) {
-	    error("(%s: %d: %s)Error out of memory.\n", THIS_FILE, __LINE__,
-	    		__FUNCTION__);
-	    return -1;
-	  }
-
-	  index = 0;
-	  for (i = 0; i < bm->size; i++) {
-	    if (*(bm->maskp) & ((long unsigned)1 << i)) {
-	    	if (slurm_get_debug_flags() & DEBUG_FLAG_SWITCH) {
-	    		info("(%s: %d: %s)NUMA Node %d is present.\n", i, THIS_FILE,
-	    				__LINE__, __FUNCTION__);
-	    	}
-	      (*numa_array)[index++] = i;
-	    }
-	  }
-
-	  numa_free_nodemask(bm);
-
-	return 0;
-}
-
-/*
- * Function: get_cpu_masks
- * Description:
- *
- *  Returns a cpu_set_t contains the masks of the CPUs within the NUMA nodes
- *  that are in use by the application.
- *
- *  IN char* path -- The path to the directory containing the files containing
- *                   information about NUMA nodes.
- *  OUT cpu_set_t **cpuMasks -- Pointer to the CPUS used by the application.
- *                              Must be xfreed by the caller.
- * RETURN
- *  0 on success and -1 on failure.
- */
-static int get_cpu_masks(char *path, cpu_set_t **cpuMasks) {
-	struct bitmask *bm;
-	int i, index, rc, cnt;
-	char buffer[PATH_MAX];
-
-	snprintf(buffer, sizeof(buffer), "%s/%s", path, "cpuset.cpus");
-	if (rc < 0) {
-		error("(%s: %d: %s) snprintf failed. Return code: %d",
-				THIS_FILE, __LINE__, __FUNCTION__, rc);
-		return -1;
-	}
-
-	bm = numa_parse_cpustring(buffer);
-	if (bm == NULL) {
-		error("(%s: %d: %s)Error numa_parse_cpustring", THIS_FILE, __LINE__,
-				__FUNCTION__);
-		return -1;
-	}
-
-	cnt = numa_bitmask_weight(bm);
-	if (cnt == 0) {
-		error("(%s: %d: %s)Error no CPUs found.", THIS_FILE, __LINE__,
-				__FUNCTION__);
-		return -1;
-	}
-
-	if (slurm_get_debug_flags() & DEBUG_FLAG_SWITCH) {
-		info("Btimask size: %lu\nSizeof(*(bm->maskp)):%zd\n"
-				"Bitmask %#lx\nBitmask weight(number of bits set): %u\n",
-				bm->size, sizeof(*(bm->maskp)), *(bm->maskp),
-				cnt);
-
-	}
-
-	*cpuMasks = xmalloc(cnt * sizeof(cpu_set_t));
-	if (*cpuMasks == NULL) {
-		error("(%s: %d: %s)Error out of memory.\n", THIS_FILE, __LINE__,
-				__FUNCTION__);
-		return -1;
-	}
-
-	index = 0;
-	for (i = 0; i < bm->size; i++) {
-		if (*(bm->maskp) & ((long unsigned)1 << i)) {
-			if (slurm_get_debug_flags() & DEBUG_FLAG_SWITCH) {
-				info("(%s: %d: %s)CPU %d is present.\n", i, THIS_FILE,
-						__LINE__, __FUNCTION__);
-			}
-			(*cpuMasks)[index++] = i;
-		}
-	}
-
-	numa_free_cpumask(bm);
-
 	return 0;
 }

@@ -468,6 +468,7 @@ extern bool replace_batch_job(slurm_msg_t * msg, void *fini_job)
 
 		if ((job_ptr == fini_job_ptr) ||
 		    (job_ptr->priority == 0)  ||
+		    (job_ptr->details == NULL) ||
 		    !avail_front_end(job_ptr))
 			continue;
 
@@ -551,7 +552,7 @@ next_part:		part_ptr = (struct part_record *)
 			job_ptr->state_reason = WAIT_NO_REASON;
 
 		if ((job_ptr->state_reason == WAIT_NODE_NOT_AVAIL) &&
-		    job_ptr->details && job_ptr->details->req_node_bitmap &&
+		    job_ptr->details->req_node_bitmap &&
 		    !bit_super_set(job_ptr->details->req_node_bitmap,
 				   avail_node_bitmap)) {
 			continue;
@@ -584,7 +585,7 @@ next_part:		part_ptr = (struct part_record *)
 			continue;
 		}
 
-		if (job_ptr->details && job_ptr->details->exc_node_bitmap)
+		if (job_ptr->details->exc_node_bitmap)
 			have_node_bitmaps = true;
 		else
 			have_node_bitmaps = false;
@@ -1520,7 +1521,7 @@ extern int update_job_dependency(struct job_record *job_ptr, char *new_depend)
 	int rc = SLURM_SUCCESS;
 	uint16_t depend_type = 0;
 	uint32_t job_id = 0;
-	char *tok = new_depend, *sep_ptr, *sep_ptr2;
+	char *tok = new_depend, *sep_ptr, *sep_ptr2 = NULL;
 	List new_depend_list = NULL;
 	struct depend_spec *dep_ptr;
 	struct job_record *dep_job_ptr;
@@ -1653,7 +1654,7 @@ extern int update_job_dependency(struct job_record *job_ptr, char *new_depend)
 				break;
 			sep_ptr = sep_ptr2 + 1;	/* skip over ":" */
 		}
-		if (sep_ptr2[0] == ',')
+		if (sep_ptr2 && (sep_ptr2[0] == ','))
 			tok = sep_ptr2 + 1;
 		else
 			break;

@@ -1320,6 +1320,8 @@ _allocate_window_single(char *adapter_name, slurm_nrt_jobinfo_t *jp,
 		      hostname);
 		return SLURM_ERROR;
 	}
+	if (!adapter_name)	/* Fix CLANG false positive */
+		return SLURM_ERROR;
 
 	/* From Bill LePera, IBM, 4/18/2012:
 	 * The node_number field is normally set to the 32-bit IPv4 address
@@ -1338,10 +1340,8 @@ _allocate_window_single(char *adapter_name, slurm_nrt_jobinfo_t *jp,
 			}
 			continue;
 		}
-//		if ((network_id >= 0) && (adapter->network_id != network_id))
-//			continue;
 		if ((adapter_type != NRT_MAX_ADAPTER_TYPES) &&
-		    (adapter->adapter_type == adapter_type)) {
+		    (node->adapter_list[i].adapter_type == adapter_type)) {
 			adapter = &node->adapter_list[i];
 			break;
 		}
@@ -3628,6 +3628,8 @@ _wait_for_window_unloaded(char *adapter_name, nrt_adapter_t adapter_type,
 			info("_wait_for_window_unloaded");
 			_print_adapter_status(&status_adapter);
 		}
+		if (!status_array)	/* Fix for CLANG false positive */
+			break;
 		for (j = 0; j < window_count; j++) {
 			if (status_array[j].window_id == window_id)
 				break;

@@ -236,7 +236,7 @@ static void _hardware(void)
 {
 	char buf[1024];
 	FILE *fd;
-	int cpu, pkg;
+	int cpu = 0, pkg = 0;
 
 	if ((fd = fopen("/proc/cpuinfo", "r")) == 0)
 		fatal("RAPL: error on attempt to open /proc/cpuinfo");
@@ -545,5 +545,10 @@ extern void acct_gather_energy_p_conf_set(s_p_hashtbl_t *tbl)
 
 	verbose("%s loaded", plugin_name);
 
+	return;
+}
+
+extern void acct_gather_energy_p_conf_values(List *data)
+{
 	return;
 }

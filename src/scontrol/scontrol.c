@@ -1207,15 +1207,13 @@ _process_command (int argc, char *argv[])
 			exit_code = 1;
 			slurm_perror("job notify failure");
 		}
-	}
-	else {
+	}	else {
 		exit_code = 1;
 		fprintf (stderr, "invalid keyword: %s\n", tag);
 	}
 
 	return 0;
 }
-
 
 /*
  * _create_it - create a slurm configuration per the supplied arguments
@@ -1424,6 +1422,8 @@ _show_it (int argc, char *argv[])
 		scontrol_print_step (val);
 	} else if (strncasecmp (tag, "topology", MAX(tag_len, 1)) == 0) {
 		scontrol_print_topo (val);
+	} else if (strncasecmp(tag, "licenses", MAX(tag_len, 2)) == 0) {
+		scontrol_print_licenses(val);
 	} else {
 		exit_code = 1;
 		if (quiet_flag != 1)
@@ -1703,11 +1703,14 @@ _update_bluegene_subbp (int argc, char *argv[])
  */
 static int _update_slurmctld_debug(char *val)
 {
-	char *endptr;
+	char *endptr = NULL;
 	int error_code = SLURM_SUCCESS;
-	uint32_t level = (uint32_t)strtoul(val, &endptr, 10);
+	uint32_t level;
 
-	if (*endptr != '\0' || level > 9) {
+	if (val)
+		level = (uint32_t)strtoul(val, &endptr, 10);
+
+	if ((val == NULL) || (*endptr != '\0') || (level > 9)) {
 		error_code = 1;
 		if (quiet_flag != 1)
 			fprintf(stderr, "invalid debug level: %s\n",

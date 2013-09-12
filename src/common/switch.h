@@ -205,6 +205,11 @@ extern bool switch_g_part_comp(void);
 extern int switch_g_job_step_allocated(switch_jobinfo_t *jobinfo,
 	char *nodelist);
 
+/*
+ * Initialize the switch plugin on the slurmctld.
+ */
+extern int switch_g_slurmctld_init(void);
+
 /* write job credential string representation to a file
  * IN fp      - an open file pointer
  * IN jobinfo - a switch job credential
@@ -361,8 +366,7 @@ extern int switch_g_job_fini(switch_jobinfo_t *jobinfo);
  * that need to be run with root privileges should be run from this
  * function.
  */
-extern int switch_g_job_postfini(switch_jobinfo_t *jobinfo, uid_t pgid,
-				uint32_t job_id, uint32_t step_id );
+extern int switch_g_job_postfini(stepd_step_rec_t *job);
 
 /*
  * attach process to switch_g_job
