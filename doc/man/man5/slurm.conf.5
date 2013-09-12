@@ -1,4 +1,4 @@
-.TH "slurm.conf" "5" "August 2013" "slurm.conf 13.12" "Slurm configuration file"
+.TH "slurm.conf" "5" "September 2013" "slurm.conf 13.12" "Slurm configuration file"
 
 .SH "NAME"
 slurm.conf \- Slurm configuration file
@@ -121,28 +121,21 @@ Also see \fBDefaultStoragePort\fR.
 \fBAccountingStorageType\fR
 The accounting storage mechanism type.  Acceptable values at
 present include "accounting_storage/filetxt",
-"accounting_storage/mysql", "accounting_storage/none",
-"accounting_storage/pgsql", and "accounting_storage/slurmdbd".  The
+"accounting_storage/mysql", "accounting_storage/none"
+and "accounting_storage/slurmdbd".  The
 "accounting_storage/filetxt" value indicates that accounting records
 will be written to the file specified by the
 \fBAccountingStorageLoc\fR parameter.  The "accounting_storage/mysql"
-value indicates that accounting records will be written to a MySQL
-database specified by the \fBAccountingStorageLoc\fR parameter.  The
-"accounting_storage/pgsql" value indicates that accounting records
-will be written to a PostgreSQL database specified by the
-\fBAccountingStorageLoc\fR parameter.  The
-"accounting_storage/slurmdbd" value indicates that accounting records
-will be written to the SLURM DBD, which manages an underlying MySQL or
-PostgreSQL database. See "man slurmdbd" for more information.  The
+value indicates that accounting records will be written to a MySQL or
+MariaDB database specified by the \fBAccountingStorageLoc\fR parameter.
+The "accounting_storage/slurmdbd" value indicates that accounting records
+will be written to the SLURM DBD, which manages an underlying MySQL
+database. See "man slurmdbd" for more information.  The
 default value is "accounting_storage/none" and indicates that account
 records are not maintained.
 Note: The filetxt plugin records only a limited subset of accounting
 information and will prevent some sacct options from proper operation.
-Note: The PostgreSQL plugin is not
-complete and should not be used if wanting to use associations.  It
-will however work with basic accounting of jobs and job steps.  If
-interested in completing, please email slurm-dev@schedmd.com.  Also
-see \fBDefaultStorageType\fR.
+Also see \fBDefaultStorageType\fR.
 
 .TP
 \fBAccountingStorageUser\fR
@@ -535,13 +528,12 @@ Also see \fBAccountingStoragePort\fR and \fBJobCompPort\fR.
 .TP
 \fBDefaultStorageType\fR
 The accounting and job completion storage mechanism type.  Acceptable
-values at present include "filetxt", "mysql", "none", "pgsql", and
+values at present include "filetxt", "mysql", "none", and
 "slurmdbd".  The value "filetxt" indicates that records will be
 written to a file.  The value "mysql" indicates that accounting
-records will be written to a mysql database.  The default value is
-"none", which means that records are not maintained.  The value
-"pgsql" indicates that records will be written to a PostgreSQL
-database.  The value "slurmdbd" indicates that records will be written
+records will be written to a MySQL or MariaDB database. The default value is
+"none", which means that records are not maintained.
+The value "slurmdbd" indicates that records will be written
 to the SLURM DBD, which maintains its own database. See "man slurmdbd"
 for more information.
 Also see \fBAccountingStorageType\fR and \fBJobCompType\fR.
@@ -857,7 +849,7 @@ Also see \fBDefaultStoragePort\fR.
 \fBJobCompType\fR
 The job completion logging mechanism type.
 Acceptable values at present include "jobcomp/none", "jobcomp/filetxt",
-"jobcomp/mysql", "jobcomp/pgsql", and "jobcomp/script"".
+"jobcomp/mysql", and "jobcomp/script"".
 The default value is "jobcomp/none", which means that upon job completion
 the record of the job is purged from the system.  If using the accounting
 infrastructure this plugin may not be of interest since the information
@@ -865,9 +857,8 @@ here is redundant.
 The value "jobcomp/filetxt" indicates that a record of the job should be
 written to a text file specified by the \fBJobCompLoc\fR parameter.
 The value "jobcomp/mysql" indicates that a record of the job should be
-written to a mysql database specified by the \fBJobCompLoc\fR parameter.
-The value "jobcomp/pgsql" indicates that a record of the job should be
-written to a PostgreSQL database specified by the \fBJobCompLoc\fR parameter.
+written to a MySQL or MariaDB database specified by the \fBJobCompLoc\fR
+parameter.
 The value "jobcomp/script" indicates that a script specified by the
 \fBJobCompLoc\fR parameter is to be executed with environment variables
 indicating the job information.
@@ -1957,18 +1948,22 @@ Must be used with \fBCR_Socket\fR or \fBCR_Socket_Memory\fR option.
 CPUs are consumable resources.
 Configure the number of \fBCPUs\fR on each node, which may be equal to the
 count of cores or hyper\-threads on the node depending upon the desired minimum
-resource allocation. The node's \fBSockets\fR, \fBCoresPerSocket\fR and
-\fBThreadsPerCore\fR may also be configured if desired and may result in job
-allocations which have improved locality.
+resource allocation.
+The node's \fBBoards\fR, \fBSockets\fR, \fBCoresPerSocket\fR and
+\fBThreadsPerCore\fR may optionally be configured and result in job
+allocations which have improved locality; however doing so will prevent
+more than one job being from being allocated on each core.
 
 .TP
 \fBCR_CPU_Memory\fR
 CPUs and memory are consumable resources.
 Configure the number of \fBCPUs\fR on each node, which may be equal to the
 count of cores or hyper\-threads on the node depending upon the desired minimum
-resource allocation. The node's \fBSockets\fR, \fBCoresPerSocket\fR and
-\fBThreadsPerCore\fR may also be configured if desired and may result in job
-allocations which have improved locality.
+resource allocation.
+The node's \fBBoards\fR, \fBSockets\fR, \fBCoresPerSocket\fR and
+\fBThreadsPerCore\fR may optionally be configured and result in job
+allocations which have improved locality; however doing so will prevent
+more than one job being from being allocated on each core.
 Setting a value for \fBDefMemPerCPU\fR is strongly recommended.
 .TP
 \fBCR_Core\fR
@@ -2640,10 +2635,12 @@ used for scheduling purposes (depending upon the value of
 \fBFastSchedule\fR in the configuration file.
 .LP
 Default values can be specified with a record in which
-"NodeName" is "DEFAULT".
+\fBNodeName\fR is "DEFAULT".
 The default entry values will apply only to lines following it in the
 configuration file and the default values can be reset multiple times
 in the configuration file with multiple entries where "NodeName=DEFAULT".
+Each line where \fBNodeName\fR is "DEFAULT" will replace or add to previous
+default values and not a reinitialize the default values.
 The "NodeName=" specification must be placed on every line
 describing the configuration of nodes.
 A single node name can not appear as a NodeName value in more than one line
@@ -2705,6 +2702,8 @@ If the \fBNodeName\fR is "DEFAULT", the values specified
 with that record will apply to subsequent node specifications
 unless explicitly set to other values in that node record or
 replaced with a different set of default values.
+Each line where \fBNodeName\fR is "DEFAULT" will replace or add to previous
+default values and not a reinitialize the default values.
 For architectures in which the node order is significant,
 nodes will be considered consecutive in the order defined.
 For example, if the configuration for "NodeName=charlie" immediately
@@ -3013,6 +3012,8 @@ If the \fBFrontendName\fR is "DEFAULT", the values specified
 with that record will apply to subsequent node specifications
 unless explicitly set to other values in that frontend node record or
 replaced with a different set of default values.
+Each line where \fBFrontendName\fR is "DEFAULT" will replace or add to previous
+default values and not a reinitialize the default values.
 Note that since the naming of front end nodes would typically not follow that
 of the compute nodes (e.g. lacking X, Y and Z coordinates found in the compute
 node naming scheme), each front end node name should be listed separately and
@@ -3077,12 +3078,14 @@ partitions, each with different constraints (time limit, job sizes,
 groups allowed to use the partition, etc.).
 Jobs are allocated resources within a single partition.
 Default values can be specified with a record in which
-"PartitionName" is "DEFAULT".
+\fBPartitionName\fR is "DEFAULT".
 The default entry values will apply only to lines following it in the
 configuration file and the default values can be reset multiple times
 in the configuration file with multiple entries where "PartitionName=DEFAULT".
 The "PartitionName=" specification must be placed on every line
 describing the configuration of partitions.
+Each line where \fBPartitionName\fR is "DEFAULT" will replace or add to previous
+default values and not a reinitialize the default values.
 A single partition name can not appear as a PartitionName value in more than
 one line (duplicate partition name records will be ignored).
 If a partition that is in use is deleted from the configuration and slurm
@@ -3310,6 +3313,8 @@ If the \fBPartitionName\fR is "DEFAULT", the values specified
 with that record will apply to subsequent partition specifications
 unless explicitly set to other values in that partition record or
 replaced with a different set of default values.
+Each line where \fBPartitionName\fR is "DEFAULT" will replace or add to previous
+default values and not a reinitialize the default values.
 
 .TP
 \fBPreemptMode\fR
