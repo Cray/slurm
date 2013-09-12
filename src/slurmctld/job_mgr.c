@@ -56,6 +56,7 @@
 #include <strings.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/param.h>
 #include <unistd.h>
 
 #include "slurm/slurm_errno.h"
@@ -206,7 +207,6 @@ static int  _write_data_to_file(char *file_name, char *data);
 static int  _write_data_array_to_file(char *file_name, char **data,
 				      uint32_t size);
 static void _xmit_new_end_time(struct job_record *job_ptr);
-
 
 /*
  * create_job_record - create an empty job_record including job_details.
@@ -2734,7 +2734,7 @@ void dump_job_desc(job_desc_msg_t * job_specs)
 	       job_specs->mem_bind_type, job_specs->mem_bind,
 	       job_specs->plane_size);
 	debug3("   array_inx=%s", job_specs->array_inx);
-		
+
 	select_g_select_jobinfo_sprint(job_specs->select_jobinfo,
 				       buf, sizeof(buf), SELECT_PRINT_MIXED);
 	if (buf[0] != '\0')
@@ -2783,7 +2783,7 @@ extern void rehash_jobs(void)
 	}
 }
 
-/* Create an exact copy of an existing job record.
+/* Create an exact copy of an existing job record for a job array.
  * Assumes the job has no resource allocaiton */
 struct job_record *_job_rec_copy(struct job_record *job_ptr)
 {
@@ -2857,7 +2857,10 @@ struct job_record *_job_rec_copy(struct job_record *job_ptr)
 	job_ptr_new->nodes_completing = xstrdup(job_ptr->nodes_completing);
 	job_ptr_new->partition = xstrdup(job_ptr->partition);
 	job_ptr_new->part_ptr_list = part_list_copy(job_ptr->part_ptr_list);
-	if (job_ptr->part_ptr_list) {
+	/* On jobs that are held the priority_array isn't set up yet,
+	   so check to see if it exists before copying.
+	*/
+	if (job_ptr->part_ptr_list && job_ptr->priority_array) {
 		i = list_count(job_ptr->part_ptr_list) * sizeof(uint32_t);
 		job_ptr_new->priority_array = xmalloc(i);
 		memcpy(job_ptr_new->priority_array, job_ptr->priority_array, i);
@@ -3554,8 +3557,12 @@ extern int job_complete(uint32_t job_id, uid_t uid, bool requeue,
 			job_ptr->exit_code = job_return_code;
 			job_ptr->state_reason = FAIL_EXIT_CODE;
 			xfree(job_ptr->state_desc);
-		} else if (job_comp_flag &&		/* job was running */
-			   (job_ptr->end_time < now)) {	/* over time limit */
+		} else if (job_comp_flag
+		           && ((job_ptr->end_time
+		                + slurmctld_conf.over_time_limit * 60) < now)) {
+			/* Test if the job has finished before its allowed
+			 * over time has expired.
+			 */
 			job_ptr->job_state = JOB_TIMEOUT  | job_comp_flag;
 			job_ptr->exit_code = MAX(job_ptr->exit_code, 1);
 			job_ptr->state_reason = FAIL_TIMEOUT;
@@ -3720,7 +3727,7 @@ static int _valid_job_part(job_desc_msg_t * job_desc,
 {
 	int rc = SLURM_SUCCESS;
 	bool rebuild_name_list = false;
-	struct part_record *part_ptr, *part_ptr_tmp, *part_ptr_new;
+	struct part_record *part_ptr = NULL, *part_ptr_tmp, *part_ptr_new;
 	List part_ptr_list = NULL;
 	ListIterator iter;
 	uint32_t min_nodes_orig = INFINITE, max_nodes_orig = 1;
@@ -3816,6 +3823,13 @@ static int _valid_job_part(job_desc_msg_t * job_desc,
 			xstrcat(job_desc->partition, part_ptr_tmp->name);
 		}
 		list_iterator_destroy(iter);
+	}
+
+	if (part_ptr == NULL) {	/* Eliminates CLANG error */
+		info("_valid_job_part: invalid partition specified: %s",
+		     job_desc->partition);
+		rc = ESLURM_INVALID_PARTITION_NAME;
+		goto fini;
 	}
 
 	/* Validate job limits against partition limits */
@@ -4011,6 +4025,10 @@ extern int job_limits_check(struct job_record **job_pptr, bool check_min_time)
 	part_ptr = job_ptr->part_ptr;
 	qos_ptr = job_ptr->qos_ptr;
 	assoc_ptr = job_ptr->assoc_ptr;
+	if (!detail_ptr) {	/* To prevent CLANG error */
+		fatal("job %u has NULL details_ptr", job_ptr->job_id);
+		return WAIT_NO_REASON;
+	}
 
 #ifdef HAVE_BG
 	job_min_nodes = detail_ptr->min_cpus / cpus_per_node;
@@ -4577,8 +4595,10 @@ static bool _valid_array_inx(job_desc_msg_t *job_desc)
 	conf = slurm_conf_lock();
 	max_array_size = conf->max_array_sz;
 	slurm_conf_unlock();
-	if (max_array_size == 0)
+	if (max_array_size == 0) {
+		verbose("Job arrays disabled, MaxArraySize=0");
 		return false;
+	}
 
 	/* We have a job array request */
 	job_desc->immediate = 0;	/* Disable immediate option */
@@ -4596,20 +4616,25 @@ static bool _valid_array_inx(job_desc_msg_t *job_desc)
 	}
 	hs = hostset_create(array_str);
 	xfree(array_str);
-	if (!hs)
+	if (!hs) {
+		verbose("Invalid job array string (%s)", array_str);
 		return false;
+	}
 	array_str = hostset_shift(hs);
 	if (!array_str) {
 		hostset_destroy(hs);
+		verbose("Invalid job array string (%s)", array_str);
 		return false;
 	}
-	
+
 	job_desc->array_bitmap = bit_alloc(max_array_size);
 	while (array_str) {
 		array_id = strtol(array_str, &end_ptr, 10);
 		if ((array_str[0] == '\0') || (end_ptr[0] != '\0') ||
 		    (array_id < 0) || (array_id >= max_array_size)) {
 			valid = false;
+			verbose("Invalid job array element value (%d)",
+				array_id);
 		}
 		free(array_str);
 		if (!valid)
@@ -4618,8 +4643,10 @@ static bool _valid_array_inx(job_desc_msg_t *job_desc)
 		array_str = hostset_shift(hs);
 	}
 	hostset_destroy(hs);
-	if (valid && (bit_set_count(job_desc->array_bitmap) == 0))
+	if (valid && (bit_set_count(job_desc->array_bitmap) == 0)) {
 		valid = false;
+		verbose("Job array has no elements");
+	}
 
 	if (valid && (step > 1)) {
 		int i, j = 0;
@@ -4665,11 +4692,11 @@ extern int validate_job_create_req(job_desc_msg_t * job_desc)
 	    _test_strlen(job_desc->req_nodes, "req_nodes", 1024*64)	||
 	    _test_strlen(job_desc->reservation, "reservation", 1024)	||
 	    _test_strlen(job_desc->script, "script", 1024 * 1024 * 4)	||
-	    _test_strlen(job_desc->std_err, "std_err", 1024)		||
-	    _test_strlen(job_desc->std_in, "std_in", 1024)		||
-	    _test_strlen(job_desc->std_out, "std_out", 1024)		||
+	    _test_strlen(job_desc->std_err, "std_err", MAXPATHLEN)		||
+	    _test_strlen(job_desc->std_in, "std_in", MAXPATHLEN)		||
+	    _test_strlen(job_desc->std_out, "std_out", MAXPATHLEN)		||
 	    _test_strlen(job_desc->wckey, "wckey", 1024)		||
-	    _test_strlen(job_desc->work_dir, "work_dir", 1024))
+	    _test_strlen(job_desc->work_dir, "work_dir", MAXPATHLEN))
 		return ESLURM_PATHNAME_TOO_LONG;
 
 	if (!_valid_array_inx(job_desc))
@@ -5728,10 +5755,16 @@ static void _list_delete_job(void *job_entry)
 	       ((job_ptr = *job_pptr) != (struct job_record *) job_entry)) {
 		job_pptr = &job_ptr->job_next;
 	}
-	if (job_pptr == NULL)
+	if (job_pptr == NULL) {
 		fatal("job hash error");
+		return;	/* Fix CLANG false positive error */
+	}
 	*job_pptr = job_ptr->job_next;
 
+/*
+ * NOTE: Anything you free here also needs to be allocated memory copied
+ * when a job array is created in _job_rec_copy() above
+ */
 	delete_job_details(job_ptr);
 	xfree(job_ptr->account);
 	xfree(job_ptr->alias_list);
@@ -7973,7 +8006,7 @@ int update_job(job_desc_msg_t * job_specs, uid_t uid)
 	if (error_code != SLURM_SUCCESS)
 		goto fini;
 
-	if (job_specs->requeue != (uint16_t) NO_VAL) {
+	if ((job_specs->requeue != (uint16_t) NO_VAL) && detail_ptr) {
 		detail_ptr->requeue = job_specs->requeue;
 		info("sched: update_job: setting requeue to %u for job_id %u",
 		     job_specs->requeue, job_specs->job_id);
@@ -8043,7 +8076,7 @@ int update_job(job_desc_msg_t * job_specs, uid_t uid)
 		goto fini;
 
 	if (job_specs->nice != (uint16_t) NO_VAL) {
-		if (IS_JOB_FINISHED(job_ptr))
+		if (IS_JOB_FINISHED(job_ptr) || (job_ptr->details == NULL))
 			error_code = ESLURM_DISABLED;
 		else if (authorized || (job_specs->nice >= NICE_OFFSET)) {
 			int64_t new_prio = job_ptr->priority;
