@@ -43,6 +43,7 @@
 #endif
 
 #include "src/common/slurm_xlator.h"
+#include "src/common/slurm_selecttype_info.h"
 #include "select_serial.h"
 #include "dist_tasks.h"
 #include "job_test.h"
@@ -381,8 +382,8 @@ static void _create_part_data(void)
 /* List sort function: sort by the job's expected end time */
 static int _cr_job_list_sort(void *x, void *y)
 {
-	struct job_record *job1_ptr = (struct job_record *) x;
-	struct job_record *job2_ptr = (struct job_record *) y;
+	struct job_record *job1_ptr = *(struct job_record **) x;
+	struct job_record *job2_ptr = *(struct job_record **) y;
 	return (int) SLURM_DIFFTIME(job1_ptr->end_time, job2_ptr->end_time);
 }
 
@@ -1435,7 +1436,7 @@ extern int select_p_node_init(struct node_record *node_ptr, int node_cnt)
 	info("cons_res: select_p_node_init");
 	if ((cr_type & (CR_CPU | CR_CORE)) == 0) {
 		fatal("Invalid SelectTypeParameter: %s",
-		      sched_param_type_string(cr_type));
+		      select_type_param_string(cr_type));
 	}
 	if (node_ptr == NULL) {
 		error("select_p_node_init: node_ptr == NULL");

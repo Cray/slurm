@@ -1,6 +1,9 @@
 This file describes changes in recent versions of SLURM. It primarily
 documents those changes that are of interest to users and admins.
 
+* Changes in Slurm 13.12.0pre3
+==============================
+
 * Changes in Slurm 13.12.0pre2
 ==============================
  -- Added "JobAcctGatherParams" configuration parameter. Value of "NoShare"
@@ -22,6 +25,9 @@ documents those changes that are of interest to users and admins.
     slurmstepd.
  -- CRAY - Do not package Slurm's libpmi or libpmi2 libraries. The Cray version
     of those libraries must be used.
+ -- Added a new option to the scontrol command to view licenses that are
+    configured in use and avalable. 'scontrol show licenses'.
+ -- MySQL - Made Slurm compatible with 5.6
 
 * Changes in Slurm 13.12.0pre1
 ==============================
@@ -68,6 +74,17 @@ documents those changes that are of interest to users and admins.
  -- Sched/backfill - Change default max_job_bf parameter from 50 to 100.
  -- Added -I|--item-extract option to sh5util to extract data item from series.
 
+* Changes in Slurm 2.6.3
+========================
+ -- Add support for some new #PBS options in sbatch scripts and qsub wrapper:
+    -l accelerator=true|false	(GPU use)
+    -l mpiprocs=#	(processors per node)
+    -l naccelerators=#	(GPU count)
+    -l select=#		(node count)
+    -l ncpus=#		(task count)
+    -v key=value	(environment variable)
+    -W umask=#		(set job's umask)
+
 * Changes in Slurm 2.6.2
 ========================
  -- Fix issue with reconfig and GrpCPURunMins
@@ -86,6 +103,20 @@ documents those changes that are of interest to users and admins.
  -- Fix for invalid memory reference due to multiple free calls caused by
     job arrays submitted to multiple partitions.
  -- Enforce --ntasks-per-socket=1 job option when allocating by socket.
+ -- Validate permissions of key directories at slurmctld startup. Report
+    anything that is world writable.
+ -- Improve GRES support for CPU topology. Previous logic would pick CPUs then
+    reject jobs that can not match GRES to the allocated CPUs. New logic first
+    filters out CPUs that can not use the GRES, next picks CPUs for the job,
+    and finally picks the GRES that best match those CPUs.
+ -- Switch/nrt - Prevent invalid memory reference when allocating single adapter
+    per node of specific adapter type
+ -- CRAY - Make Slurm work with CLE 5.1.1
+ -- Fix segfault if submitting to multiple partitions and holding the job.
+ -- Use MAXPATHLEN instead of the hardcoded value 1024 for maximum file path
+    lengths.
+ -- If OverTimeLimit is defined do not declare failed those jobs that ended
+    in the OverTimeLimit interval.
 
 * Changes in Slurm 2.6.1
 ========================
@@ -111,8 +142,8 @@ documents those changes that are of interest to users and admins.
     documentation.
  -- IPMI - Fix Math bug getting new wattage.
  -- Corrected the AcctGatherProfileType documentation in slurm.conf
- -- Corrected the sh5util program to print the header in the csv file 
-    only once, set the debug messages at debug() level, make the argument 
+ -- Corrected the sh5util program to print the header in the csv file
+    only once, set the debug messages at debug() level, make the argument
     check case insensitive and avoid printing duplicate \n.
  -- If cannot collect energy values send message to the controller
     to drain the node and log error slurmd log file.
@@ -329,7 +360,7 @@ documents those changes that are of interest to users and admins.
  -- POE - Fix logic binding tasks to CPUs.
  -- sview - Fix race condition where new information could of slipped past
     the node tab and we didn't notice.
- -- Accounting - Fix an invalid memory read when slurmctld sends data about 
+ -- Accounting - Fix an invalid memory read when slurmctld sends data about
     start job to slurmdbd.
  -- If a prolog or epilog failure occurs, drain the node rather than setting it
     down and killing all of its jobs.

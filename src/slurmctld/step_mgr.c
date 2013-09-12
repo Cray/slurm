@@ -49,6 +49,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/types.h>
+#include <sys/param.h>
 #include <string.h>
 #include <strings.h>
 #include <unistd.h>
@@ -1618,7 +1619,9 @@ static void _pick_step_cores(struct step_record *step_ptr,
 				return;
 		}
 	}
-	if (use_all_cores)
+	/* The test for cores==0 is just to avoid CLANG errors.
+	 * It should never happen */
+	if (use_all_cores || (cores == 0))
 		return;
 
 	/* We need to over-subscribe one or more cores.
@@ -1996,7 +1999,7 @@ step_create(job_step_create_request_msg_t *step_specs,
 		return ESLURM_TASKDIST_ARBITRARY_UNSUPPORTED;
 	}
 
-	if (_test_strlen(step_specs->ckpt_dir, "ckpt_dir", 1024)	||
+	if (_test_strlen(step_specs->ckpt_dir, "ckpt_dir", MAXPATHLEN)	||
 	    _test_strlen(step_specs->gres, "gres", 1024)		||
 	    _test_strlen(step_specs->host, "host", 1024)		||
 	    _test_strlen(step_specs->name, "name", 1024)		||

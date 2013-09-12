@@ -258,13 +258,9 @@ endit:
 
 extern int slurm_sort_char_list_asc(void *v1, void *v2)
 {
-	int diff;
-	char *name_a;
-	char *name_b;
-
-	name_a = *(char **)v1;
-	name_b = *(char **)v2;
-	diff = strcmp(name_a, name_b);
+	char *name_a = *(char **)v1;
+	char *name_b = *(char **)v2;
+	int diff = strcmp(name_a, name_b);
 
 	if (diff < 0)
 		return -1;
@@ -274,8 +270,10 @@ extern int slurm_sort_char_list_asc(void *v1, void *v2)
 	return 0;
 }
 
-extern int slurm_sort_char_list_desc(char *name_a, char *name_b)
+extern int slurm_sort_char_list_desc(void *v1, void *v2)
 {
+	char *name_a = *(char **)v1;
+	char *name_b = *(char **)v2;
 	int diff = strcmp(name_a, name_b);
 
 	if (diff > 0)
@@ -1188,57 +1186,6 @@ extern uint16_t log_string2num(char *name)
 		return (uint16_t) 6;
 
 	return (uint16_t) NO_VAL;
-}
-
-/* Convert SelectTypeParameter to equivalent string
- * NOTE: Not reentrant */
-extern char *sched_param_type_string(uint16_t select_type_param)
-{
-	static char select_str[128];
-
-	select_str[0] = '\0';
-	if ((select_type_param & CR_CPU) &&
-	    (select_type_param & CR_MEMORY))
-		strcat(select_str, "CR_CPU_MEMORY");
-	else if ((select_type_param & CR_CORE) &&
-		 (select_type_param & CR_MEMORY))
-		strcat(select_str, "CR_CORE_MEMORY");
-	else if ((select_type_param & CR_SOCKET) &&
-		 (select_type_param & CR_MEMORY))
-		strcat(select_str, "CR_SOCKET_MEMORY");
-	else if (select_type_param & CR_CPU)
-		strcat(select_str, "CR_CPU");
-	else if (select_type_param & CR_CORE)
-		strcat(select_str, "CR_CORE");
-	else if (select_type_param & CR_SOCKET)
-		strcat(select_str, "CR_SOCKET");
-	else if (select_type_param & CR_MEMORY)
-		strcat(select_str, "CR_MEMORY");
-
-	if (select_type_param & CR_ONE_TASK_PER_CORE) {
-		if (select_str[0])
-			strcat(select_str, ",");
-		strcat(select_str, "CR_ONE_TASK_PER_CORE");
-	}
-	if (select_type_param & CR_CORE_DEFAULT_DIST_BLOCK) {
-		if (select_str[0])
-			strcat(select_str, ",");
-		strcat(select_str, "CR_CORE_DEFAULT_DIST_BLOCK");
-	}
-	if (select_type_param & CR_ALLOCATE_FULL_SOCKET) {
-		if (select_str[0])
-			strcat(select_str, ",");
-		strcat(select_str, "CR_ALLOCATE_FULL_SOCKET");
-	}
-	if (select_type_param & CR_LLN) {
-		if (select_str[0])
-			strcat(select_str, ",");
-		strcat(select_str, "CR_LLN");
-	}
-	if (select_str[0] == '\0')
-		strcat(select_str, "NONE");
-
-	return select_str;
 }
 
 extern char *job_state_string(uint16_t inx)
@@ -2927,4 +2874,28 @@ extern char *slurm_ctime_r(const time_t *timep, char *time_str)
 	strftime(time_str, 25, "%a %b %d %T %Y", &newtime);
 
 	return time_str;
+}
+
+/* slurm_free_license_info()
+ *
+ * Free the license info returned previously
+ * from the controller.
+ */
+extern void
+slurm_free_license_info_msg(license_info_msg_t *msg)
+{
+	int cc;
+
+	if (msg == NULL)
+		return;
+
+	for (cc = 0; cc < msg->num_features; cc++) {
+		xfree(msg->lic_array[cc].feature);
+	}
+	xfree(msg->lic_array);
+	xfree(msg);
+}
+extern void slurm_free_license_info_request_msg(license_info_request_msg_t *msg)
+{
+	xfree(msg);
 }

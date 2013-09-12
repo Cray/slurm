@@ -196,6 +196,8 @@ typedef enum {
 	RESPONSE_ACCT_GATHER_UPDATE,
 	REQUEST_ACCT_GATHER_ENERGY,
 	RESPONSE_ACCT_GATHER_ENERGY,
+	REQUEST_LICENSE_INFO,
+	RESPONSE_LICENSE_INFO,
 
 	REQUEST_BUILD_INFO = 2001,
 	RESPONSE_BUILD_INFO,
@@ -971,6 +973,11 @@ typedef struct ping_slurmd_resp_msg {
 	uint32_t cpu_load;	/* CPU load * 100 */
 } ping_slurmd_resp_msg_t;
 
+typedef struct license_info_request_msg {
+	time_t last_update;
+	uint16_t show_flags;
+} license_info_request_msg_t;
+
 /*****************************************************************************\
  * Slurm API Message Types
 \*****************************************************************************/
@@ -1047,7 +1054,7 @@ extern void slurm_destroy_uint32_ptr(void *object);
 extern char *slurm_add_slash_to_quotes(char *str);
 extern int slurm_addto_char_list(List char_list, char *names);
 extern int slurm_sort_char_list_asc(void *, void *);
-extern int slurm_sort_char_list_desc(char *name_a, char *name_b);
+extern int slurm_sort_char_list_desc(void *, void *);
 
 /* free message functions */
 extern void slurm_free_checkpoint_tasks_msg(checkpoint_tasks_msg_t * msg);
@@ -1194,6 +1201,8 @@ extern void slurm_free_spank_env_request_msg(spank_env_request_msg_t *msg);
 extern void slurm_free_spank_env_responce_msg(spank_env_responce_msg_t *msg);
 
 extern int slurm_free_msg_data(slurm_msg_type_t type, void *data);
+extern void slurm_free_license_info_request_msg(license_info_request_msg_t *msg);
+
 extern uint32_t slurm_get_return_code(slurm_msg_type_t type, void *data);
 
 extern char *preempt_mode_string(uint16_t preempt_mode);
@@ -1206,7 +1215,6 @@ extern uint16_t log_string2num(char *name);
  * Caller must xfree() the return value */
 extern char *health_check_node_state_str(uint16_t node_state);
 
-extern char *sched_param_type_string(uint16_t select_type_param);
 extern char *job_reason_string(enum job_state_reason inx);
 extern char *job_state_string(uint16_t inx);
 extern char *job_state_string_compact(uint16_t inx);
