@@ -213,7 +213,7 @@ int switch_p_libstate_clear(void)
  * switch functions for job step specific credential
  */
 int switch_p_alloc_jobinfo(switch_jobinfo_t **switch_job,
-			   uint32_t job_id, uint32_t step_id)
+		uint32_t job_id, uint32_t step_id)
 {
 	slurm_cray_jobinfo_t *new;
 
@@ -232,8 +232,8 @@ int switch_p_alloc_jobinfo(switch_jobinfo_t **switch_job,
 }
 
 int switch_p_build_jobinfo(switch_jobinfo_t *switch_job,
-			   slurm_step_layout_t *step_layout,
-			   char *network)
+		slurm_step_layout_t *step_layout,
+		char *network)
 {
 
 	int i, rc, cnt;
@@ -283,10 +283,10 @@ int switch_p_build_jobinfo(switch_jobinfo_t *switch_job,
 	 * routine.
 	 */
 	rc = alpsc_lease_cookies(&errMsg,
-				       "SLURM", job->apid,
-				       ALPSC_INFINITE_LEASE, nodes,
-				       step_layout->node_cnt, num_cookies,
-				       &cookies, &cookie_ids);
+			"SLURM", job->apid,
+			ALPSC_INFINITE_LEASE, nodes,
+			step_layout->node_cnt, num_cookies,
+			&cookies, &cookie_ids);
 	if (rc != 0) {
 		if (errMsg) {
 			error("(%s: %d: %s) alpsc_lease_cookies failed: %s",
@@ -327,7 +327,7 @@ int switch_p_build_jobinfo(switch_jobinfo_t *switch_job,
 	/*
 	 * Get a unique port for PMI communications
 	 */
-	 rc = assign_port(&port);
+	rc = assign_port(&port);
 	if (rc < 0) {
 		info("(%s: %d: %s) assign_port failed", THIS_FILE, __LINE__, __FUNCTION__);
 		return SLURM_ERROR;
@@ -522,7 +522,7 @@ int pack_test(Buf buffer, uint32_t job_id, uint32_t step_id) {
  * TODO: Pack job id, step id, and apid
  */
 int switch_p_pack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer,
-			  uint16_t protocol_version)
+		uint16_t protocol_version)
 {
 	int i;
 
@@ -577,7 +577,7 @@ int switch_p_pack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer,
 			return SLURM_ERROR;
 		}
 	}
-	*/
+	 */
 	return 0;
 }
 
@@ -586,7 +586,7 @@ int switch_p_pack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer,
  */
 
 int switch_p_unpack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer,
-			    uint16_t protocol_version)
+		uint16_t protocol_version)
 {
 
 	int rc;
@@ -594,7 +594,7 @@ int switch_p_unpack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer,
 	/*
 	char *DEBUG_WAIT=getenv("SLURM_DEBUG_WAIT");
 	while(DEBUG_WAIT);
-	*/
+	 */
 
 	if (NULL == switch_job) {
 		error("(%s: %d: %s) switch_job was NULL", THIS_FILE, __LINE__, __FUNCTION__);
@@ -660,7 +660,7 @@ int switch_p_unpack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer,
 		info("(%s:%d: %s) switch_jobinfo_t contents:", THIS_FILE, __LINE__, __FUNCTION__);
 		_print_jobinfo(job);
 	}
-       
+
 	return SLURM_SUCCESS;
 }
 
@@ -670,7 +670,7 @@ void switch_p_print_jobinfo(FILE *fp, switch_jobinfo_t *jobinfo)
 }
 
 char *switch_p_sprint_jobinfo(switch_jobinfo_t *switch_jobinfo, char *buf,
-			      size_t size)
+		size_t size)
 {
 	if((buf != NULL) && size) {
 		buf[0] = '\0';
@@ -733,7 +733,7 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 	 * 	sleep(60);
 	int debug_sleep_wait = 1;
 	while(debug_sleep_wait);
-	*/
+	 */
 
 	// Dummy variables to satisfy alpsc_write_placement_file
 	int controlNid = 0, numBranches = 0;
@@ -741,7 +741,7 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 	alpsc_branchInfo_t alpsc_branchInfo;
 
 
-    rc = alpsc_attach_cncu_container(&errMsg, sw_job->jobid, job->cont_id);
+	rc = alpsc_attach_cncu_container(&errMsg, sw_job->jobid, job->cont_id);
 
 	if (rc != 1) {
 		if (errMsg) {
@@ -802,149 +802,154 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 	 * I'm setting exclusive flag to zero for now until we can figure out a way
 	 * to guarantee that the application not only has exclusive access to the
 	 * node but also will not be suspended.  This may not happen.
-	 */
-
-	/*
-	 * To get the number of CPUs.
 	 *
-	 * I co-opted the hostlist_count() and its counterparts to count CPUS.
-	 * TODO: There might be a better (community) way to do this.
+	 * Only configure the network if the application has more than one rank.
+	 * Single rank applications have no other ranks to communicate with, so
+	 * they do not need any network resources.
 	 */
-	total_cpus = get_cpu_total();
 
-	if (total_cpus <= 0) {
-		error("(%s: %d: %s) total_cpus <=0: %d", THIS_FILE, __LINE__,
-				__FUNCTION__, total_cpus);
-		return SLURM_ERROR;
-	}
+	if (job->ntasks > 1) {
+		/*
+		 * To get the number of CPUs.
+		 *
+		 * I co-opted the hostlist_count() and its counterparts to count CPUS.
+		 * TODO: There might be a better (community) way to do this.
+		 */
+		total_cpus = get_cpu_total();
 
-	//Use /proc/meminfo to get the total amount of memory on the node
-	f = fopen("/proc/meminfo", "r");
-	if (f == NULL) {
-		error("(%s: %d: %s) Failed to open /proc/meminfo: %s", THIS_FILE,
-				__LINE__, __FUNCTION__, strerror(errno));
-		return SLURM_ERROR;
-	}
+		if (total_cpus <= 0) {
+			error("(%s: %d: %s) total_cpus <=0: %d", THIS_FILE, __LINE__,
+					__FUNCTION__, total_cpus);
+			return SLURM_ERROR;
+		}
 
-	while (!feof(f)) {
-		lsz = getline(&lin, &sz, f);
-		if (lsz > 0) {
-			sscanf(lin, "%s %d", meminfo_str, &meminfo_value);
-			if(!strcmp(meminfo_str, "MemTotal:")) {
-				total_mem = meminfo_value;
-				break;
+		//Use /proc/meminfo to get the total amount of memory on the node
+		f = fopen("/proc/meminfo", "r");
+		if (f == NULL) {
+			error("(%s: %d: %s) Failed to open /proc/meminfo: %s", THIS_FILE,
+					__LINE__, __FUNCTION__, strerror(errno));
+			return SLURM_ERROR;
+		}
+
+		while (!feof(f)) {
+			lsz = getline(&lin, &sz, f);
+			if (lsz > 0) {
+				sscanf(lin, "%s %d", meminfo_str, &meminfo_value);
+				if(!strcmp(meminfo_str, "MemTotal:")) {
+					total_mem = meminfo_value;
+					break;
+				}
 			}
 		}
-	}
-	free(lin);
-	fclose(f);
+		free(lin);
+		fclose(f);
 
-	if (total_mem == 0) {
-		error("(%s: %d: %s) Scanning /proc/meminfo results in MemTotal=0", THIS_FILE, __LINE__, __FUNCTION__);
-		return SLURM_ERROR;
-	}
+		if (total_mem == 0) {
+			error("(%s: %d: %s) Scanning /proc/meminfo results in MemTotal=0", THIS_FILE, __LINE__, __FUNCTION__);
+			return SLURM_ERROR;
+		}
 
-	/*
-	 * Scaling
-	 * For the CPUS round the scaling to the nearest integer.
-	 * If the scaling is greater than 100 percent, then scale it to
-	 * 100%.
-	 * If the scaling is zero, then return an error.
-	 */
+		/*
+		 * Scaling
+		 * For the CPUS round the scaling to the nearest integer.
+		 * If the scaling is greater than 100 percent, then scale it to
+		 * 100%.
+		 * If the scaling is zero, then return an error.
+		 */
 
-	num_app_cpus = job->node_tasks * job->cpus_per_task;
-	if (num_app_cpus <= 0) {
-		error("(%s: %d: %s) num_app_cpus <=0: %d", THIS_FILE, __LINE__,
-				__FUNCTION__, num_app_cpus );
-		return SLURM_ERROR;
-	}
+		num_app_cpus = job->node_tasks * job->cpus_per_task;
+		if (num_app_cpus <= 0) {
+			error("(%s: %d: %s) num_app_cpus <=0: %d", THIS_FILE, __LINE__,
+					__FUNCTION__, num_app_cpus );
+			return SLURM_ERROR;
+		}
 
-	cpu_scaling = floor((((double)num_app_cpus / (double)total_cpus ) * (double)100) + 0.5);
-	if (cpu_scaling > 100) {
-		error("(%s: %d: %s) Cpu scaling out of bounds: %d.  Reducing to 100%", THIS_FILE,
-				__LINE__, __FUNCTION__, cpu_scaling);
-		cpu_scaling = 100;
-	}
-	if (cpu_scaling <= 0) {
-		error("(%s: %d: %s) Cpu scaling out of bounds: %d", THIS_FILE,
-				__LINE__, __FUNCTION__, cpu_scaling);
-		return SLURM_ERROR;
-	}
+		cpu_scaling = floor((((double)num_app_cpus / (double)total_cpus ) * (double)100) + 0.5);
+		if (cpu_scaling > 100) {
+			error("(%s: %d: %s) Cpu scaling out of bounds: %d.  Reducing to 100%", THIS_FILE,
+					__LINE__, __FUNCTION__, cpu_scaling);
+			cpu_scaling = 100;
+		}
+		if (cpu_scaling <= 0) {
+			error("(%s: %d: %s) Cpu scaling out of bounds: %d", THIS_FILE,
+					__LINE__, __FUNCTION__, cpu_scaling);
+			return SLURM_ERROR;
+		}
 
-	/*
-	 * Figure out the correct amount of application memory.
-	 * The MEM_PER_CPU flag means that job->step_mem is the amount of memory
-	 * per CPU, not total.  Therefore, scale it accordingly.
-	 */
-	if (job->step_mem & MEM_PER_CPU) {
-		app_mem = (job->step_mem * num_app_cpus);
-	} else {
-		app_mem = job->step_mem;
-	}
+		/*
+		 * Figure out the correct amount of application memory.
+		 * The MEM_PER_CPU flag means that job->step_mem is the amount of memory
+		 * per CPU, not total.  Therefore, scale it accordingly.
+		 */
+		if (job->step_mem & MEM_PER_CPU) {
+			app_mem = (job->step_mem * num_app_cpus);
+		} else {
+			app_mem = job->step_mem;
+		}
 
-	/*
-	 * Scale total_mem, which is in kilobytes, to megabytes because app_mem is
-	 * in megabytes.
-	 * Round to the nearest integer.
-	 * If the memory request is greater than 100 percent, then scale it to
-	 * 100%.
-	 * If the memory request is zero, then return an error.
-	 */
-	mem_scaling = floor(((((double) app_mem / ((double) total_mem / 1024)) * (double)100)) + 0.5);
+		/*
+		 * Scale total_mem, which is in kilobytes, to megabytes because app_mem is
+		 * in megabytes.
+		 * Round to the nearest integer.
+		 * If the memory request is greater than 100 percent, then scale it to
+		 * 100%.
+		 * If the memory request is zero, then return an error.
+		 */
+		mem_scaling = floor(((((double) app_mem / ((double) total_mem / 1024)) * (double)100)) + 0.5);
 
-	if (mem_scaling > 100) {
-		info("(%s: %d: %s) Memory scaling out of bounds: %d.  Reducing to 100%.", THIS_FILE,
-				__LINE__, __FUNCTION__, mem_scaling);
-		mem_scaling = 100;
-	}
+		if (mem_scaling > 100) {
+			info("(%s: %d: %s) Memory scaling out of bounds: %d.  Reducing to 100%.", THIS_FILE,
+					__LINE__, __FUNCTION__, mem_scaling);
+			mem_scaling = 100;
+		}
 
-	if (mem_scaling <= 0) {
-		error("(%s: %d: %s) Memory scaling out of bounds: %d", THIS_FILE,
-				__LINE__, __FUNCTION__, mem_scaling);
-		return SLURM_ERROR;
-	}
+		if (mem_scaling <= 0) {
+			error("(%s: %d: %s) Memory scaling out of bounds: %d", THIS_FILE,
+					__LINE__, __FUNCTION__, mem_scaling);
+			return SLURM_ERROR;
+		}
 
 
-	if (slurm_get_debug_flags() & DEBUG_FLAG_SWITCH) {
-		info("(%s:%d: %s) --Network Scaling Start--", THIS_FILE, __LINE__,
-				__FUNCTION__);
-		info("(%s:%d: %s) --CPU Scaling: %d--", THIS_FILE, __LINE__,
-				__FUNCTION__, cpu_scaling);
-		info("(%s:%d: %s) --Memory Scaling: %d--", THIS_FILE, __LINE__,
-						__FUNCTION__, mem_scaling);
-		info("(%s:%d: %s) --Network Scaling End--", THIS_FILE, __LINE__,
-				__FUNCTION__);
+		if (slurm_get_debug_flags() & DEBUG_FLAG_SWITCH) {
+			info("(%s:%d: %s) --Network Scaling Start--", THIS_FILE, __LINE__,
+					__FUNCTION__);
+			info("(%s:%d: %s) --CPU Scaling: %d--", THIS_FILE, __LINE__,
+					__FUNCTION__, cpu_scaling);
+			info("(%s:%d: %s) --Memory Scaling: %d--", THIS_FILE, __LINE__,
+					__FUNCTION__, mem_scaling);
+			info("(%s:%d: %s) --Network Scaling End--", THIS_FILE, __LINE__,
+					__FUNCTION__);
 
-		info("(%s:%d: %s) --PAGG Job Container ID: %" PRIx64 "--", THIS_FILE, __LINE__,
-						__FUNCTION__, job->cont_id);
-	}
+			info("(%s:%d: %s) --PAGG Job Container ID: %" PRIx64 "--", THIS_FILE, __LINE__,
+					__FUNCTION__, job->cont_id);
+		}
 
-	rc = alpsc_configure_nic(&errMsg, 0, cpu_scaling,
-	    mem_scaling, job->cont_id, sw_job->num_cookies,
-	    (const char **)sw_job->cookies, &numPTags, &pTags, ntt_desc_ptr);
-	/*
-	 * We don't use the pTags because Cray's LLI acquires them itself, so they
-	 * can be immediately discarded.
-	 */
-	free(pTags);
-	if (rc != 1) {
+		rc = alpsc_configure_nic(&errMsg, 0, cpu_scaling,
+				mem_scaling, job->cont_id, sw_job->num_cookies,
+				(const char **)sw_job->cookies, &numPTags, &pTags, ntt_desc_ptr);
+		/*
+		 * We don't use the pTags because Cray's LLI acquires them itself, so they
+		 * can be immediately discarded.
+		 */
+		free(pTags);
+		if (rc != 1) {
+			if (errMsg) {
+				error("(%s: %d: %s) alpsc_configure_nic failed: %s", THIS_FILE,
+						__LINE__, __FUNCTION__, errMsg);
+				free(errMsg);
+			}
+			else {
+				error("(%s: %d: %s) alpsc_configure_nic failed: No error message "
+						"present.", THIS_FILE, __LINE__, __FUNCTION__);
+			}
+			return SLURM_ERROR;
+		}
 		if (errMsg) {
-			error("(%s: %d: %s) alpsc_configure_nic failed: %s", THIS_FILE,
-					__LINE__, __FUNCTION__, errMsg);
+			info("(%s: %d: %s) alpsc_configure_nic: %s", THIS_FILE, __LINE__,
+					__FUNCTION__, errMsg);
 			free(errMsg);
 		}
-		else {
-			error("(%s: %d: %s) alpsc_configure_nic failed: No error message "
-					"present.", THIS_FILE, __LINE__, __FUNCTION__);
-		}
-		return SLURM_ERROR;
 	}
-	if (errMsg) {
-		info("(%s: %d: %s) alpsc_configure_nic: %s", THIS_FILE, __LINE__,
-				__FUNCTION__, errMsg);
-		free(errMsg);
-	}
-
 
 	// Not defined yet -- deferred
 	//alpsc_config_gpcd();
@@ -1195,19 +1200,19 @@ extern int switch_p_job_suspend_test(switch_jobinfo_t *jobinfo)
 }
 
 extern void switch_p_job_suspend_info_get(switch_jobinfo_t *jobinfo,
-					  void **suspend_info)
+		void **suspend_info)
 {
 	return;
 }
 
 extern void switch_p_job_suspend_info_pack(void *suspend_info, Buf buffer,
-					   uint16_t protocol_version)
+		uint16_t protocol_version)
 {
 	return;
 }
 
 extern int switch_p_job_suspend_info_unpack(void **suspend_info, Buf buffer,
-					    uint16_t protocol_version)
+		uint16_t protocol_version)
 {
 	return SLURM_SUCCESS;
 }
@@ -1303,18 +1308,18 @@ int switch_p_job_postfini(stepd_step_rec_t *job)
 	 */
 	if (pgid) {
 		debug2("Sending SIGKILL to pgid %lu",
-		       (unsigned long) pgid);
+				(unsigned long) pgid);
 		kill(-pgid, SIGKILL);
 	} else
 		info("Job %u.%u: Bad pid value %lu", job->jobid,
-		      job->stepid, (unsigned long) pgid);
+				job->stepid, (unsigned long) pgid);
 	/*
 	 * Clean-up
 	 *
 	 * 1. Flush Lustre caches
 	 * 2. Flush virtual memory
 	 * 3. Compact memory
-	*/
+	 */
 
 	// Flush Lustre Cache
 	rc = alpsc_flush_lustre(&errMsg);
@@ -1358,14 +1363,14 @@ int switch_p_job_postfini(stepd_step_rec_t *job)
 			"/step_%" PRIu32, uid, job->jobid, job->stepid);
 	if (rc < 0) {
 		error("(%s: %d: %s) snprintf failed. Return code: %d",
-						THIS_FILE, __LINE__, __FUNCTION__, rc);
+				THIS_FILE, __LINE__, __FUNCTION__, rc);
 		return SLURM_ERROR;
 	}
 
 	rc = get_numa_nodes(path, &cnt, &numa_nodes);
 	if (rc < 0) {
 		error("(%s: %d: %s) get_numa_nodes failed. Return code: %d",
-						THIS_FILE, __LINE__, __FUNCTION__, rc);
+				THIS_FILE, __LINE__, __FUNCTION__, rc);
 		return SLURM_ERROR;
 	}
 
@@ -1401,14 +1406,14 @@ int switch_p_job_postfini(stepd_step_rec_t *job)
 }
 
 int switch_p_job_attach(switch_jobinfo_t *jobinfo, char ***env,
-			uint32_t nodeid, uint32_t procid, uint32_t nnodes,
-			uint32_t nprocs, uint32_t rank)
+		uint32_t nodeid, uint32_t procid, uint32_t nnodes,
+		uint32_t nprocs, uint32_t rank)
 {
 	return SLURM_SUCCESS;
 }
 
 extern int switch_p_get_jobinfo(switch_jobinfo_t *switch_job,
-				int key, void *resulting_data)
+		int key, void *resulting_data)
 {
 	slurm_seterrno(EINVAL);
 	return SLURM_ERROR;
@@ -1447,13 +1452,13 @@ extern int switch_p_build_node_info(switch_node_info_t *switch_node)
 }
 
 extern int switch_p_pack_node_info(switch_node_info_t *switch_node,
-				   Buf buffer, uint16_t protocol_version)
+		Buf buffer, uint16_t protocol_version)
 {
 	return 0;
 }
 
 extern int switch_p_unpack_node_info(switch_node_info_t *switch_node,
-				     Buf buffer, uint16_t protocol_version)
+		Buf buffer, uint16_t protocol_version)
 {
 	return SLURM_SUCCESS;
 }
@@ -1464,7 +1469,7 @@ extern int switch_p_free_node_info(switch_node_info_t **switch_node)
 }
 
 extern char*switch_p_sprintf_node_info(switch_node_info_t *switch_node,
-				       char *buf, size_t size)
+		char *buf, size_t size)
 {
 	if ((buf != NULL) && size) {
 		buf[0] = '\0';
@@ -1529,7 +1534,7 @@ extern int switch_p_job_step_complete(switch_jobinfo_t *jobinfo,
 }
 
 extern int switch_p_job_step_part_comp(switch_jobinfo_t *jobinfo,
-				       char *nodelist)
+		char *nodelist)
 {
 	return SLURM_SUCCESS;
 }
@@ -1540,7 +1545,7 @@ extern bool switch_p_part_comp(void)
 }
 
 extern int switch_p_job_step_allocated(switch_jobinfo_t *jobinfo,
-				       char *nodelist)
+		char *nodelist)
 {
 	return SLURM_SUCCESS;
 }
@@ -1915,7 +1920,7 @@ static int init_port() {
  *  ATTEMPTS number of times before declaring a failure.
  * Returns:
  *  0 on success and -1 on failure.
-*/
+ */
 static int assign_port(uint32_t *real_port) {
 	int port, tmp, attempts = 0, rc;
 
@@ -1941,7 +1946,7 @@ static int assign_port(uint32_t *real_port) {
 		error("(%s: %d: %s) Reserved PMI Port Table not initialized",
 				THIS_FILE, __LINE__, __FUNCTION__);
 		return -1;
-		*/
+		 */
 	}
 
 	/*
@@ -1984,7 +1989,7 @@ static int assign_port(uint32_t *real_port) {
  *
  * Returns:
  *  0 on success and -1 on failure.
-*/
+ */
 static int release_port(uint32_t real_port) {
 
 	int rc;
@@ -2016,7 +2021,7 @@ static int release_port(uint32_t real_port) {
 		error("(%s: %d: %s) Reserved PMI Port Table not initialized",
 				THIS_FILE, __LINE__, __FUNCTION__);
 		return -1;
-		*/
+		 */
 	}
 
 	if (port_resv[port]) {
@@ -2048,76 +2053,76 @@ static int release_port(uint32_t real_port) {
  *  0 on success and -1 on failure.
  */
 static int get_numa_nodes(char *path, int *cnt, int32_t **numa_array) {
-	  struct bitmask *bm;
-	  int i, index, rc;
-	  int lsz;
-	  size_t sz;
-	  char buffer[PATH_MAX];
-	  FILE *f = NULL;
-	  char *lin = NULL;
+	struct bitmask *bm;
+	int i, index, rc;
+	int lsz;
+	size_t sz;
+	char buffer[PATH_MAX];
+	FILE *f = NULL;
+	char *lin = NULL;
 
-	  snprintf(buffer, sizeof(buffer), "%s/%s", path, "cpuset.mems");
-	  if (rc < 0) {
-		  error("(%s: %d: %s) snprintf failed. Return code: %d",
-				  THIS_FILE, __LINE__, __FUNCTION__, rc);
-	  }
+	snprintf(buffer, sizeof(buffer), "%s/%s", path, "cpuset.mems");
+	if (rc < 0) {
+		error("(%s: %d: %s) snprintf failed. Return code: %d",
+				THIS_FILE, __LINE__, __FUNCTION__, rc);
+	}
 
-	  f = fopen(buffer, "r");
-	  if (f == NULL) {
-		  error("Failed to open file %s: %s\n", buffer, strerror(errno));
-		  return -1;
-	  }
+	f = fopen(buffer, "r");
+	if (f == NULL) {
+		error("Failed to open file %s: %s\n", buffer, strerror(errno));
+		return -1;
+	}
 
-	  lsz = getline(&lin, &sz, f);
-	  if (lsz > 0) {
-		  bm = numa_parse_nodestring(lin);
-		  if (bm == NULL) {
-		    error("(%s: %d: %s)Error numa_parse_nodestring", THIS_FILE, __LINE__,
-		    		__FUNCTION__);
-		    free(lin);
-		    return SLURM_ERROR;
-		  }
-	  } else {
-		  error("(%s: %d: %s) Reading %s failed.", THIS_FILE, __LINE__,
-				  __FUNCTION__, buffer);
-		  return SLURM_ERROR;
-	  }
-	  free(lin);
+	lsz = getline(&lin, &sz, f);
+	if (lsz > 0) {
+		bm = numa_parse_nodestring(lin);
+		if (bm == NULL) {
+			error("(%s: %d: %s)Error numa_parse_nodestring", THIS_FILE, __LINE__,
+					__FUNCTION__);
+			free(lin);
+			return SLURM_ERROR;
+		}
+	} else {
+		error("(%s: %d: %s) Reading %s failed.", THIS_FILE, __LINE__,
+				__FUNCTION__, buffer);
+		return SLURM_ERROR;
+	}
+	free(lin);
 
-	  *cnt = numa_bitmask_weight(bm);
-	  if (*cnt == 0) {
-	    error("(%s: %d: %s)Error no NUMA Nodes found.", THIS_FILE, __LINE__,
-	    		__FUNCTION__);
-	    return -1;
-	  }
+	*cnt = numa_bitmask_weight(bm);
+	if (*cnt == 0) {
+		error("(%s: %d: %s)Error no NUMA Nodes found.", THIS_FILE, __LINE__,
+				__FUNCTION__);
+		return -1;
+	}
 
-	  if (slurm_get_debug_flags() & DEBUG_FLAG_SWITCH) {
-		  info("Btimask size: %lu\nSizeof(*(bm->maskp)):%zd\n"
-				  "Bitmask %#lx\nBitmask weight(number of bits set): %u\n",
-				  bm->size, sizeof(*(bm->maskp)), *(bm->maskp),
-		         *cnt);
+	if (slurm_get_debug_flags() & DEBUG_FLAG_SWITCH) {
+		info("Btimask size: %lu\nSizeof(*(bm->maskp)):%zd\n"
+				"Bitmask %#lx\nBitmask weight(number of bits set): %u\n",
+				bm->size, sizeof(*(bm->maskp)), *(bm->maskp),
+				*cnt);
 
-	  }
+	}
 
-	  *numa_array = xmalloc(*cnt * sizeof(int32_t));
-	  if (*numa_array == NULL) {
-	    error("(%s: %d: %s)Error out of memory.\n", THIS_FILE, __LINE__,
-	    		__FUNCTION__);
-	    return -1;
-	  }
+	*numa_array = xmalloc(*cnt * sizeof(int32_t));
+	if (*numa_array == NULL) {
+		error("(%s: %d: %s)Error out of memory.\n", THIS_FILE, __LINE__,
+				__FUNCTION__);
+		return -1;
+	}
 
-	  index = 0;
-	  for (i = 0; i < bm->size; i++) {
-	    if (*(bm->maskp) & ((long unsigned)1 << i)) {
-	    	if (slurm_get_debug_flags() & DEBUG_FLAG_SWITCH) {
-	    		info("(%s: %d: %s)NUMA Node %d is present.\n", THIS_FILE,
-	    				__LINE__, __FUNCTION__, i);
-	    	}
-	      (*numa_array)[index++] = i;
-	    }
-	  }
+	index = 0;
+	for (i = 0; i < bm->size; i++) {
+		if (*(bm->maskp) & ((long unsigned)1 << i)) {
+			if (slurm_get_debug_flags() & DEBUG_FLAG_SWITCH) {
+				info("(%s: %d: %s)NUMA Node %d is present.\n", THIS_FILE,
+						__LINE__, __FUNCTION__, i);
+			}
+			(*numa_array)[index++] = i;
+		}
+	}
 
-	  numa_free_nodemask(bm);
+	numa_free_nodemask(bm);
 
 	return 0;
 }
