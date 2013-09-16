@@ -1253,8 +1253,7 @@ int switch_p_job_fini(switch_jobinfo_t *jobinfo)
 	return SLURM_SUCCESS;
 }
 
-int switch_p_job_postfini(switch_jobinfo_t *jobinfo, uid_t pgid,
-			   uint32_t job_id, uint32_t step_id)
+int switch_p_job_postfini(stepd_step_rec_t *job)
 {
 	int rc, cnt;
 	int32_t *numa_nodes;
@@ -1266,9 +1265,10 @@ int switch_p_job_postfini(switch_jobinfo_t *jobinfo, uid_t pgid,
 	 *  uid of the application.
 	 */
 	uid_t uid = 0;
+	uid_t pgid = job->jmgr_pid;
 
-	if (NULL == jobinfo) {
-		error("(%s: %d: %s) jobinfo was NULL", THIS_FILE, __LINE__, __FUNCTION__);
+	if (NULL == job) {
+		error("(%s: %d: %s) job was NULL", THIS_FILE, __LINE__, __FUNCTION__);
 		return SLURM_ERROR;
 	}
 
@@ -1280,8 +1280,8 @@ int switch_p_job_postfini(switch_jobinfo_t *jobinfo, uid_t pgid,
 		       (unsigned long) pgid);
 		kill(-pgid, SIGKILL);
 	} else
-		info("Job %u.%u: Bad pid value %lu", job_id,
-		      step_id, (unsigned long) pgid);
+		info("Job %u.%u: Bad pid value %lu", job->jobid,
+		      job->stepid, (unsigned long) pgid);
 	/*
 	 * Clean-up
 	 *
@@ -1329,7 +1329,7 @@ int switch_p_job_postfini(switch_jobinfo_t *jobinfo, uid_t pgid,
 	 */
 
 	rc = snprintf(path, sizeof(path), "/dev/cpuset/slurm/uid_%d/job_%" PRIu32
-			"/step_%" PRIu32, uid, job_id, step_id);
+			"/step_%" PRIu32, uid, job->jobid, job->stepid);
 	if (rc < 0) {
 		error("(%s: %d: %s) snprintf failed. Return code: %d",
 						THIS_FILE, __LINE__, __FUNCTION__, rc);
@@ -1370,7 +1370,6 @@ int switch_p_job_postfini(switch_jobinfo_t *jobinfo, uid_t pgid,
 		info("(%s: %d: %s) alpsc_compact_mem: %s", THIS_FILE, __LINE__, __FUNCTION__, errMsg);
 		free(errMsg);
 	}
-
 
 	return SLURM_SUCCESS;
 }

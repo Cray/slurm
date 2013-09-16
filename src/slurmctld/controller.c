@@ -239,7 +239,7 @@ int main(int argc, char *argv[])
 	slurmctld_lock_t config_write_lock = {
 		WRITE_LOCK, WRITE_LOCK, WRITE_LOCK, WRITE_LOCK };
 	assoc_init_args_t assoc_init_arg;
-	pthread_t assoc_cache_thread;
+	pthread_t assoc_cache_thread = (pthread_t) 0;
 	slurm_trigger_callbacks_t callbacks;
 	char *dir_name;
 
@@ -442,6 +442,8 @@ int main(int argc, char *argv[])
 		fatal( "failed to initialize preempt plugin" );
 	if (checkpoint_init(slurmctld_conf.checkpoint_type) != SLURM_SUCCESS )
 		fatal( "failed to initialize checkpoint plugin" );
+	if (acct_gather_conf_init() != SLURM_SUCCESS )
+		fatal( "failed to initialize acct_gather plugins" );
 	if (slurm_acct_storage_init(NULL) != SLURM_SUCCESS )
 		fatal( "failed to initialize accounting_storage plugin");
 	if (jobacct_gather_init() != SLURM_SUCCESS )
@@ -450,6 +452,8 @@ int main(int argc, char *argv[])
 		fatal( "failed to initialize job_submit plugin");
 	if (ext_sensors_init() != SLURM_SUCCESS )
 		fatal( "failed to initialize ext_sensors plugin");
+	if (switch_g_slurmctld_init() != SLURM_SUCCESS )
+		fatal( "failed to initialize switch plugin");
 
 	while (1) {
 		/* initialization for each primary<->backup switch */
@@ -665,11 +669,13 @@ int main(int argc, char *argv[])
 
 	/* Some plugins are needed to purge job/node data structures,
 	 * unplug after other data structures are purged */
+	ext_sensors_fini();
 	gres_plugin_fini();
 	job_submit_plugin_fini();
 	slurm_preempt_fini();
 	g_slurm_jobcomp_fini();
 	jobacct_gather_fini();
+	acct_gather_conf_fini();
 	slurm_select_fini();
 	slurm_topo_fini();
 	checkpoint_fini();
@@ -912,13 +918,19 @@ static void *_slurmctld_rpc_mgr(void *no_data)
 	/* initialize ports for RPCs */
 	lock_slurmctld(config_read_lock);
 	nports = slurmctld_conf.slurmctld_port_count;
+	if (nports == 0) {
+		fatal("slurmctld port count is zero");
+		return NULL;	/* Fix CLANG false positive */
+	}
 	sockfd = xmalloc(sizeof(slurm_fd_t) * nports);
 	for (i=0; i<nports; i++) {
 		sockfd[i] = slurm_init_msg_engine_addrname_port(
 					node_addr,
 					slurmctld_conf.slurmctld_port+i);
-		if (sockfd[i] == SLURM_SOCKET_ERROR)
+		if (sockfd[i] == SLURM_SOCKET_ERROR) {
 			fatal("slurm_init_msg_engine_addrname_port error %m");
+			return NULL;	/* Fix CLANG false positive */
+		}
 		slurm_get_stream_addr(sockfd[i], &srv_addr);
 		slurm_get_ip_str(&srv_addr, &port, ip, sizeof(ip));
 		debug2("slurmctld listening on %s:%d", ip, ntohs(port));

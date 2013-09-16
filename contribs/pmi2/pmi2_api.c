@@ -378,10 +378,11 @@ int PMI2_Initialized(void)
 
 int PMI2_Abort(int flag, const char msg[])
 {
-    PMI2U_printf("aborting job:\n%s", msg);
+	if (msg)
+		PMI2U_printf("aborting job:\n%s", msg);
 
     /* ignoring return code, because we're exiting anyway */
-    PMIi_WriteSimpleCommandStr(PMI2_fd, NULL, ABORT_CMD, ISWORLD_KEY, flag ? TRUE_VAL : FALSE_VAL, MSG_KEY, msg, NULL);
+    PMIi_WriteSimpleCommandStr(PMI2_fd, NULL, ABORT_CMD, ISWORLD_KEY, flag ? TRUE_VAL : FALSE_VAL, MSG_KEY, ((msg == NULL) ? "(null)": msg), NULL);
 
     exit(PMII_EXIT_CODE);
     return PMI2_SUCCESS;

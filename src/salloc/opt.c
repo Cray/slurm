@@ -1220,8 +1220,11 @@ static void _opt_args(int argc, char **argv)
 			command_argc++;
 	}
 	command_argv = (char **) xmalloc((command_argc + 1) * sizeof(char *));
-	for (i = 0; i < command_argc; i++)
+	for (i = 0; i < command_argc; i++) {
+		if ((i == 0) && (rest == NULL))
+			break;	/* Fix for CLANG false positive */
 		command_argv[i] = xstrdup(rest[i]);
+	}
 	command_argv[i] = NULL;	/* End of argv's (for possible execv) */
 
 	if (!_opt_verify())
@@ -1921,7 +1924,7 @@ static void _help(void)
 "  -C, --constraint=list       specify a list of constraints\n"
 "  -F, --nodefile=filename     request a specific list of hosts\n"
 "      --mem=MB                minimum amount of real memory\n"
-"      --mincpus=n             minimum number of logical processors (threads) per node\n"
+"      --mincpus=n             minimum number of logical processors (threads)\n""                              per node\n"
 "      --reservation=name      allocate resources from named reservation\n"
 "      --tmp=MB                minimum amount of temporary disk\n"
 "  -w, --nodelist=hosts...     request a specific list of hosts\n"
