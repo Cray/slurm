@@ -66,6 +66,9 @@
 #include "src/plugins/switch/cray/alpscomm_sn.h"
 #include "src/common/gres.h"
 
+#define ALPS_DIR "/var/opt/cray/alps/spool/"
+#define LEGACY_SPOOL_DIR "/var/spool/"
+
 /*
  * These variables are required by the generic plugin interface.  If they
  * are not found in the plugin, the plugin loader will ignore it.
@@ -266,10 +269,6 @@ int switch_p_build_jobinfo(switch_jobinfo_t *switch_job,
 	 * the job.  However, if the job got suspended, then all bets are off.  An
 	 * infinite release time seems safest for now.
 	 *
-	 * TODO: The domain parameter should be something to identify the job such
-	 * as the APID.  I left it as zero for now because I don't know how to get
-	 * the JOB ID and JOB STEP ID from here.
-	 *
 	 * TODO: I'm hard-coding the number of cookies for now to two.  Maybe we'll
 	 * have a dynamic way to ascertain the number of cookies later.
 	 *
@@ -342,15 +341,6 @@ int switch_p_build_jobinfo(switch_jobinfo_t *switch_job,
 	job->port = port;
 	job->step_layout = slurm_step_layout_copy(step_layout);
 
-	/*
-	 * Inform the system that an application (i.e. job step) is starting.
-	 * This is for tracking purposes for congestion management and power
-	 * management.
-	 * This is probably going to be moved to the select plugin.
-	 *
-	 * TODO: Implement the actual call.
-	 */
-	// alpsc_put_app_start_info();
 	return SLURM_SUCCESS;
 }
 
@@ -440,80 +430,6 @@ void switch_p_free_jobinfo(switch_jobinfo_t *switch_job) {
 }
 
 /*
- * pack_test
- * Description:
- * Tests the packing by doing some unpacking.
- * TO DO: I need to carefully free the memory that I allocate here.
- */
-int pack_test(Buf buffer, uint32_t job_id, uint32_t step_id) {
-
-	int rc;
-	uint32_t num_cookies;
-	switch_jobinfo_t *pre_job;
-	slurm_cray_jobinfo_t *job;
-	switch_p_alloc_jobinfo(&pre_job, job_id, step_id);
-	job = (slurm_cray_jobinfo_t*) pre_job;
-	xassert(job);
-	xassert(job->magic == CRAY_JOBINFO_MAGIC);
-	xassert(buffer);
-	rc = unpack32(&job->magic, buffer);
-	if (rc != SLURM_SUCCESS) {
-		error("(%s: %d: %s) unpack32 failed. Return code: %d", THIS_FILE,
-				__LINE__, __FUNCTION__, rc);
-		goto error_exit;
-	}
-	xassert(job->magic == CRAY_JOBINFO_MAGIC);
-	/*
-	 * There's some dodgy type-casting here because I'm dealing with signed
-	 * integers, but the pack/unpack functions use signed integers.
-	 */
-	rc = unpack32(&(job->num_cookies), buffer);
-	if (rc != SLURM_SUCCESS) {
-		error("(%s: %d: %s) unpack32 failed. Return code: %d", THIS_FILE,
-				__LINE__, __FUNCTION__, rc);
-		goto error_exit;
-	}
-	rc = unpackstr_array(&(job->cookies), &num_cookies, buffer);
-	if (rc != SLURM_SUCCESS) {
-		error("(%s: %d: %s) unpackstr_array failed. Return code: %d", THIS_FILE,
-				__LINE__, __FUNCTION__, rc);
-		goto error_exit;
-	}
-	if (num_cookies != job->num_cookies) {
-		error("(%s: %d: %s) Wrong number of cookies received.  Expected: %"
-		PRIu32 "Received: %" PRIu32, THIS_FILE, __LINE__, __FUNCTION__,
-				job->num_cookies, num_cookies);
-		goto error_exit;
-	}
-	rc = unpack32_array(&(job->cookie_ids), &(job->num_cookies), buffer);
-	if (rc != SLURM_SUCCESS) {
-		error("(%s: %d: %s) unpack32_array failed. Return code: %d", THIS_FILE,
-				__LINE__, __FUNCTION__, rc);
-		goto error_exit;
-	}
-
-	/*
-	 * Allocate our own step_layout function.
-	 */
-	rc = unpack_slurm_step_layout(&(job->step_layout), buffer,
-			SLURM_PROTOCOL_VERSION);
-	if (rc != SLURM_SUCCESS) {
-		error("(%s: %d: %s) unpack32 failed. Return code: %d", THIS_FILE,
-				__LINE__, __FUNCTION__, rc);
-		goto error_exit;
-	}
-
-	info("(%s:%d: %s) switch_jobinfo_t contents:", THIS_FILE, __LINE__,
-			__FUNCTION__);
-	_print_jobinfo(job);
-
-	return SLURM_SUCCESS;
-
-	error_exit: switch_p_free_jobinfo(pre_job);
-	return SLURM_ERROR;
-}
-
-/*
  * TODO: Pack job id, step id, and apid
  */
 int switch_p_pack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer,
@@ -529,13 +445,6 @@ int switch_p_pack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer,
 	}
 	xassert(job->magic == CRAY_JOBINFO_MAGIC);
 	xassert(buffer);
-
-	/*Debug Example
-	 if (slurm_get_debug_flags() & DEBUG_FLAG_SWITCH)
-	 info("(%s:%d) job id: %u -- No nodes in bitmap of "
-	 "job_record!",
-	 THIS_FILE, __LINE__, __FUNCTION__, job_ptr->job_id);
-	 */
 
 	if (slurm_get_debug_flags() & DEBUG_FLAG_SWITCH) {
 		info("(%s: %d: %s) switch_jobinfo_t contents", THIS_FILE, __LINE__,
@@ -564,16 +473,6 @@ int switch_p_pack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer,
 	pack32(job->port, buffer);
 	pack_slurm_step_layout(job->step_layout, buffer, SLURM_PROTOCOL_VERSION);
 
-	/*
-	 if (slurm_get_debug_flags() & DEBUG_FLAG_SWITCH) {
-	 rc = pack_test(buffer);
-	 if (rc != SLURM_SUCCESS) {
-	 error("(%s: %d: %s) pack_test failed.",
-	 THIS_FILE, __LINE__, __FUNCTION__);
-	 return SLURM_ERROR;
-	 }
-	 }
-	 */
 	return 0;
 }
 
@@ -586,10 +485,6 @@ int switch_p_unpack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer,
 
 	int rc;
 	uint32_t num_cookies;
-	/*
-	 char *DEBUG_WAIT=getenv("SLURM_DEBUG_WAIT");
-	 while(DEBUG_WAIT);
-	 */
 
 	if (NULL == switch_job) {
 		error("(%s: %d: %s) switch_job was NULL", THIS_FILE, __LINE__,
@@ -721,12 +616,6 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 	char *buff;
 	int cleng = 0;
 
-	/*
-	 * 	sleep(60);
-	 int debug_sleep_wait = 1;
-	 while(debug_sleep_wait);
-	 */
-
 	// Dummy variables to satisfy alpsc_write_placement_file
 	int controlNid = 0, numBranches = 0;
 	struct sockaddr_in controlSoc;
@@ -802,20 +691,18 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 
 	if (job->ntasks > 1) {
 		/*
-		 * To get the number of CPUs.
-		 *
-		 * I co-opted the hostlist_count() and its counterparts to count CPUS.
-		 * TODO: There might be a better (community) way to do this.
+		 * Get the number of CPUs.
 		 */
 		total_cpus = _get_cpu_total();
-
 		if (total_cpus <= 0) {
 			error("(%s: %d: %s) total_cpus <=0: %d", THIS_FILE, __LINE__,
 					__FUNCTION__, total_cpus);
 			return SLURM_ERROR;
 		}
 
-		//Use /proc/meminfo to get the total amount of memory on the node
+		/*
+		 * Use /proc/meminfo to get the total amount of memory on the node
+		 */
 		f = fopen("/proc/meminfo", "r");
 		if (f == NULL ) {
 			error("(%s: %d: %s) Failed to open /proc/meminfo: %s", THIS_FILE,
@@ -1049,9 +936,7 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 	 * Cray's PMI does not need the information.
 	 * It may be used by debuggers like ATP or lgdb.  If so, then it will
 	 * have to be filled in when support for them is added.
-	 *
 	 * Currently, it's all zeros.
-	 *
 	 */
 	alpsc_peInfo.nodeCpuArray = calloc(sizeof(int),
 			sw_job->step_layout->node_cnt);
@@ -1290,12 +1175,6 @@ int switch_p_job_postfini(stepd_step_rec_t *job) {
 	int32_t *numa_nodes;
 	char *errMsg = NULL, path[PATH_MAX];
 	cpu_set_t *cpuMasks;
-
-	/*
-	 *  TO DO -- This is just a place-holder until I can get the actual
-	 *  uid of the application.
-	 */
-	uid_t uid = 0;
 	uid_t pgid = job->jmgr_pid;
 
 	if (NULL == job) {
@@ -1361,7 +1240,7 @@ int switch_p_job_postfini(stepd_step_rec_t *job) {
 	 */
 
 	rc = snprintf(path, sizeof(path), "/dev/cpuset/slurm/uid_%d/job_%" PRIu32
-	"/step_%" PRIu32, uid, job->jobid, job->stepid);
+	"/step_%" PRIu32, job->uid, job->jobid, job->stepid);
 	if (rc < 0) {
 		error("(%s: %d: %s) snprintf failed. Return code: %d", THIS_FILE,
 				__LINE__, __FUNCTION__, rc);
@@ -1488,7 +1367,6 @@ extern int switch_p_job_step_complete(switch_jobinfo_t *jobinfo,
 	}
 
 	/* Release the cookies */
-
 	rc = alpsc_release_cookies(&errMsg, (int32_t *) job->cookie_ids,
 			(int32_t) job->num_cookies);
 
@@ -1555,9 +1433,6 @@ extern int switch_p_slurmctld_init(void) {
 
 	return SLURM_SUCCESS;
 }
-
-#define ALPS_DIR "/var/opt/cray/alps/spool/"
-#define LEGACY_SPOOL_DIR "/var/spool/"
 
 extern int switch_p_slurmd_init(void) {
 	int rc = 0;
