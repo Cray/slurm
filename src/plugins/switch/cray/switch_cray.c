@@ -1350,7 +1350,7 @@ int switch_p_job_postfini(stepd_step_rec_t *job)
 		return SLURM_ERROR;
 	}
 
-	alpsc_compact_mem(&errMsg, cnt, numa_nodes, cpuMasks, path);
+	rc = alpsc_compact_mem(&errMsg, cnt, numa_nodes, cpuMasks, path);
 
 	xfree(numa_nodes);
 	xfree(cpuMasks);
