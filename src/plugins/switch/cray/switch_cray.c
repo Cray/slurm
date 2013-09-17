@@ -2044,10 +2044,13 @@ static int get_numa_nodes(char *path, int *cnt, int32_t **numa_array) {
 
 	  lsz = getline(&lin, &sz, f);
 	  if (lsz > 0) {
+		  if (lin[strlen(lin) - 1] == '\n') {
+			  lin[strlen(lin) - 1] = '\0';
+		  }
 		  bm = numa_parse_nodestring(lin);
 		  if (bm == NULL) {
 		    error("(%s: %d: %s) Error numa_parse_nodestring: Invalid node "
-		    		"string: %s", THIS_FILE, __LINE__, __FUNCTION__);
+		    		"string: %s", THIS_FILE, __LINE__, __FUNCTION__, lin);
 		    free(lin);
 		    return SLURM_ERROR;
 		  }
