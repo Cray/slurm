@@ -57,13 +57,14 @@
 #include <sched.h>
 #include <math.h>
 
+#include <job.h>	/* Cray's job module component */
 #include "slurm/slurm.h"
 #include "slurm/slurm_errno.h"
 #include "src/common/slurm_xlator.h"
 #include "src/plugins/switch/cray/switch_cray.h"
 #include "src/common/pack.h"
-#include "src/plugins/switch/cray/alpscomm_cn.h"
-#include "src/plugins/switch/cray/alpscomm_sn.h"
+#include "alpscomm_cn.h"
+#include "alpscomm_sn.h"
 #include "src/common/gres.h"
 
 /*
@@ -1286,11 +1287,6 @@ int switch_p_job_postfini(stepd_step_rec_t *job)
 	char *errMsg = NULL, path[PATH_MAX];
 	cpu_set_t *cpuMasks;
 
-	/*
-	 *  TO DO -- This is just a place-holder until I can get the actual
-	 *  uid of the application.
-	 */
-	uid_t uid = 0;
 	uid_t pgid = job->jmgr_pid;
 
 	if (NULL == job) {
@@ -1355,7 +1351,7 @@ int switch_p_job_postfini(stepd_step_rec_t *job)
 	 */
 
 	rc = snprintf(path, sizeof(path), "/dev/cpuset/slurm/uid_%d/job_%" PRIu32
-			"/step_%" PRIu32, uid, job->jobid, job->stepid);
+			"/step_%" PRIu32, job->uid, job->jobid, job->stepid);
 	if (rc < 0) {
 		error("(%s: %d: %s) snprintf failed. Return code: %d",
 						THIS_FILE, __LINE__, __FUNCTION__, rc);
