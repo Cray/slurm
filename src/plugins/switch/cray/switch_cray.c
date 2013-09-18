@@ -2030,7 +2030,7 @@ static int get_numa_nodes(char *path, int *cnt, int32_t **numa_array) {
 	  FILE *f = NULL;
 	  char *lin = NULL;
 
-	  snprintf(buffer, sizeof(buffer), "%s/%s", path, "cpuset.mems");
+	  rc = snprintf(buffer, sizeof(buffer), "%s/%s", path, "cpuset.mems");
 	  if (rc < 0) {
 		  error("(%s: %d: %s) snprintf failed. Return code: %d",
 				  THIS_FILE, __LINE__, __FUNCTION__, rc);
@@ -2122,7 +2122,7 @@ static int get_cpu_masks(char *path, cpu_set_t **cpuMasks) {
 	int lsz;
 	size_t sz;
 
-	snprintf(buffer, sizeof(buffer), "%s/%s", path, "cpuset.cpus");
+	rc = snprintf(buffer, sizeof(buffer), "%s/%s", path, "cpuset.cpus");
 	if (rc < 0) {
 		error("(%s: %d: %s) snprintf failed. Return code: %d",
 				THIS_FILE, __LINE__, __FUNCTION__, rc);
@@ -2137,7 +2137,10 @@ static int get_cpu_masks(char *path, cpu_set_t **cpuMasks) {
 
 	lsz = getline(&lin, &sz, f);
 	if (lsz > 0) {
-		bm = numa_parse_cpustring(buffer);
+		if (lin[strlen(lin) - 1] == '\n') {
+			lin[strlen(lin) - 1] = '\0';
+		}
+		bm = numa_parse_cpustring(lin);
 		if (bm == NULL) {
 			error("(%s: %d: %s)Error numa_parse_nodestring", THIS_FILE, __LINE__,
 					__FUNCTION__);
