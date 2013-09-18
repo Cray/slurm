@@ -7,7 +7,7 @@
 #
 # See the slurm.conf man page for more information.
 #
-ControlMachine=sdb
+ControlMachine={sdb}
 #ControlAddr=
 #BackupController=
 #BackupAddr=
@@ -97,9 +97,9 @@ Waittime=0
 #
 #
 # SCHEDULING
-DefMemPerNode={defmem}
+#DefMemPerNode={minmem}
 FastSchedule=2
-MaxMemPerNode={maxmem}
+#MaxMemPerNode={maxmem}
 #SchedulerRootFilter=1
 #SchedulerTimeSlice=30
 SchedulerType=sched/backfill

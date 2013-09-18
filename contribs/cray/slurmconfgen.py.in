@@ -12,13 +12,16 @@
 # node. It backs up slurm.conf to slurm.conf.<timestamp>, overwrites slurm.conf
 # with the new configuration, and updates Slurm with the new configuration.
 
-import subprocess, os, shutil, sys, datetime, tempfile, stat, re, time
+import subprocess, os, shutil, sys, datetime, tempfile, stat, re, time, socket
 
 #######################################
 # sdb_query
 #######################################
 def sdb_query(query):
 	""" Query the SDB. Returns the results, space separated. """
+	# Set correct path for isql
+	os.environ['ODBCSYSINI']='/etc/opt/cray/sysadm/'
+	
 	# Call isql
 	isql = subprocess.Popen(["isql", "XTAdmin", "-b", "-v", "-x0x20"], 
 		stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -170,7 +173,7 @@ def format_nodes(class_reps, class_nodes):
 #######################################
 # cluster_name
 #######################################
-def cluster_name():
+def get_cluster_name():
 	""" Gets the cluster name from /etc/xthostname """
 	
 	with open("/etc/xthostname", "r") as xthostname:
@@ -197,89 +200,170 @@ def xtopview(cmd):
 #######################################
 # get_control_machine
 #######################################
-def get_control_machine(f):
-	""" Parses the ControlMachine from the given file """
+def get_control_machine(config):
+	""" Parses the ControlMachine from the given config string """
 	
-	f.seek(0)
-	for line in f:
-		m = re.match(r"[^#]*ControlMachine=([^#\s]+)", line)
+	for line in config:
+		m = re.match(r"\s*ControlMachine\s*=\s*([^#\s]+)", line)
 		if m:
 			return m.group(1)
 	
-	raise Exception("Failed to parse ControlMachine from {0}".format(f.name))
+	raise Exception("Failed to parse ControlMachine from config")
+
+#######################################
+# get_sdb_hostname
+#######################################
+def get_sdb_hostname(reconfigure):
+	""" Gets the hostname of the sdb """
+
+	# ssh should work on reconfigure since we're root
+	# on the boot node
+	if reconfigure:
+		ssh = subprocess.Popen(["ssh", "sdb", "hostname"],
+			stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+		(out, err) = ssh.communicate()
+
+		if len(err) > 0:
+			raise err			
+
+		return out.strip()
+	else:
+		return "sdb"
+
+#######################################
+# write_slurm_conf
+#######################################
+def get_slurm_conf(infile, replace):
+	""" Reads from infile, replaces following the given dictionary,
+		and returns the result as a string """
+	
+	with open(infile, "r") as template:
+		text = template.read()
+		
+		# Using replace is less elegant than using string.format, but avoids
+		# KeyErrors if the user removes keys from the template file
+		for i, j in replace.iteritems():
+			text = text.replace(i, j)
+		
+		return text	
+
+#######################################
+# replace_slurm_conf
+#######################################
+def replace_slurm_conf(tmpfname, slurmconf):
+	""" Backs up existing slurm.conf files and replaces
+		them with the new copy """
+	opview_dir = "/rr/current"
+	slurmconf_dir = "/software/slurm"
+	curtime = datetime.datetime.today().strftime('%Y%m%d%H%M%S')
+	slurmconf_bak = slurmconf + "." + curtime
+	
+	# Make the slurm directory
+	if not os.path.isdir(opview_dir + slurmconf_dir):
+		print "Creating {0} directory".format(opview_dir + slurmconf_dir)
+		os.mkdir(opview_dir + slurmconf_dir, 0755)
+
+	# If it exists, copy the current slurm.conf to a backup
+	if os.path.isfile(opview_dir + slurmconf_dir + slurmconf):
+		print "Copying {0} to {1}".format(
+				opview_dir + slurmconf_dir + slurmconf,
+				opview_dir + slurmconf_dir + slurmconf_bak)
+		shutil.copy2(opview_dir + slurmconf_dir + slurmconf,
+				opview_dir + slurmconf_dir + slurmconf_bak)
+	
+	# Overwrite slurm.conf
+	print "Moving {0} to {1}".format(tmpfname,
+			opview_dir + slurmconf_dir + slurmconf)
+	os.rename(outfile.name, opview_dir + slurmconf_dir + slurmconf)
+	
+	# If it exists, move the boot root slurm.conf to a backup	
+	if os.path.isfile(sysconfdir + slurmconf):
+		if os.path.islink(sysconfdir + slurmconf):
+			print "Removing {0}".format(sysconfdir + slurmconf)
+			os.unlink(sysconfdir + slurmconf)
+		else:
+			print "Moving {0} to {1}".format(sysconfdir + slurmconf,
+					sysconfdir + slurmconf_bak)
+			os.rename(sysconfdir + slurmconf, 
+					sysconfdir + slurmconf_bak)
+
+	# Create symlink in boot root
+	print "Linking {0} to {1}".format(sysconfdir + slurmconf,
+			opview_dir + slurmconf_dir + slurmconf)
+	os.symlink(opview_dir + slurmconf_dir + slurmconf, 
+			sysconfdir + slurmconf)
+
+	# Create symlink in shared root
+	print "Linking {0} to {1} in xtopview".format(sysconfdir + slurmconf,
+			slurmconf_dir + slurmconf)
+	xtopview("ln -b -S {0} -s {1} {2}".format(curtime,
+			slurmconf_dir + slurmconf, 
+			sysconfdir + slurmconf))
 
 #######################################
 # main
 #######################################
 if __name__ == "__main__":
 	# Some constant file names
-	slurmconf = "@sysconfdir@/slurm.conf"
-	slurmconf_bak = (slurmconf + "." 
-		+ datetime.datetime.today().strftime('%Y%m%d%H%M%S'))
-	opview_dir = "/rr/current"
-	slurmconf_opview = "/software/slurm.conf"
+	sysconfdir = "@sysconfdir@"
+	bindir = "@bindir@"
+	slurmconf = "/slurm.conf"
+	slurmconf_template = slurmconf + ".template"
 	restart_slurm = "/etc/init.d/slurm restart"
-	scontrol = "@bindir@/scontrol"
+	scontrol = bindir + "/scontrol"
 	
 	reconfigure = len(sys.argv) > 1 and sys.argv[1] == "--reconfigure"
 
-	# Write to a temporary file for reconfigure
-	if reconfigure:		
-		outfile = tempfile.NamedTemporaryFile()
-		os.chmod(outfile.name, 
-			stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH)
-	else:
-		outfile = sys.stdout
-
-	# Set environment variable for isql
-	os.environ['ODBCSYSINI']='/etc/opt/cray/sysadm/'
-	
 	# Get nodes using isql
 	nodes = get_nodes()
 	
 	# Split them into equivalence classes
 	class_reps, class_nodes = split_nodes(nodes)
 
+	# Create the replacement dictionary
+	replace = { 
+		'{sysconfdir}' : sysconfdir, 
+		'{spooldir}' : "/var/spool/slurm",
+		'{minmem}' : str(min(node[1] for node in nodes)),
+		'{maxmem}' : str(max(node[1] for node in nodes) * 95 / 100),
+		'{clustername}' : get_cluster_name(),
+		'{computenodes}' : format_nodes(class_reps, class_nodes),
+		'{nodelist}' : rli_compress([node[0] for node in nodes]),
+		'{sdb}' : get_sdb_hostname(reconfigure) }
+	
 	# Read and format the template
-	with open(slurmconf + ".template", "r") as template:
-		text = template.read()
-		replace = { 
-			'{sysconfdir}' : "@sysconfdir@", 
-			'{spooldir}' : "/var/spool/slurm",
-			'{defmem}' : str(min(node[1] for node in nodes)),
-			'{maxmem}' : str(max(node[1] for node in nodes)),
-			'{clustername}' : cluster_name(),
-			'{computenodes}' : format_nodes(class_reps, class_nodes),
-			'{nodelist}' : rli_compress([node[0] for node in nodes]) }
-		
-		# Using replace is less elegant than using string.format, but avoids
-		# KeyErrors if the user removes keys from the template file
-		for i, j in replace.iteritems():
-			text = text.replace(i, j)
-		print >> outfile, text
+	text = get_slurm_conf(slurmconf_template, replace)
 	
-	# Start doing the reconfigure if we made it this far
+	# Reconfigure if needed
 	if reconfigure:
+		# Do some basic sanity checks
+		if "boot" not in socket.gethostname():
+			print >> sys.stderr, "--reconfigure must be run from the boot node"
+			exit(1)
+		if os.geteuid() != 0:
+			print >> sys.stderr, "--reconfigure must be run as root"
+			exit(1)
+		
+		# Write text to temporary file
+		outfile = tempfile.NamedTemporaryFile(delete=False)
+		os.chmod(outfile.name, 
+			stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH)
+		print >> outfile, text
+		outfile.close()
+		
 		print "Wrote new configuration to {0}".format(outfile.name)
-	
-		# Overwrite boot root slurm.conf
-		print "Copying {0} to {1}".format(slurmconf, slurmconf_bak)
-		shutil.copy2(slurmconf, slurmconf_bak)
-		print "Copying {0} to {1}".format(outfile.name, slurmconf)
-		shutil.copy2(outfile.name, slurmconf)
-		
-		# Overwrite shared root slurm.conf
-		print "Copying {0} to {1}".format(outfile.name, opview_dir + slurmconf_opview)
-		shutil.copy2(outfile.name, opview_dir + slurmconf_opview)
-		print "Copying {0} to {1} in xtopview".format(slurmconf, slurmconf_bak)
-		xtopview("cp {0} {1}".format(slurmconf, slurmconf_bak))
-		print "Copying {0} to {1} in xtopview".format(slurmconf_opview, slurmconf)
-		xtopview("cp {0} {1}".format(slurmconf_opview, slurmconf))
-		
+
+		# Replace slurm.conf with the temporary file
+		replace_slurm_conf(outfile.name, slurmconf)
+
 		# Reconfigure Slurm
-		control_machine = get_control_machine(outfile)
+		control_machine = get_control_machine(text)
 		print "Running {0} on {1}".format(restart_slurm, control_machine)
 		subprocess.check_call(["ssh", control_machine, restart_slurm])		
 		print "Running {0} reconfigure".format(scontrol)
 		subprocess.check_call([scontrol, "reconfigure"])
+	else:
+		# Just print to stdout
+		print text
 		
