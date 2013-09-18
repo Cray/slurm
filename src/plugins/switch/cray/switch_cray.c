@@ -616,6 +616,12 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 	char *buff;
 	int cleng = 0;
 
+	if (slurm_get_debug_flags() & DEBUG_FLAG_SWITCH) {
+		info("(%s:%d: %s) Job ID (in JOB): %" PRIu32
+				"Job ID (in Switch jobinfo): %" PRIu32,
+							THIS_FILE, __LINE__, __FUNCTION__, job->jobid,
+							sw_job->jobid);
+	}
 	// Dummy variables to satisfy alpsc_write_placement_file
 	int controlNid = 0, numBranches = 0;
 	struct sockaddr_in controlSoc;
