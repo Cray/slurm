@@ -203,7 +203,7 @@ def xtopview(cmd):
 def get_control_machine(config):
 	""" Parses the ControlMachine from the given config string """
 	
-	for line in config:
+	for line in config.splitlines():
 		m = re.match(r"\s*ControlMachine\s*=\s*([^#\s]+)", line)
 		if m:
 			return m.group(1)
@@ -275,7 +275,7 @@ def replace_slurm_conf(tmpfname, slurmconf):
 	# Overwrite slurm.conf
 	print "Moving {0} to {1}".format(tmpfname,
 			opview_dir + slurmconf_dir + slurmconf)
-	os.rename(outfile.name, opview_dir + slurmconf_dir + slurmconf)
+	shutil.move(tmpfname, opview_dir + slurmconf_dir + slurmconf)
 	
 	# If it exists, move the boot root slurm.conf to a backup	
 	if os.path.isfile(sysconfdir + slurmconf):
@@ -333,7 +333,7 @@ if __name__ == "__main__":
 		'{sdb}' : get_sdb_hostname(reconfigure) }
 	
 	# Read and format the template
-	text = get_slurm_conf(slurmconf_template, replace)
+	text = get_slurm_conf(sysconfdir + slurmconf_template, replace)
 	
 	# Reconfigure if needed
 	if reconfigure:
