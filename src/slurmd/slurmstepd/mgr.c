@@ -1063,8 +1063,7 @@ fail2:
 	}
 	step_terminate_monitor_stop();
 	if (!job->batch) {
-		if (switch_g_job_postfini(job->switch_job, job->jmgr_pid,
-					  job->jobid, job->stepid) < 0)
+		if (switch_g_job_postfini(job) < 0)
 			error("switch_g_job_postfini: %m");
 	}
 
@@ -1675,7 +1674,7 @@ static int
 _wait_for_any_task(stepd_step_rec_t *job, bool waitflag)
 {
 	stepd_step_task_info_t *t = NULL;
-	int status;
+	int status = 0;
 	pid_t pid;
 	int completed = 0;
 	jobacctinfo_t *jobacct = NULL;

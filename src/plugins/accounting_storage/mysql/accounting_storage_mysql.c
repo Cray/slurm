@@ -1063,7 +1063,7 @@ extern int create_cluster_tables(mysql_conn_t *mysql_conn, char *cluster_name)
 				  assoc_table_fields,
 				  ", primary key (id_assoc), "
 				  " unique index (user(20), acct(20), "
-				  "partition(20)))")
+				  "`partition`(20)))")
 	    == SLURM_ERROR)
 		return SLURM_ERROR;
 
@@ -2085,8 +2085,10 @@ extern void *acct_storage_p_get_connection(const slurm_trigger_callbacks_t *cb,
 	       rollback);
 
 	if (!(mysql_conn = create_mysql_conn(
-		      conn_num, rollback, cluster_name)))
+		      conn_num, rollback, cluster_name))) {
 		fatal("couldn't get a mysql_conn");
+		return NULL;	/* Fix CLANG false positive error */
+	}
 
 	errno = SLURM_SUCCESS;
 	mysql_db_get_db_connection(mysql_conn, mysql_db_name, mysql_db_info);

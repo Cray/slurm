@@ -2093,6 +2093,12 @@ free_slurm_conf (slurm_ctl_conf_t *ctl_conf_ptr, bool purge_node_hash)
 	xfree (ctl_conf_ptr->accounting_storage_pass);
 	xfree (ctl_conf_ptr->accounting_storage_type);
 	xfree (ctl_conf_ptr->accounting_storage_user);
+	if (ctl_conf_ptr->acct_gather_conf)
+		list_destroy((List)ctl_conf_ptr->acct_gather_conf);
+	xfree (ctl_conf_ptr->acct_gather_energy_type);
+	xfree (ctl_conf_ptr->acct_gather_profile_type);
+	xfree (ctl_conf_ptr->acct_gather_infiniband_type);
+	xfree (ctl_conf_ptr->acct_gather_filesystem_type);
 	xfree (ctl_conf_ptr->authtype);
 	xfree (ctl_conf_ptr->backup_addr);
 	xfree (ctl_conf_ptr->backup_controller);
@@ -2101,12 +2107,10 @@ free_slurm_conf (slurm_ctl_conf_t *ctl_conf_ptr, bool purge_node_hash)
 	xfree (ctl_conf_ptr->control_addr);
 	xfree (ctl_conf_ptr->control_machine);
 	xfree (ctl_conf_ptr->crypto_type);
-	xfree (ctl_conf_ptr->acct_gather_energy_type);
-	xfree (ctl_conf_ptr->acct_gather_profile_type);
-	xfree (ctl_conf_ptr->acct_gather_infiniband_type);
-	xfree (ctl_conf_ptr->acct_gather_filesystem_type);
 	xfree (ctl_conf_ptr->epilog);
 	xfree (ctl_conf_ptr->epilog_slurmctld);
+	if (ctl_conf_ptr->ext_sensors_conf)
+		list_destroy((List)ctl_conf_ptr->ext_sensors_conf);
 	xfree (ctl_conf_ptr->ext_sensors_type);
 	xfree (ctl_conf_ptr->gres_plugins);
 	xfree (ctl_conf_ptr->health_check_program);
@@ -3564,12 +3568,13 @@ _validate_and_set_defaults(slurm_ctl_conf_t *conf, s_p_hashtbl_t *hashtbl)
 		}
 		conf->select_type_param = type_param;
 		xfree(temp_str);
-	} else {
-		if (strcmp(conf->select_type,"select/cons_res") == 0)
-			conf->select_type_param = CR_CPU;
-		else
-			conf->select_type_param = 0;
-	}
+	} else
+		conf->select_type_param = 0;
+
+	/* If not running linear default to be CR_CPU */
+	if (!(slurmctld_conf.select_type_param & (CR_CPU | CR_SOCKET | CR_CORE))
+	    && strcmp(conf->select_type, "select/linear"))
+		slurmctld_conf.select_type_param |= CR_CPU;
 
 	if (!s_p_get_string( &conf->slurm_user_name, "SlurmUser", hashtbl)) {
 		conf->slurm_user_name = xstrdup("root");
@@ -4191,8 +4196,11 @@ unpack_error:
 	return SLURM_ERROR;
 }
 
-extern int sort_key_pairs(config_key_pair_t *key_a, config_key_pair_t *key_b)
+extern int sort_key_pairs(void *v1, void *v2)
 {
+	config_key_pair_t *key_a = *(config_key_pair_t **)v1;
+	config_key_pair_t *key_b = *(config_key_pair_t **)v2;
+
 	int size_a = strcmp(key_a->name, key_b->name);
 
 	if (size_a < 0)

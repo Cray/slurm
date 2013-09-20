@@ -1,5 +1,5 @@
 RELEASE NOTES FOR SLURM VERSION 13.12
-12 July 2013
+29 August 2013
 
 
 IMPORTANT NOTE:
@@ -37,10 +37,12 @@ HIGHLIGHTS
     use it the code still exists in <= 2.6, but will not be included in
     this and future versions of the code.
 
-RPMBUILD OPTION CHANGES
-=======================
+RPMBUILD CHANGES
+================
  -- The rpmbuild option for a Cray system with ALPS has changed from
     %_with_cray to %_with_cray_alps.
+ -- CRAY - Do not package Slurm's libpmi or libpmi2 libraries. The Cray version
+    of those libraries must be used.
 
 
 CONFIGURATION FILE CHANGES (see "man slurm.conf" for details)
@@ -75,6 +77,8 @@ COMMAND CHANGES (see man pages for details)
  -- Add squeue output format options for job command and working directory
     (%o and %Z respectively).
  -- Add stdin/out/err to sview job output.
+ -- Added a new option to the scontrol command to view licenses that are configured
+    in use and avalable. 'scontrol show licenses'.
 
 OTHER CHANGES
 =============
@@ -96,13 +100,18 @@ Added the following struct definitions
 
 Changed the following enums and #defines
 ========================================
-
+ -- Add new job_state of JOB_BOOT_FAIL for job terminations due to failure to
+    boot it's allocated nodes or BlueGene block.
 
 Added the following API's
 =========================
 
+-- API for retrieving license information.
 
-Changed the following API's
+extern int slurm_load_licenses PARAMS((license_info_msg_t **));
+extern void slurm_free_license_info_msg PARAMS((license_info_msg_t *));
+
+Change the following API's
 ===========================
  -- Add task pointer to the task_post_term() function in task plugins. The
     terminating task's PID is available in task->pid.

@@ -263,6 +263,7 @@ enum job_states {
 	JOB_TIMEOUT,		/* terminated on reaching time limit */
 	JOB_NODE_FAIL,		/* terminated on node failure */
 	JOB_PREEMPTED,		/* terminated due to preemption */
+	JOB_BOOT_FAIL,		/* terminated due to node boot failure */
 	JOB_END			/* not a real state, last entry in table */
 };
 #define	JOB_STATE_BASE	0x00ff	/* Used for job_states above */
@@ -388,6 +389,7 @@ enum select_jobdata_type {
 	SELECT_JOBDATA_CONFIRMED, /* data-> uint8_t ALPS reservation confirmed */
 	SELECT_JOBDATA_CLEANING, /* data-> uint16_t if the job is in
 				  * cleaning state or not. */
+	SELECT_JOBDATA_STEP_START, /* data-> step_record called when step starts */ 
 };
 
 enum select_nodedata_type {
@@ -637,6 +639,13 @@ enum ctx_keys {
 #define CR_OTHER_CONS_RES    0x0020 /* if layering select plugins use
 				     * cons_res instead of linear (default)
 				     */
+#define CR_NHC_STEP_NO 0x0040 /* On a Native Cray System don't run the
+			       * node health check after each step.
+			       */
+#define CR_NHC_NO 0x0080 /* On a Native Cray System don't run the
+			  * node health check at all.
+			  */
+
 #define CR_ONE_TASK_PER_CORE 0x0100
 /* By default, schedule only one task per core.
  * Without this option, tasks would be
@@ -1997,6 +2006,7 @@ typedef struct slurm_ctl_conf {
 	char *accounting_storage_type; /* accounting storage type */
 	char *accounting_storage_user; /* accounting storage user */
 	uint16_t acctng_store_job_comment; /* send job comment to accounting */
+	void *acct_gather_conf; /* account gather config */
 	char *acct_gather_energy_type; /* energy accounting type */
 	char *acct_gather_profile_type; /* profile accounting type */
 	char *acct_gather_infiniband_type; /* infiniband accounting type */
@@ -2026,6 +2036,7 @@ typedef struct slurm_ctl_conf {
 	char *epilog_slurmctld;	/* pathname of job epilog run by slurmctld */
 	char *ext_sensors_type; /* external sensors plugin type */
 	uint16_t ext_sensors_freq; /* secs between ext sensors sampling */
+	void *ext_sensors_conf; /* external sensors config file*/
 	uint16_t fast_schedule;	/* 1 to *not* check configurations by node
 				 * (only check configuration file, faster) */
 	uint32_t first_job_id;	/* first slurm generated job_id to assign */
@@ -2344,6 +2355,24 @@ typedef struct trigger_info_msg {
 	trigger_info_t *trigger_array;	/* the trigger records */
 } trigger_info_msg_t;
 
+
+/* Individual license information
+ */
+typedef struct slurm_license_info {
+	char *feature;       /* feature name */
+	uint32_t total;      /* total number of available licenses */
+	uint32_t in_use;     /* number of license in use */
+	uint32_t available;  /* number of available license */
+} slurm_license_info_t;
+
+/* License information array as returned by the controller.
+ */
+typedef struct license_info_msg {
+	time_t last_update;
+	uint32_t num_features;
+	slurm_license_info_t *lic_array;
+} license_info_msg_t;
+
 /*****************************************************************************\
  *	RESOURCE ALLOCATION FUNCTIONS
 \*****************************************************************************/
@@ -2509,6 +2538,16 @@ extern int slurm_sbcast_lookup PARAMS((uint32_t jobid,
 				       job_sbcast_cred_msg_t **info));
 
 extern void slurm_free_sbcast_cred_msg PARAMS((job_sbcast_cred_msg_t * msg));
+
+/* slurm_load_licenses()
+ *
+ * Retrieve license information from the controller.
+ * IN feature - feature name or NULL
+ * OUT
+ *
+ */
+extern int slurm_load_licenses PARAMS((time_t, license_info_msg_t **, uint16_t));
+extern void slurm_free_license_info_msg PARAMS((license_info_msg_t *));
 
 /*****************************************************************************\
  *	JOB/STEP SIGNALING FUNCTIONS

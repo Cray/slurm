@@ -119,6 +119,15 @@ uint16_t _can_job_run_on_node(struct job_record *job_ptr, bitstr_t *core_map,
 	node_ptr = select_node_record[node_i].node_ptr;
 	cpus_per_core  = select_node_record[node_i].cpus /
 			 (core_end_bit - core_start_bit + 1);
+	if (node_usage[node_i].gres_list)
+		gres_list = node_usage[node_i].gres_list;
+	else
+		gres_list = node_ptr->gres_list;
+
+	gres_plugin_job_core_filter(job_ptr->gres_list, gres_list, test_only,
+				    core_map, core_start_bit, core_end_bit,
+				    node_ptr->name);
+
 	if ((cr_type & CR_MEMORY) && cpus) {
 		req_mem   = job_ptr->details->pn_min_memory & ~MEM_PER_CPU;
 		avail_mem = select_node_record[node_i].real_memory;
@@ -128,10 +137,6 @@ uint16_t _can_job_run_on_node(struct job_record *job_ptr, bitstr_t *core_map,
 			cpus = 0;
 	}
 
-	if (node_usage[node_i].gres_list)
-		gres_list = node_usage[node_i].gres_list;
-	else
-		gres_list = node_ptr->gres_list;
 	gres_cores = gres_plugin_job_test(job_ptr->gres_list,
 					  gres_list, test_only,
 					  core_map, core_start_bit,
@@ -381,8 +386,12 @@ static int _get_res_usage(struct job_record *job_ptr, bitstr_t *node_map,
 		error("select/serial: node count inconsistent with slurmctld");
 		return SLURM_ERROR;
 	}
-	if (job_ptr && job_ptr->part_ptr &&
-	    (job_ptr->part_ptr->flags & PART_FLAG_LLN))
+	if (!job_ptr) {
+		error("select/serial: NULL job pointer");
+		return SLURM_ERROR;
+	}
+
+	if (job_ptr->part_ptr && (job_ptr->part_ptr->flags & PART_FLAG_LLN))
 		part_lln_flag = 1;
 	if (job_ptr->details && job_ptr->details->req_node_bitmap)
 		bit_and(node_map, job_ptr->details->req_node_bitmap);
@@ -663,7 +672,8 @@ extern int cr_job_test(struct job_record *job_ptr, bitstr_t *bitmap, int mode,
 	}
 	if (!jp_ptr) {
 		fatal("select/serial: could not find partition for job %u",
-			job_ptr->job_id);
+		      job_ptr->job_id);
+		return SLURM_ERROR;	/* Fix CLANG false positive */
 	}
 
 	/* remove existing allocations (jobs) from higher-priority partitions
@@ -747,7 +757,7 @@ extern int cr_job_test(struct job_record *job_ptr, bitstr_t *bitmap, int mode,
 	 * avail_cores = static core_bitmap of all available cores
 	 */
 
-	if (jp_ptr->row == NULL) {
+	if (!jp_ptr || !jp_ptr->row) {
 		/* there's no existing jobs in this partition, so place
 		 * the job in avail_cores. FIXME: still need a good
 		 * placement algorithm here that optimizes "job overlap"

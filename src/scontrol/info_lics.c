@@ -1,9 +1,11 @@
 /*****************************************************************************\
- *  slurm_selecttype_info.h - Parse the SelectTypeParameters parameters
+ *  info_lics.c - licenses information functions for scontrol.
  *****************************************************************************
- *
- *  Copyright (C) 2006 Hewlett-Packard Development Company, L.P.
- *  Written by Susanne M. Balle, <susanne.balle@hp.com>
+ *  Copyright (C) 2002-2007 The Regents of the University of California.
+ *  Copyright (C) 2008-2010 Lawrence Livermore National Security.
+ *  Copyright (C) 2013 SchedMD
+ *  Produced at Lawrence Livermore National Laboratory (cf, DISCLAIMER).
+ *  Written by David Bigagli david@schemd.com
  *  CODE-OCEC-09-009. All rights reserved.
  *
  *  This file is part of SLURM, a resource management program.
@@ -34,20 +36,75 @@
  *  You should have received a copy of the GNU General Public License along
  *  with SLURM; if not, write to the Free Software Foundation, Inc.,
  *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA.
- *
 \*****************************************************************************/
 
-#ifndef __SLURM_SELECTTYPE_INFO_H__
-#define __SLURM_SELECTTYPE_INFO_H__
+#include "scontrol.h"
 
-#include <stdio.h>
-#include <string.h>
-#include "slurm/slurm.h"
+static void print_license_info(const char *,
+                               struct license_info_msg *);
 
-int parse_select_type_param(char *select_type_parameters, uint16_t *param);
+/* scontrol_print_licenses()
+ *
+ * Retrieve and display the license information
+ * from the controller
+ *
+ */
+void
+scontrol_print_licenses(const char *feature)
+{
+	int cc;
+	struct license_info_msg *msg;
+	uint16_t show_flags;
+	static time_t last_update;
 
-/* Convert SelectTypeParameter to equivalent string
- * NOTE: Not reentrant */
-extern char *select_type_param_string(uint16_t select_type_param);
+	show_flags = 0;
+	/* call the controller to get the meat
+	 */
+	cc = slurm_load_licenses(last_update, &msg, show_flags);
+	if (cc != SLURM_PROTOCOL_SUCCESS) {
+		/* Hosed, crap out.
+		 */
+		exit_code = 1;
+		if (quiet_flag != 1)
+			slurm_perror ("slurm_load_license error");
+		return;
+	}
 
-#endif /*__SLURM_SELECTTYPE_INFO_H__*/
+	last_update = time(NULL);
+	/* print the info
+	 */
+	print_license_info(feature, msg);
+
+	/* free at last
+	 */
+	slurm_free_license_info_msg(msg);
+
+	return;
+}
+
+/* print_license_info()
+ *
+ * Print the license information.
+ */
+static void
+print_license_info(const char *feature, struct license_info_msg *msg)
+{
+	int cc;
+
+	if (msg->num_features == 0) {
+		printf("No licenses configured in SLURM.\n");
+		return;
+	}
+
+	for (cc = 0; cc < msg->num_features; cc++) {
+		if (one_liner) {
+			printf("LicenseName=%s ", msg->lic_array[cc].feature);
+			printf("Total=%d ", msg->lic_array[cc].total);
+		} else {
+			printf("LicenseName=%s\n", msg->lic_array[cc].feature);
+			printf("    Total=%d ", msg->lic_array[cc].total);
+		}
+		printf("Used=%d ", msg->lic_array[cc].in_use);
+		printf("Free=%d\n", msg->lic_array[cc].available);
+	}
+}

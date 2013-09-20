@@ -45,5 +45,7 @@ static int get_cpu_total(void);
 static int init_port();
 static int assign_port(uint32_t *ret_port);
 static int release_port(uint32_t real_port);
+static int get_numa_nodes(char *path, int *cnt, int **numa_array);
+static int get_cpu_masks(char *path, cpu_set_t **cpuMasks);
 
 #endif /* SWITCH_CRAY_H_ */
