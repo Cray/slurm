@@ -862,7 +862,7 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 
 	cpu_scaling = floor((((double)num_app_cpus / (double)total_cpus ) * (double)100) + 0.5);
 	if (cpu_scaling > 100) {
-		error("(%s: %d: %s) Cpu scaling out of bounds: %d.  Reducing to 100%", THIS_FILE,
+		error("(%s: %d: %s) Cpu scaling out of bounds: %d.  Reducing to 100 percent", THIS_FILE,
 				__LINE__, __FUNCTION__, cpu_scaling);
 		cpu_scaling = 100;
 	}
@@ -894,7 +894,7 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 	mem_scaling = floor(((((double) app_mem / ((double) total_mem / 1024)) * (double)100)) + 0.5);
 
 	if (mem_scaling > 100) {
-		info("(%s: %d: %s) Memory scaling out of bounds: %d.  Reducing to 100%.", THIS_FILE,
+		info("(%s: %d: %s) Memory scaling out of bounds: %d.  Reducing to 100 percent.", THIS_FILE,
 				__LINE__, __FUNCTION__, mem_scaling);
 		mem_scaling = 100;
 	}
