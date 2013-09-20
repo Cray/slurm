@@ -55,6 +55,7 @@
 #include <linux/limits.h>
 #include <numa.h>
 #include <sched.h>
+#include <math.h>
 
 #include <job.h>	/* Cray's job module component */
 #include "slurm/slurm.h"
@@ -844,25 +845,39 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 		return SLURM_ERROR;
 	}
 
-	// Scaling
+	/*
+	 * Scaling
+	 * For the CPUS round the scaling to the nearest integer.
+	 * If the scaling is greater than 100 percent, then scale it to
+	 * 100%.
+	 * If the scaling is zero, then return an error.
+	 */
+
 	num_app_cpus = job->node_tasks * job->cpus_per_task;
-	if (num_app_cpus  <= 0) {
+	if (num_app_cpus <= 0) {
 		error("(%s: %d: %s) num_app_cpus <=0: %d", THIS_FILE, __LINE__,
 				__FUNCTION__, num_app_cpus );
 		return SLURM_ERROR;
 	}
 
-	cpu_scaling = ((double)num_app_cpus / (double)total_cpus ) * 100;
-	if ((cpu_scaling <= 0) || (cpu_scaling > 100)) {
+	cpu_scaling = floor((((double)num_app_cpus / (double)total_cpus ) * (double)100) + 0.5);
+	if (cpu_scaling > 100) {
+		error("(%s: %d: %s) Cpu scaling out of bounds: %d.  Reducing to 100%", THIS_FILE,
+				__LINE__, __FUNCTION__, cpu_scaling);
+		cpu_scaling = 100;
+	}
+	if (cpu_scaling <= 0) {
 		error("(%s: %d: %s) Cpu scaling out of bounds: %d", THIS_FILE,
 				__LINE__, __FUNCTION__, cpu_scaling);
 		return SLURM_ERROR;
 	}
+
+	/*
+	 * Figure out the correct amount of application memory.
+	 * The MEM_PER_CPU flag means that job->step_mem is the amount of memory
+	 * per CPU, not total.  Therefore, scale it accordingly.
+	 */
 	if (job->step_mem & MEM_PER_CPU) {
-		/*
-		 * This means that job->step_mem is the amount of memory per CPU,
-		 * not total.
-		 */
 		app_mem = (job->step_mem * num_app_cpus);
 	} else {
 		app_mem = job->step_mem;
@@ -871,9 +886,20 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 	/*
 	 * Scale total_mem, which is in kilobytes, to megabytes because app_mem is
 	 * in megabytes.
+	 * Round to the nearest integer.
+	 * If the memory request is greater than 100 percent, then scale it to
+	 * 100%.
+	 * If the memory request is zero, then return an error.
 	 */
-	mem_scaling = ((double) app_mem / ((double) total_mem / 1024)) * 100;
-	if ((mem_scaling <= 0) || (mem_scaling > 100)) {
+	mem_scaling = floor(((((double) app_mem / ((double) total_mem / 1024)) * (double)100)) + 0.5);
+
+	if (mem_scaling > 100) {
+		info("(%s: %d: %s) Memory scaling out of bounds: %d.  Reducing to 100%.", THIS_FILE,
+				__LINE__, __FUNCTION__, mem_scaling);
+		mem_scaling = 100;
+	}
+
+	if (mem_scaling <= 0) {
 		error("(%s: %d: %s) Memory scaling out of bounds: %d", THIS_FILE,
 				__LINE__, __FUNCTION__, mem_scaling);
 		return SLURM_ERROR;
