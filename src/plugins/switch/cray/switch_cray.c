@@ -749,7 +749,7 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 		if (cpu_scaling > 100) {
 			error(
 					"(%s: %d: %s) Cpu scaling out of bounds: %d.  "
-					"Reducing to 100%",
+					"Reducing to 100%%",
 					THIS_FILE, __LINE__, __FUNCTION__, cpu_scaling);
 			cpu_scaling = 100;
 		}
@@ -785,7 +785,7 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 		if (mem_scaling > 100) {
 			info(
 					"(%s: %d: %s) Memory scaling out of bounds: %d.  "
-					"Reducing to 100%.",
+					"Reducing to 100%%.",
 					THIS_FILE, __LINE__, __FUNCTION__, mem_scaling);
 			mem_scaling = 100;
 		}
