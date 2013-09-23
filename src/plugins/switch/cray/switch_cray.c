@@ -793,21 +793,20 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 	 * I'm setting exclusive flag to zero for now until we can figure out a way
 	 * to guarantee that the application not only has exclusive access to the
 	 * node but also will not be suspended.  This may not happen.
-	 */
-
-	/*
-	 * To get the number of CPUs.
 	 *
-	 * I co-opted the hostlist_count() and its counterparts to count CPUS.
-	 * TODO: There might be a better (community) way to do this.
+	 * Only configure the network if the application has more than one rank.
+	 * Single rank applications have no other ranks to communicate with, so
+	 * they do not need any network resources.
 	 */
-	total_cpus = get_cpu_total();
 
-	if (total_cpus <= 0) {
-		error("(%s: %d: %s) total_cpus <=0: %d", THIS_FILE, __LINE__,
-				__FUNCTION__, total_cpus);
-		return SLURM_ERROR;
-	}
+	if (job->ntasks > 1) {
+		/*
+		 * To get the number of CPUs.
+		 *
+		 * I co-opted the hostlist_count() and its counterparts to count CPUS.
+		 * TODO: There might be a better (community) way to do this.
+		 */
+		total_cpus = get_cpu_total();
 
 	//Use /proc/meminfo to get the total amount of memory on the node
 	f = fopen("/proc/meminfo", "r");
@@ -826,9 +825,8 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 				break;
 			}
 		}
-	}
-	free(lin);
-	fclose(f);
+		free(lin);
+		fclose(f);
 
 	if (total_mem == 0) {
 		error("(%s: %d: %s) Scanning /proc/meminfo results in MemTotal=0",
@@ -836,13 +834,13 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 		return SLURM_ERROR;
 	}
 
-	/*
-	 * Scaling
-	 * For the CPUS round the scaling to the nearest integer.
-	 * If the scaling is greater than 100 percent, then scale it to
-	 * 100%.
-	 * If the scaling is zero, then return an error.
-	 */
+		/*
+		 * Scaling
+		 * For the CPUS round the scaling to the nearest integer.
+		 * If the scaling is greater than 100 percent, then scale it to
+		 * 100%.
+		 * If the scaling is zero, then return an error.
+		 */
 
 	num_app_cpus = job->node_tasks * job->cpus_per_task;
 	if (num_app_cpus <= 0) {
@@ -868,16 +866,16 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 		cpu_scaling = 1;
 	}
 
-	/*
-	 * Figure out the correct amount of application memory.
-	 * The MEM_PER_CPU flag means that job->step_mem is the amount of memory
-	 * per CPU, not total.  Therefore, scale it accordingly.
-	 */
-	if (job->step_mem & MEM_PER_CPU) {
-		app_mem = (job->step_mem * num_app_cpus);
-	} else {
-		app_mem = job->step_mem;
-	}
+		/*
+		 * Figure out the correct amount of application memory.
+		 * The MEM_PER_CPU flag means that job->step_mem is the amount of memory
+		 * per CPU, not total.  Therefore, scale it accordingly.
+		 */
+		if (job->step_mem & MEM_PER_CPU) {
+			app_mem = (job->step_mem * num_app_cpus);
+		} else {
+			app_mem = job->step_mem;
+		}
 
 	/*
 	 * Scale total_mem, which is in kilobytes, to megabytes because app_mem is
@@ -930,8 +928,8 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 	free(pTags);
 	if (rc != 1) {
 		if (errMsg) {
-			error("(%s: %d: %s) alpsc_configure_nic failed: %s", THIS_FILE,
-					__LINE__, __FUNCTION__, errMsg);
+			info("(%s: %d: %s) alpsc_configure_nic: %s", THIS_FILE, __LINE__,
+					__FUNCTION__, errMsg);
 			free(errMsg);
 		} else {
 			error("(%s: %d: %s) alpsc_configure_nic failed: No error message "
