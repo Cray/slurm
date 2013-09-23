@@ -62,8 +62,8 @@
 #include "src/common/slurm_xlator.h"
 #include "src/plugins/switch/cray/switch_cray.h"
 #include "src/common/pack.h"
-#include "src/plugins/switch/cray/alpscomm_cn.h"
-#include "src/plugins/switch/cray/alpscomm_sn.h"
+#include "alpscomm_cn.h"
+#include "alpscomm_sn.h"
 #include "src/common/gres.h"
 
 #define ALPS_DIR "/var/opt/cray/alps/spool/"
@@ -106,8 +106,7 @@ unsigned int numa_bitmask_weight(const struct bitmask *bmp);
 static void _print_alpsc_peInfo(alpsc_peInfo_t alps_info) {
 	int i;
 	info(
-			"*************************alpsc_peInfo Start***********************"
-			""**");
+			"*************************alpsc_peInfo Start*************************");
 	info("totalPEs: %d\nfirstPeHere: %d\npesHere: %d\npeDepth: %d\n",
 			alps_info.totalPEs, alps_info.firstPeHere, alps_info.pesHere,
 			alps_info.peDepth);
@@ -1942,10 +1941,13 @@ static int _get_numa_nodes(char *path, int *cnt, int32_t **numa_array) {
 
 	lsz = getline(&lin, &sz, f);
 	if (lsz > 0) {
+		if (lin[strlen(lin) - 1] == '\n') {
+			lin[strlen(lin) - 1] = '\0';
+		}
 		bm = numa_parse_nodestring(lin);
 		if (bm == NULL ) {
-			error("(%s: %d: %s)Error numa_parse_nodestring", THIS_FILE,
-					__LINE__, __FUNCTION__);
+			error("(%s: %d: %s) Error numa_parse_nodestring: Invalid node "
+					"string: %s", THIS_FILE, __LINE__, __FUNCTION__, lin);
 			free(lin);
 			return SLURM_ERROR;
 		}
