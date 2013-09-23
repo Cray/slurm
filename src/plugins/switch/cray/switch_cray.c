@@ -158,7 +158,7 @@ static void _print_jobinfo(slurm_cray_jobinfo_t *job) {
 		}
 		if (job->step_layout->node_cnt != cnt) {
 			error("(%s: %d: %s) list_str_to_array returned count %"
-			PRIu32 "does not match expected count %d", THIS_FILE, __LINE__,
+					PRIu32 "does not match expected count %d", THIS_FILE, __LINE__,
 					__FUNCTION__, cnt, job->step_layout->node_cnt);
 		}
 
@@ -255,7 +255,7 @@ int switch_p_build_jobinfo(switch_jobinfo_t *switch_job,
 	}
 	if (step_layout->node_cnt != cnt) {
 		error("(%s: %d: %s) list_str_to_array returned count %"
-		PRIu32 "does not match expected count %d", THIS_FILE, __LINE__,
+				PRIu32 "does not match expected count %d", THIS_FILE, __LINE__,
 				__FUNCTION__, cnt, job->step_layout->node_cnt);
 	}
 
@@ -480,7 +480,7 @@ int pack_test(Buf buffer, uint32_t job_id, uint32_t step_id) {
 	}
 	if (num_cookies != job->num_cookies) {
 		error("(%s: %d: %s) Wrong number of cookies received.  Expected: %"
-		PRIu32 "Received: %" PRIu32, THIS_FILE, __LINE__, __FUNCTION__,
+				PRIu32 "Received: %" PRIu32, THIS_FILE, __LINE__, __FUNCTION__,
 				job->num_cookies, num_cookies);
 		goto error_exit;
 	}
@@ -620,7 +620,7 @@ int switch_p_unpack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer,
 	}
 	if (num_cookies != job->num_cookies) {
 		error("(%s: %d: %s) Wrong number of cookies received.  Expected: %"
-		PRIu32 "Received: %" PRIu32, THIS_FILE, __LINE__, __FUNCTION__,
+				PRIu32 "Received: %" PRIu32, THIS_FILE, __LINE__, __FUNCTION__,
 				job->num_cookies, num_cookies);
 		return SLURM_ERROR;
 	}
@@ -632,7 +632,7 @@ int switch_p_unpack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer,
 	}
 	if (num_cookies != job->num_cookies) {
 		error("(%s: %d: %s) Wrong number of cookie IDs received.  Expected: %"
-		PRIu32 "Received: %" PRIu32, THIS_FILE, __LINE__, __FUNCTION__,
+				PRIu32 "Received: %" PRIu32, THIS_FILE, __LINE__, __FUNCTION__,
 				job->num_cookies, num_cookies);
 		return SLURM_ERROR;
 	}
@@ -808,31 +808,32 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 		 */
 		total_cpus = get_cpu_total();
 
-	//Use /proc/meminfo to get the total amount of memory on the node
-	f = fopen("/proc/meminfo", "r");
-	if (f == NULL ) {
-		error("(%s: %d: %s) Failed to open /proc/meminfo: %s", THIS_FILE,
-				__LINE__, __FUNCTION__, strerror(errno));
-		return SLURM_ERROR;
-	}
+		//Use /proc/meminfo to get the total amount of memory on the node
+		f = fopen("/proc/meminfo", "r");
+		if (f == NULL ) {
+			error("(%s: %d: %s) Failed to open /proc/meminfo: %s", THIS_FILE,
+					__LINE__, __FUNCTION__, strerror(errno));
+			return SLURM_ERROR;
+		}
 
-	while (!feof(f)) {
-		lsz = getline(&lin, &sz, f);
-		if (lsz > 0) {
-			sscanf(lin, "%s %d", meminfo_str, &meminfo_value);
-			if (!strcmp(meminfo_str, "MemTotal:")) {
-				total_mem = meminfo_value;
-				break;
+		while (!feof(f)) {
+			lsz = getline(&lin, &sz, f);
+			if (lsz > 0) {
+				sscanf(lin, "%s %d", meminfo_str, &meminfo_value);
+				if (!strcmp(meminfo_str, "MemTotal:")) {
+					total_mem = meminfo_value;
+					break;
+				}
 			}
 		}
 		free(lin);
 		fclose(f);
 
-	if (total_mem == 0) {
-		error("(%s: %d: %s) Scanning /proc/meminfo results in MemTotal=0",
-				THIS_FILE, __LINE__, __FUNCTION__);
-		return SLURM_ERROR;
-	}
+		if (total_mem == 0) {
+			error("(%s: %d: %s) Scanning /proc/meminfo results in MemTotal=0",
+					THIS_FILE, __LINE__, __FUNCTION__);
+			return SLURM_ERROR;
+		}
 
 		/*
 		 * Scaling
@@ -842,29 +843,29 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 		 * If the scaling is zero, then return an error.
 		 */
 
-	num_app_cpus = job->node_tasks * job->cpus_per_task;
-	if (num_app_cpus <= 0) {
-		error("(%s: %d: %s) num_app_cpus <=0: %d%%", THIS_FILE, __LINE__,
-				__FUNCTION__, num_app_cpus);
-		return SLURM_ERROR;
-	}
+		num_app_cpus = job->node_tasks * job->cpus_per_task;
+		if (num_app_cpus <= 0) {
+			error("(%s: %d: %s) num_app_cpus <=0: %d%%", THIS_FILE, __LINE__,
+					__FUNCTION__, num_app_cpus);
+			return SLURM_ERROR;
+		}
 
-	cpu_scaling = floor(
-			(((double) num_app_cpus / (double) total_cpus) * (double) 100)
-					+ 0.5);
-	if (cpu_scaling > 100) {
-		info(
-				"(%s: %d: %s) Cpu scaling out of bounds: %d%%.  "
-				"Reducing to 100%%",
-				THIS_FILE, __LINE__, __FUNCTION__, cpu_scaling);
-		cpu_scaling = 100;
-	}
-	if (cpu_scaling <= 0) {
-		info("(%s: %d: %s) Cpu scaling out of bounds: %d%%."
-				"Increasing to 1%%.", THIS_FILE, __LINE__,
-				__FUNCTION__, cpu_scaling);
-		cpu_scaling = 1;
-	}
+		cpu_scaling = floor(
+				(((double) num_app_cpus / (double) total_cpus) * (double) 100)
+				+ 0.5);
+		if (cpu_scaling > 100) {
+			info(
+					"(%s: %d: %s) Cpu scaling out of bounds: %d%%.  "
+					"Reducing to 100%%",
+					THIS_FILE, __LINE__, __FUNCTION__, cpu_scaling);
+			cpu_scaling = 100;
+		}
+		if (cpu_scaling <= 0) {
+			info("(%s: %d: %s) Cpu scaling out of bounds: %d%%."
+					"Increasing to 1%%.", THIS_FILE, __LINE__,
+					__FUNCTION__, cpu_scaling);
+			cpu_scaling = 1;
+		}
 
 		/*
 		 * Figure out the correct amount of application memory.
@@ -877,72 +878,73 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 			app_mem = job->step_mem;
 		}
 
-	/*
-	 * Scale total_mem, which is in kilobytes, to megabytes because app_mem is
-	 * in megabytes.
-	 * Round to the nearest integer.
-	 * If the memory request is greater than 100 percent, then scale it to
-	 * 100%.
-	 * If the memory request is zero, then return an error.
-	 * Note: Inside printf, to escape the percent '%' sign, use %%.
-	 */
-	mem_scaling = floor(
-			((((double) app_mem / ((double) total_mem / 1024)) * (double) 100))
-					+ 0.5);
+		/*
+		 * Scale total_mem, which is in kilobytes, to megabytes because app_mem is
+		 * in megabytes.
+		 * Round to the nearest integer.
+		 * If the memory request is greater than 100 percent, then scale it to
+		 * 100%.
+		 * If the memory request is zero, then return an error.
+		 * Note: Inside printf, to escape the percent '%' sign, use %%.
+		 */
+		mem_scaling = floor(
+				((((double) app_mem / ((double) total_mem / 1024)) * (double) 100))
+				+ 0.5);
 
-	if (mem_scaling > 100) {
-		info("(%s: %d: %s) Memory scaling out of bounds: %d%%.  "
-				"Reducing to 100%%.", THIS_FILE, __LINE__, __FUNCTION__,
-				mem_scaling);
-		mem_scaling = 100;
-	}
+		if (mem_scaling > 100) {
+			info("(%s: %d: %s) Memory scaling out of bounds: %d%%.  "
+					"Reducing to 100%%.", THIS_FILE, __LINE__, __FUNCTION__,
+					mem_scaling);
+			mem_scaling = 100;
+		}
 
-	if (mem_scaling <= 0) {
-		info("(%s: %d: %s) Memory scaling out of bounds: %d%%."
-				"Increasing to 1%%.", THIS_FILE, __LINE__, __FUNCTION__,
-				mem_scaling);
-		mem_scaling = 1;
-	}
+		if (mem_scaling <= 0) {
+			info("(%s: %d: %s) Memory scaling out of bounds: %d%%."
+					"Increasing to 1%%.", THIS_FILE, __LINE__, __FUNCTION__,
+					mem_scaling);
+			mem_scaling = 1;
+		}
 
-	if (slurm_get_debug_flags() & DEBUG_FLAG_SWITCH) {
-		info("(%s:%d: %s) --Network Scaling Start--", THIS_FILE, __LINE__,
-				__FUNCTION__);
-		info("(%s:%d: %s) --CPU Scaling: %d--", THIS_FILE, __LINE__,
-				__FUNCTION__, cpu_scaling);
-		info("(%s:%d: %s) --Memory Scaling: %d--", THIS_FILE, __LINE__,
-				__FUNCTION__, mem_scaling);
-		info("(%s:%d: %s) --Network Scaling End--", THIS_FILE, __LINE__,
-				__FUNCTION__);
+		if (slurm_get_debug_flags() & DEBUG_FLAG_SWITCH) {
+			info("(%s:%d: %s) --Network Scaling Start--", THIS_FILE, __LINE__,
+					__FUNCTION__);
+			info("(%s:%d: %s) --CPU Scaling: %d--", THIS_FILE, __LINE__,
+					__FUNCTION__, cpu_scaling);
+			info("(%s:%d: %s) --Memory Scaling: %d--", THIS_FILE, __LINE__,
+					__FUNCTION__, mem_scaling);
+			info("(%s:%d: %s) --Network Scaling End--", THIS_FILE, __LINE__,
+					__FUNCTION__);
 
-		info("(%s:%d: %s) --PAGG Job Container ID: %" PRIx64 "--", THIS_FILE,
-				__LINE__, __FUNCTION__, job->cont_id);
-	}
+			info("(%s:%d: %s) --PAGG Job Container ID: %" PRIx64 "--", THIS_FILE,
+					__LINE__, __FUNCTION__, job->cont_id);
+		}
 
-	rc = alpsc_configure_nic(&errMsg, 0, cpu_scaling, mem_scaling, job->cont_id,
-			sw_job->num_cookies, (const char **) sw_job->cookies, &numPTags,
-			&pTags, ntt_desc_ptr);
-	/*
-	 * We don't use the pTags because Cray's LLI acquires them itself, so they
-	 * can be immediately discarded.
-	 */
-	free(pTags);
-	if (rc != 1) {
+		rc = alpsc_configure_nic(&errMsg, 0, cpu_scaling, mem_scaling, job->cont_id,
+				sw_job->num_cookies, (const char **) sw_job->cookies, &numPTags,
+				&pTags, ntt_desc_ptr);
+		/*
+		 * We don't use the pTags because Cray's LLI acquires them itself, so they
+		 * can be immediately discarded.
+		 */
+		free(pTags);
+		if (rc != 1) {
+			if (errMsg) {
+				info("(%s: %d: %s) alpsc_configure_nic: %s", THIS_FILE, __LINE__,
+						__FUNCTION__, errMsg);
+				free(errMsg);
+			} else {
+				error("(%s: %d: %s) alpsc_configure_nic failed: No error message "
+						"present.", THIS_FILE, __LINE__, __FUNCTION__);
+			}
+			return SLURM_ERROR;
+		}
 		if (errMsg) {
 			info("(%s: %d: %s) alpsc_configure_nic: %s", THIS_FILE, __LINE__,
 					__FUNCTION__, errMsg);
 			free(errMsg);
-		} else {
-			error("(%s: %d: %s) alpsc_configure_nic failed: No error message "
-					"present.", THIS_FILE, __LINE__, __FUNCTION__);
 		}
-		return SLURM_ERROR;
-	}
-	if (errMsg) {
-		info("(%s: %d: %s) alpsc_configure_nic: %s", THIS_FILE, __LINE__,
-				__FUNCTION__, errMsg);
-		free(errMsg);
-	}
 
+	}
 	// Not defined yet -- deferred
 	//alpsc_config_gpcd();
 
@@ -981,7 +983,7 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 	}
 	if (sw_job->step_layout->node_cnt != cnt) {
 		error("(%s: %d: %s) list_str_to_array returned count %"
-		PRIu32 "does not match expected count %d", THIS_FILE, __LINE__,
+				PRIu32 "does not match expected count %d", THIS_FILE, __LINE__,
 				__FUNCTION__, cnt, sw_job->step_layout->node_cnt);
 	}
 
@@ -1346,7 +1348,7 @@ int switch_p_job_postfini(stepd_step_rec_t *job) {
 	 */
 
 	rc = snprintf(path, sizeof(path), "/dev/cpuset/slurm/uid_%d/job_%" PRIu32
-	"/step_%" PRIu32, job->uid, job->jobid, job->stepid);
+			"/step_%" PRIu32, job->uid, job->jobid, job->stepid);
 	if (rc < 0) {
 		error("(%s: %d: %s) snprintf failed. Return code: %d", THIS_FILE,
 				__LINE__, __FUNCTION__, rc);
@@ -1796,35 +1798,35 @@ static int get_cpu_total(void) {
 				if (token1) {
 					number1 = strtol(token1, &endptr, 10);
 					if ((number1 == LONG_MIN)|| (number1 == LONG_MAX)){
-					error("(%s: %d: %s) Error: %s", THIS_FILE, __LINE__,
-							__FUNCTION__, strerror(errno));
-					free(lin);
-					TEMP_FAILURE_RETRY(fclose(f));
-					return -1;
-				} else if (endptr == token1) {
-					error("(%s: %d: %s) Error: Not a number: %s\n",
-							THIS_FILE, __LINE__, __FUNCTION__, endptr);
-					free(lin);
-					TEMP_FAILURE_RETRY(fclose(f));
-					return -1;
-				}
-
-					token2 = strtok_r(NULL, "-", &saveptr1);
-					if (token2) {
-						number2 = strtol(token2, &endptr, 10);
-						if ((number2 == LONG_MIN)|| (number2 == LONG_MAX)){
-						error("(%s: %d: %s) Error: %s", THIS_FILE,
-								__LINE__, __FUNCTION__, strerror(errno));
+						error("(%s: %d: %s) Error: %s", THIS_FILE, __LINE__,
+								__FUNCTION__, strerror(errno));
 						free(lin);
 						TEMP_FAILURE_RETRY(fclose(f));
 						return -1;
-					} else if (endptr == token2) {
-						error("(%s: %d: %s) Error: Not a number: '%s'\n",
+					} else if (endptr == token1) {
+						error("(%s: %d: %s) Error: Not a number: %s\n",
 								THIS_FILE, __LINE__, __FUNCTION__, endptr);
 						free(lin);
 						TEMP_FAILURE_RETRY(fclose(f));
 						return -1;
 					}
+
+					token2 = strtok_r(NULL, "-", &saveptr1);
+					if (token2) {
+						number2 = strtol(token2, &endptr, 10);
+						if ((number2 == LONG_MIN)|| (number2 == LONG_MAX)){
+							error("(%s: %d: %s) Error: %s", THIS_FILE,
+									__LINE__, __FUNCTION__, strerror(errno));
+							free(lin);
+							TEMP_FAILURE_RETRY(fclose(f));
+							return -1;
+						} else if (endptr == token2) {
+							error("(%s: %d: %s) Error: Not a number: '%s'\n",
+									THIS_FILE, __LINE__, __FUNCTION__, endptr);
+							free(lin);
+							TEMP_FAILURE_RETRY(fclose(f));
+							return -1;
+						}
 
 						total += number2 - number1 + 1;
 					} else {
@@ -1973,7 +1975,7 @@ static int release_port(uint32_t real_port) {
 
 	if ((real_port < MIN_PORT) || (real_port >= MAX_PORT)) {
 		error("(%s: %d: %s) Port %" PRIu32 "outside of valid range %" PRIu32
-		": %" PRIu32, THIS_FILE, __LINE__, __FUNCTION__, real_port, MIN_PORT,
+				": %" PRIu32, THIS_FILE, __LINE__, __FUNCTION__, real_port, MIN_PORT,
 				MAX_PORT);
 		return -1;
 	}
