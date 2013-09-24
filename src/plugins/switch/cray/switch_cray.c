@@ -1926,14 +1926,14 @@ static int _release_port(uint32_t real_port) {
  */
 static int _get_numa_nodes(char *path, int *cnt, int32_t **numa_array) {
 	struct bitmask *bm;
-	int i, index, rc;
+	int i, index, rc = 0;
 	int lsz;
 	size_t sz;
 	char buffer[PATH_MAX];
 	FILE *f = NULL;
 	char *lin = NULL;
 
-	snprintf(buffer, sizeof(buffer), "%s/%s", path, "cpuset.mems");
+	rc = snprintf(buffer, sizeof(buffer), "%s/%s", path, "cpuset.mems");
 	if (rc < 0) {
 		error("(%s: %d: %s) snprintf failed. Return code: %d", THIS_FILE,
 				__LINE__, __FUNCTION__, rc);
