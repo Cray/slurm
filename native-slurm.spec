@@ -1019,12 +1019,14 @@ rm -rf $RPM_BUILD_ROOT
 #    fi
 #fi
 
+%post
+if [ -x /sbin/chkconfig ]; then
+    /sbin/chkconfig --add slurm
+fi
+
 %post libs
 if [ -x /sbin/ldconfig ]; then
     /sbin/ldconfig %{_libdir}
-    if [ $1 = 1 ]; then
-	[ -x /sbin/chkconfig ] && /sbin/chkconfig --add slurm
-    fi
 fi
 
 %if %{slurm_with bluegene}
