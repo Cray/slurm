@@ -1021,6 +1021,7 @@ rm -rf $RPM_BUILD_ROOT
 
 %post
 if [ -x /sbin/chkconfig ]; then
+    /sbin/chkconfig --add munge
     /sbin/chkconfig --add slurm
 fi
 
