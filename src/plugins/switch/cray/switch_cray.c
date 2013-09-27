@@ -128,9 +128,12 @@ static void _print_jobinfo(slurm_cray_jobinfo_t *job) {
 
 	xassert(job->magic == CRAY_JOBINFO_MAGIC);
 
+	info("Program: %s", slurm_prog_name);
 	info("Address of slurm_cray_jobinfo_t structure: %p", job);
 	info("--Begin Jobinfo--");
 	info("  Magic: %" PRIx32, job->magic);
+	info("  Job ID: %" PRIu32, job->jobid);
+	info("  Step ID: %" PRIu32, job->stepid);
 	info("  APID: %" PRIu64, job->apid);
 	info("  PMI Port: %" PRIu32, job->port);
 	info("  num_cookies: %" PRIu32, job->num_cookies);
@@ -2024,7 +2027,7 @@ static int _get_cpu_masks(char *path, cpu_set_t **cpuMasks) {
 	int lsz;
 	size_t sz;
 
-	snprintf(buffer, sizeof(buffer), "%s/%s", path, "cpuset.cpus");
+	rc = snprintf(buffer, sizeof(buffer), "%s/%s", path, "cpuset.cpus");
 	if (rc < 0) {
 		error("(%s: %d: %s) snprintf failed. Return code: %d", THIS_FILE,
 				__LINE__, __FUNCTION__, rc);
