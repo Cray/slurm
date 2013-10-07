@@ -663,8 +663,8 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 	rc = mkdir(apid_dir, 700);
 	if (rc) {
 		free(apid_dir);
-		error("(%s: %d: %s) mkdir failed: %s", THIS_FILE, __LINE__,
-				__FUNCTION__, strerror(errno));
+		error("(%s: %d: %s) mkdir failed to make directory %s: %s", THIS_FILE, __LINE__,
+				__FUNCTION__, apid_dir, strerror(errno));
 		return SLURM_ERROR;
 	}
 
