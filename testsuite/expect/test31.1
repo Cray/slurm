@@ -55,7 +55,7 @@ if { [string compare [test_launch_type] "slurm"] } {
 
 proc change_pro_epi { arg program_name conf_change task_pro } {
 
-	global inc_slurm bin_chmod bin_rm config_dir pro_epi_prog bin_echo test_id bin_pwd alpha_numeric_under make_file bin_bash exit_code cwd bin_ln
+	global inc_slurm bin_chmod bin_rm config_dir pro_epi_prog bin_echo test_id bin_pwd alpha_numeric_under make_file bin_bash exit_code cwd file_dir bin_ln
 
 	if {$conf_change == 0} {
 		exec $bin_echo $arg=$config_dir/$pro_epi_prog > $config_dir/$inc_slurm
@@ -85,7 +85,7 @@ proc change_pro_epi { arg program_name conf_change task_pro } {
 
 	exec $bin_echo "#!/bin/bash\n" > $config_dir/$pro_epi_prog
 	if {$make_file == 1} {
-		exec $bin_echo "touch $cwd/$arg.$test_id.txt" >> $config_dir/$pro_epi_prog
+		exec $bin_echo "touch $file_dir/$arg.$test_id.txt" >> $config_dir/$pro_epi_prog
 	}
 
 	# task prologs are ran with fork_wait so don't do the sleep
@@ -97,13 +97,15 @@ proc change_pro_epi { arg program_name conf_change task_pro } {
 	exec $bin_chmod 700 $config_dir/$pro_epi_prog
 }
 
-proc check_file { arg } {
-	global test_id exit_code cwd
+proc check_file { file_name } {
+	global test_id exit_code file_dir run_host
+
+	sleep 1
 
 	set found 0
-	spawn find $cwd -name $arg.$test_id.txt
+	spawn /opt/cray/nodehealth/default/bin/pcmd -n $run_host "find $file_dir -name $file_name"
 	expect {
-		-re "$cwd/$arg.$test_id.txt" {
+		-re "$file_dir/$file_name" {
 			set found 1
 			exp_continue
 		}
@@ -117,9 +119,9 @@ proc check_file { arg } {
 	}
 
 	if {$found == 1} {
-		send_user "\nFAILURE: The file $arg.$test_id.txt should have been removed\n"
+		send_user "\nFAILURE: The file $file_name should have been removed\n"
 		# Root may of created this file so we can't remove it
-		# exec $bin_rm -f $cwd/$arg.$test_id.txt
+		# exec $bin_rm -f $file_dir/$file_name
 		set exit_code 1
 	}
 }
@@ -152,7 +154,7 @@ proc check_proc {program_name} {
 
 proc run_job { file_type program_name conf_change task_pro} {
 
-	global srun run_host make_file exit_code bin_rm bin_printenv bin_sleep cwd
+	global srun run_host make_file exit_code bin_rm bin_printenv bin_sleep cwd test_id
 
 	# Change the included file to epilog in the slurm.conf
 	change_pro_epi $file_type $program_name $conf_change $task_pro
@@ -185,10 +187,9 @@ proc run_job { file_type program_name conf_change task_pro} {
 	}
 
 	# wait for file
-	sleep 1
 	if {$make_file == 1} {
 		# Check to see that the epilog or prolog file has been removed
-		check_file $file_type
+		check_file $file_type.$test_id.txt
 	}
 
 	if {$task_pro != 1} {
@@ -259,6 +260,7 @@ expect {
 }
 
 set cwd "[$bin_pwd]"
+set file_dir "/tmp"
 if {$get_name != 1} {
 	send_user "\nFAILURE: Did not get run_host\n"
 	exit 1
@@ -307,7 +309,7 @@ if {$sub_job != 1} {
 }
 
 if {$make_file == 1} {
-	check_file srun-task-epilog
+	check_file srun-task-epilog.$test_id.txt
 }
 
 
@@ -335,12 +337,12 @@ if {$make_file == 1} {
 	update_conf
 
 	set sub_job 0
-	set sbcast_file      "$cwd/${test_id}_sbcast"
+	set sbcast_file      "$file_dir/${test_id}_sbcast"
 
 	spawn $salloc -t1 -w$run_host $bin_bash
 	expect {
 		-re "Granted job allocation ($number)" {
-			send "$sbcast --force $sbcast_file\n"
+			send "$sbcast --force $config_dir/$pro_epi_prog $sbcast_file\n"
 			send "$srun --task-prolog=$config_dir/$pro_epi_prog $bin_printenv SLURMD_NODENAME\n"
 			send "exit\n"
 			exp_continue
@@ -362,27 +364,9 @@ if {$make_file == 1} {
 		set exit_code 1
 	}
 
-	sleep 1
-	set rm_success 0
-	spawn $srun -t1 -w$run_host $bin_rm $sbcast_file
-	expect {
-		-re "No such file" {
-			set rm_success 1
-			exp_continue
-		}
-		timeout {
-			send_user "\nFAILURE: srun is not responding\n"
-			set exit_code 1
-		}
-		eof {
-			wait
-		}
-	}
-	if {$rm_success != 1} {
-		send_user "\nFAILURE: sbcast file not removed\n"
-		set exit_code 1
-	}
-	check_file srun-task-prolog
+	check_file ${test_id}_sbcast
+
+	check_file srun-task-prolog.$test_id.txt
 
 	# Remove link
 	exec $bin_rm -rf $cwd/srun--task-prolog_$test_id
