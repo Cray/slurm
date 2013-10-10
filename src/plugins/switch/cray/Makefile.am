@@ -7,7 +7,7 @@ PLUGIN_FLAGS = -module -avoid-version --export-dynamic
 AM_CPPFLAGS = -I$(top_srcdir) -I$(top_srcdir)/src/common \
 	$(CRAY_CPPFLAGS) $(CRAY_SWITCH_CPPFLAGS)
 
-AM_CFLAGS = $(CRAY_ALPSCOMM_CN_CFLAGS) $(CRAY_ALPSCOMM_SN_CFLAGS) 
+AM_CFLAGS = $(CRAY_ALPSCOMM_CN_CFLAGS) $(CRAY_ALPSCOMM_SN_CFLAGS) -lnuma -lm
 
 pkglib_LTLIBRARIES = switch_cray.la
 

@@ -214,7 +214,7 @@ extern int task_p_pre_launch (stepd_step_rec_t *job)
 	}
 
 	/*
-	 * Send the rank to the application's PMI layer via an environment variable.
+	 * Set the PMI_NO_FORK environment variable.
 	 */
 	rc = env_array_overwrite(&job->env,"PMI_NO_FORK", "1");
 	if (rc == 0) {

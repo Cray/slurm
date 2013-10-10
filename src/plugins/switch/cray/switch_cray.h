@@ -37,15 +37,15 @@ struct slurm_cray_jobinfo {
 };
 
 static void _print_jobinfo(slurm_cray_jobinfo_t *job);
-static int get_first_pe(uint32_t nodeid, uint32_t task_count,
+static int _get_first_pe(uint32_t nodeid, uint32_t task_count,
 		uint32_t **host_to_task_map, int32_t *first_pe);
-static int node_list_str_to_array(uint32_t node_cnt, char *node_list, int32_t **nodes);
-static void recursiveRmdir(const char *dirnm);
-static int get_cpu_total(void);
-static int init_port();
-static int assign_port(uint32_t *ret_port);
-static int release_port(uint32_t real_port);
-static int get_numa_nodes(char *path, int *cnt, int **numa_array);
-static int get_cpu_masks(char *path, cpu_set_t **cpuMasks);
+static int _list_str_to_array(char *list, int *cnt, int32_t **numbers);
+static void _recursiveRmdir(const char *dirnm);
+static int _get_cpu_total(void);
+static int _init_port();
+static int _assign_port(uint32_t *ret_port);
+static int _release_port(uint32_t real_port);
+static int _get_numa_nodes(char *path, int *cnt, int **numa_array);
+static int _get_cpu_masks(char *path, cpu_set_t **cpuMasks);
 
 #endif /* SWITCH_CRAY_H_ */
