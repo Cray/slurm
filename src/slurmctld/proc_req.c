@@ -500,6 +500,7 @@ static void _throttle_fini(int *active_rpc_cnt)
  */
 void _fill_ctld_conf(slurm_ctl_conf_t * conf_ptr)
 {
+	char *licenses_used = get_licenses_used();  /* Do before config lock */
 	slurm_ctl_conf_t *conf = slurm_conf_lock();
 
 	memset(conf_ptr, 0, sizeof(slurm_ctl_conf_t));
@@ -597,7 +598,7 @@ void _fill_ctld_conf(slurm_ctl_conf_t * conf_ptr)
 
 	conf_ptr->launch_type         = xstrdup(conf->launch_type);
 	conf_ptr->licenses            = xstrdup(conf->licenses);
-	conf_ptr->licenses_used       = get_licenses_used();
+	conf_ptr->licenses_used       = licenses_used;
 	conf_ptr->log_fmt             = conf->log_fmt;
 
 	conf_ptr->mail_prog           = xstrdup(conf->mail_prog);
@@ -660,7 +661,7 @@ void _fill_ctld_conf(slurm_ctl_conf_t * conf_ptr)
 	if (conf->sched_params)
 		conf_ptr->sched_params = xstrdup(conf->sched_params);
 	else
-		conf_ptr->sched_params = slurm_sched_p_get_conf();
+		conf_ptr->sched_params = slurm_sched_g_get_conf();
 	conf_ptr->schedport           = conf->schedport;
 	conf_ptr->schedrootfltr       = conf->schedrootfltr;
 	conf_ptr->sched_logfile       = xstrdup(conf->sched_logfile);
@@ -2466,7 +2467,7 @@ static void _slurm_rpc_reconfigure_controller(slurm_msg_t * msg)
 			msg_to_slurmd(REQUEST_RECONFIGURE);
 		}
 		in_progress = false;
-		slurm_sched_partition_change();	/* notify sched plugin */
+		slurm_sched_g_partition_change();	/* notify sched plugin */
 		unlock_slurmctld(config_write_lock);
 		assoc_mgr_set_missing_uids();
 		start_power_mgr(&slurmctld_config.thread_id_power);
@@ -4224,7 +4225,7 @@ inline static void  _slurm_rpc_set_debug_flags(slurm_msg_t *msg)
 	gres_plugin_reconfig(NULL);
 	priority_g_reconfig();
 	select_g_reconfigure();
-	(void) slurm_sched_reconfig();
+	(void) slurm_sched_g_reconfig();
 	(void) switch_g_reconfig();
 
 	unlock_slurmctld (config_write_lock);

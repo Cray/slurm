@@ -98,7 +98,6 @@ proc change_pro_epi { arg program_name conf_change task_pro } {
 }
 
 proc check_file { arg } {
-
 	global test_id exit_code cwd
 
 	set found 0
@@ -123,10 +122,9 @@ proc check_file { arg } {
 		# exec $bin_rm -f $cwd/$arg.$test_id.txt
 		set exit_code 1
 	}
-
 }
 
-proc check_proc { program_name} {
+proc check_proc {program_name} {
 
 	global bin_ps bin_bash bin_grep exit_code
 
@@ -219,6 +217,11 @@ proc update_conf { } {
 
 }
 
+if { [test_super_user] == 0 } {
+	send_user "WARNING: Test can only be run as SlurmUser\n"
+	exit $exit_code
+}
+
 set got_config 0
 log_user 0
 spawn $scontrol show config
@@ -254,6 +257,7 @@ expect {
 		wait
 	}
 }
+
 set cwd "[$bin_pwd]"
 if {$get_name != 1} {
 	send_user "\nFAILURE: Did not get run_host\n"
@@ -331,10 +335,39 @@ if {$make_file == 1} {
 	update_conf
 
 	set sub_job 0
-	spawn $srun -t1 -w$run_host --task-prolog=$config_dir/$pro_epi_prog $bin_printenv SLURMD_NODENAME
+	set sbcast_file      "$cwd/${test_id}_sbcast"
+
+	spawn $salloc -t1 -w$run_host $bin_bash
 	expect {
+		-re "Granted job allocation ($number)" {
+			send "$sbcast --force $sbcast_file\n"
+			send "$srun --task-prolog=$config_dir/$pro_epi_prog $bin_printenv SLURMD_NODENAME\n"
+			send "exit\n"
+			exp_continue
+		}
 		-re "$run_host" {
 			set sub_job 1
+			exp_continue
+		}
+		timeout {
+			send_user "\nFAILURE: salloc is not responding\n"
+			set exit_code 1
+		}
+		eof {
+			wait
+		}
+	}
+	if {$sub_job != 1} {
+		send_user "\nFAILURE: srun did not submit job\n"
+		set exit_code 1
+	}
+
+	sleep 1
+	set rm_success 0
+	spawn $srun -t1 -w$run_host $bin_rm $sbcast_file
+	expect {
+		-re "No such file" {
+			set rm_success 1
 			exp_continue
 		}
 		timeout {
@@ -345,16 +378,11 @@ if {$make_file == 1} {
 			wait
 		}
 	}
-
-	if {$sub_job != 1} {
-		send_user "\nFAILURE: srun did not submit job\n"
+	if {$rm_success != 1} {
+		send_user "\nFAILURE: sbcast file not removed\n"
 		set exit_code 1
 	}
-
-	sleep 1
-	if {$make_file == 1} {
-		check_file srun-task-prolog
-	}
+	check_file srun-task-prolog
 
 	# Remove link
 	exec $bin_rm -rf $cwd/srun--task-prolog_$test_id
@@ -368,7 +396,6 @@ if {$make_file == 1} {
 	run_job taskprolog taskprolog_$test_id 0 1
 
 } else {
-
 	# Add a line in the slurm.conf file to include the epilogs and prologs
 	exec $bin_echo include $config_dir/$inc_slurm >> $config_dir/slurm.conf
 }

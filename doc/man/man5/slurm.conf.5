@@ -462,9 +462,6 @@ Slurmctld triggers
 .TP
 \fBWiki\fR
 Sched/wiki and wiki2 communications
-.TP
-\fBThreadID\fR
-Prints the thread ID in the log file
 .RE
 
 .TP
@@ -528,14 +525,11 @@ Also see \fBAccountingStoragePort\fR and \fBJobCompPort\fR.
 .TP
 \fBDefaultStorageType\fR
 The accounting and job completion storage mechanism type.  Acceptable
-values at present include "filetxt", "mysql", "none", and
-"slurmdbd".  The value "filetxt" indicates that records will be
-written to a file.  The value "mysql" indicates that accounting
-records will be written to a MySQL or MariaDB database. The default value is
-"none", which means that records are not maintained.
-The value "slurmdbd" indicates that records will be written
-to the SLURM DBD, which maintains its own database. See "man slurmdbd"
-for more information.
+values at present include "filetxt", "mysql" and "none".
+The value "filetxt" indicates that records will be written to a file.
+The value "mysql" indicates that accounting records will be written to a MySQL
+or MariaDB database.
+The default value is "none", which means that records are not maintained.
 Also see \fBAccountingStorageType\fR and \fBJobCompType\fR.
 
 .TP
@@ -870,11 +864,11 @@ Only used for database type storage plugins, ignored otherwise.
 Also see \fBDefaultStorageUser\fR.
 
 .TP
-\fBJobContainerPlugin\fR
+\fBJobContainerType\fR
 Identifies the plugin to be used for job tracking.
-The slurmd daemon must be restarted for a change in JobContainerPlugin
+The slurmd daemon must be restarted for a change in JobContainerType
 to take effect.
-NOTE: The \fBJobContainerPlugin\fR applies to a job allocation, while
+NOTE: The \fBJobContainerType\fR applies to a job allocation, while
 \fBProctrackType\fR applies to job steps.
 Acceptable values at present include:
 .RS
@@ -1020,9 +1014,14 @@ The maximum number of jobs SLURM can have in its active database
 at one time. Set the values of \fBMaxJobCount\fR and \fBMinJobAge\fR
 to insure the slurmctld daemon does not exhaust its memory or other
 resources. Once this limit is reached, requests to submit additional
-jobs will fail. The default value is 10000 jobs. This value may not
-be reset via "scontrol reconfig". It only takes effect upon restart
-of the slurmctld daemon.
+jobs will fail. The default value is 10000 jobs.
+Performance can suffer with more than a couple hundred thousand jobs.
+Setting per MaxSubmitJobs per user is generally valuable to prevent a single
+user from filling the system with jobs.
+This is accomplished using Slurm's database and configuring enforcement of
+resource limits.
+This value may not be reset via "scontrol reconfig".
+It only takes effect upon restart of the slurmctld daemon.
 
 .TP
 \fBMaxJobId\fR
@@ -1697,7 +1696,7 @@ be changed.
 \fB2\fR
 A DOWN node will become available for use upon registration with a
 valid configuration.  The node could have been set DOWN for any reason.
-(Disabled on Cray systems.)
+(Disabled on Cray ALPS systems.)
 .RE
 
 .TP
@@ -1761,6 +1760,14 @@ considered for backfill scheduling.
 The number of seconds between iterations.
 Higher values result in less overhead and better responsiveness.
 The default value is 30 seconds.
+This option applies only to \fBSchedulerType=sched/backfill\fR.
+.TP
+\fBbf_max_job_part=#\fR
+The maximum number of jobs per partition to attempt backfill scheduling for,
+not counting jobs which cannot be started due to an association resource
+limit. This can be especially helpful for systems with large numbers of
+partitions and jobs.
+The default value is 0, which means no limit.
 This option applies only to \fBSchedulerType=sched/backfill\fR.
 .TP
 \fBbf_max_job_user=#\fR

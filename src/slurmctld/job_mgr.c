@@ -64,6 +64,7 @@
 #include "src/common/slurm_acct_gather.h"
 #include "src/common/assoc_mgr.h"
 #include "src/common/bitstring.h"
+#include "src/common/fd.h"
 #include "src/common/forward.h"
 #include "src/common/gres.h"
 #include "src/common/hostlist.h"
@@ -201,12 +202,16 @@ static int  _valid_job_part_acct(job_desc_msg_t *job_desc,
 static int  _valid_job_part_qos(struct part_record *part_ptr,
 				slurmdb_qos_rec_t *pos_ptr);
 static int  _validate_job_desc(job_desc_msg_t * job_desc_msg, int allocate,
-			       uid_t submit_uid, struct part_record *part_ptr);
+                               uid_t submit_uid, struct part_record *part_ptr,
+                               List part_list);
 static void _validate_job_files(List batch_dirs);
 static int  _write_data_to_file(char *file_name, char *data);
 static int  _write_data_array_to_file(char *file_name, char **data,
 				      uint32_t size);
 static void _xmit_new_end_time(struct job_record *job_ptr);
+static bool _validate_min_mem_partition(job_desc_msg_t *job_desc_msg,
+                                        struct part_record *,
+                                        List part_list);
 
 /*
  * create_job_record - create an empty job_record including job_details.
@@ -506,8 +511,12 @@ int dump_all_job_state(void)
 		      new_file);
 		error_code = errno;
 	} else {
-		int pos = 0, nwrite = get_buf_offset(buffer), amount, rc;
-		char *data = (char *)get_buf_data(buffer);
+		int pos = 0, nwrite, amount, rc;
+		char *data;
+
+		fd_set_close_on_exec(log_fd);
+		nwrite = get_buf_offset(buffer);
+		data = (char *)get_buf_data(buffer);
 		high_buffer_size = MAX(nwrite, high_buffer_size);
 		while (nwrite > 0) {
 			amount = write(log_fd, &data[pos], nwrite);
@@ -2190,7 +2199,7 @@ extern int kill_job_by_front_end_name(char *node_name)
 				if (job_ptr->node_cnt == 0) {
 					job_ptr->job_state &= (~JOB_COMPLETING);
 					delete_step_records(job_ptr);
-					slurm_sched_schedule();
+					slurm_sched_g_schedule();
 				}
 				node_ptr = &node_record_table_ptr[i];
 				if (node_ptr->comp_job_cnt)
@@ -2216,7 +2225,7 @@ extern int kill_job_by_front_end_name(char *node_name)
 					 "Job requeued due to failure "
 					 "of node %s",
 					 node_name);
-				slurm_sched_requeue(job_ptr, requeue_msg);
+				slurm_sched_g_requeue(job_ptr, requeue_msg);
 				job_ptr->time_last_active  = now;
 				if (suspended) {
 					job_ptr->end_time =
@@ -2237,11 +2246,15 @@ extern int kill_job_by_front_end_name(char *node_name)
 				job_completion_logger(job_ptr, true);
 				deallocate_nodes(job_ptr, false, suspended,
 						 false);
-				job_ptr->db_index = 0;
+
+				/* do this after the epilog complete,
+				 * setting it here is too early */
+				//job_ptr->db_index = 0;
+				//job_ptr->details->submit_time = now;
+
 				job_ptr->job_state = JOB_PENDING;
 				if (job_ptr->node_cnt)
 					job_ptr->job_state |= JOB_COMPLETING;
-				job_ptr->details->submit_time = now;
 
 				/* restart from periodic checkpoint */
 				if (job_ptr->ckpt_interval &&
@@ -2411,7 +2424,7 @@ extern int kill_running_job_by_node_name(char *node_name)
 			if (job_ptr->node_cnt == 0) {
 				job_ptr->job_state &= (~JOB_COMPLETING);
 				delete_step_records(job_ptr);
-				slurm_sched_schedule();
+				slurm_sched_g_schedule();
 			}
 			if (node_ptr->comp_job_cnt)
 				(node_ptr->comp_job_cnt)--;
@@ -2445,7 +2458,7 @@ extern int kill_running_job_by_node_name(char *node_name)
 					 "Job requeued due to failure "
 					 "of node %s",
 					 node_name);
-				slurm_sched_requeue(job_ptr, requeue_msg);
+				slurm_sched_g_requeue(job_ptr, requeue_msg);
 				job_ptr->time_last_active  = now;
 				if (suspended) {
 					job_ptr->end_time =
@@ -2466,11 +2479,15 @@ extern int kill_running_job_by_node_name(char *node_name)
 				job_completion_logger(job_ptr, true);
 				deallocate_nodes(job_ptr, false, suspended,
 						 false);
-				job_ptr->db_index = 0;
+
+				/* do this after the epilog complete,
+				 * setting it here is too early */
+				//job_ptr->db_index = 0;
+				//job_ptr->details->submit_time = now;
+
 				job_ptr->job_state = JOB_PENDING;
 				if (job_ptr->node_cnt)
 					job_ptr->job_state |= JOB_COMPLETING;
-				job_ptr->details->submit_time = now;
 
 				/* restart from periodic checkpoint */
 				if (job_ptr->ckpt_interval &&
@@ -3143,7 +3160,7 @@ extern int job_allocate(job_desc_msg_t * job_specs, int immediate,
 	error_code = _select_nodes_parts(job_ptr, no_alloc, NULL);
 	if (!test_only) {
 		last_job_update = now;
-		slurm_sched_schedule();	/* work for external scheduler */
+		slurm_sched_g_schedule();	/* work for external scheduler */
 	}
 
 	slurmctld_diag_stats.jobs_submitted++;
@@ -3521,12 +3538,10 @@ extern int job_complete(uint32_t job_id, uid_t uid, bool requeue,
 		job_ptr->end_time = now;
 		job_ptr->job_state  = JOB_NODE_FAIL;
 		job_completion_logger(job_ptr, true);
-		job_ptr->db_index = 0;
-		/* Since this could happen on a launch we need to make
-		 * sure the submit isn't the same as the last submit so
-		 * put now + 1 so we get different records in the
-		 * database */
-		job_ptr->details->submit_time = now + 1;
+		/* do this after the epilog complete, setting it here
+		 * is too early */
+		//job_ptr->db_index = 0;
+		//job_ptr->details->submit_time = now + 1;
 
 		job_ptr->batch_flag++;	/* only one retry */
 		job_ptr->restart_cnt++;
@@ -4241,7 +4256,7 @@ static int _job_create(job_desc_msg_t * job_desc, int allocate, int will_run,
 		goto cleanup_fail;
 
 	if ((error_code = _validate_job_desc(job_desc, allocate, submit_uid,
-					     part_ptr))) {
+	                                     part_ptr, part_ptr_list))) {
 		goto cleanup_fail;
 	}
 
@@ -5644,7 +5659,8 @@ static void _job_timed_out(struct job_record *job_ptr)
  * IN submit_uid - who request originated
  */
 static int _validate_job_desc(job_desc_msg_t * job_desc_msg, int allocate,
-			      uid_t submit_uid, struct part_record *part_ptr)
+                              uid_t submit_uid, struct part_record *part_ptr,
+                              List part_list)
 {
 	if ((job_desc_msg->min_cpus  == NO_VAL) &&
 	    (job_desc_msg->min_nodes == NO_VAL) &&
@@ -5714,7 +5730,7 @@ static int _validate_job_desc(job_desc_msg_t * job_desc_msg, int allocate,
 			job_desc_msg->pn_min_memory =
 					slurmctld_conf.def_mem_per_cpu;
 		}
-	} else if (!_valid_pn_min_mem(job_desc_msg, part_ptr))
+	} else if (!_validate_min_mem_partition(job_desc_msg, part_ptr, part_list))
 		return ESLURM_INVALID_TASK_MEMORY;
 
 	if (job_desc_msg->min_nodes == NO_VAL)
@@ -5729,6 +5745,32 @@ static int _validate_job_desc(job_desc_msg_t * job_desc_msg, int allocate,
 		job_desc_msg->pn_min_tmp_disk = 0;/* default 0MB disk per node */
 
 	return SLURM_SUCCESS;
+}
+
+/* _validate_pn_min_mem()
+ * Traverse the list of partitions and invoke the
+ * function validating the job memory specification.
+ */
+static bool
+_validate_min_mem_partition(job_desc_msg_t *job_desc_msg,
+                            struct part_record *part_ptr, List part_list)
+{
+	ListIterator iter;
+	struct part_record *part;
+	bool cc;
+
+	if (part_list == NULL)
+		return _valid_pn_min_mem(job_desc_msg, part_ptr);
+
+	cc = false;
+	iter = list_iterator_create(part_list);
+	while ((part = list_next(iter))) {
+		if ((cc = _valid_pn_min_mem(job_desc_msg, part)))
+			break;
+	}
+	list_iterator_destroy(iter);
+
+	return cc;
 }
 
 /*
@@ -7014,7 +7056,7 @@ extern void set_job_prio(struct job_record *job_ptr)
 	xassert (job_ptr->magic == JOB_MAGIC);
 	if (IS_JOB_FINISHED(job_ptr))
 		return;
-	job_ptr->priority = slurm_sched_initial_priority(lowest_prio,
+	job_ptr->priority = slurm_sched_g_initial_priority(lowest_prio,
 							 job_ptr);
 	if ((job_ptr->priority <= 1) ||
 	    (job_ptr->direct_set_prio) ||
@@ -8067,7 +8109,7 @@ int update_job(job_desc_msg_t * job_specs, uid_t uid)
 				xfree(job_ptr->state_desc);
 			}
 		} else {
-			error("sched: Attempt to increase priority for job %u",
+			error("sched: Attempt to modify priority for job %u",
 			      job_specs->job_id);
 			error_code = ESLURM_ACCESS_DENIED;
 		}
@@ -8089,7 +8131,7 @@ int update_job(job_desc_msg_t * job_specs, uid_t uid)
 			     job_specs->job_id);
 			update_accounting = true;
 		} else {
-			error("sched: Attempt to increase nice for "
+			error("sched: Attempt to modify nice for "
 			      "job %u", job_specs->job_id);
 			error_code = ESLURM_ACCESS_DENIED;
 		}
@@ -8121,7 +8163,7 @@ int update_job(job_desc_msg_t * job_specs, uid_t uid)
 			job_ptr->limit_set_pn_min_memory =
 				acct_policy_limit_set.pn_min_memory;
 		} else {
-			error("sched: Attempt to increase pn_min_memory for "
+			error("sched: Attempt to modify pn_min_memory for "
 			      "job %u", job_specs->job_id);
 			error_code = ESLURM_ACCESS_DENIED;
 		}
@@ -8142,7 +8184,7 @@ int update_job(job_desc_msg_t * job_specs, uid_t uid)
 			     job_specs->job_id);
 		} else {
 
-			error("sched: Attempt to increase pn_min_tmp_disk "
+			error("sched: Attempt to modify pn_min_tmp_disk "
 			      "for job %u",
 			      job_specs->job_id);
 			error_code = ESLURM_ACCESS_DENIED;
@@ -8293,7 +8335,7 @@ int update_job(job_desc_msg_t * job_specs, uid_t uid)
 		goto fini;
 
 	if (job_specs->name) {
-		if (!IS_JOB_PENDING(job_ptr)) {
+		if (IS_JOB_FINISHED(job_ptr)) {
 			error_code = ESLURM_DISABLED;
 			goto fini;
 		} else {
@@ -8305,6 +8347,18 @@ int update_job(job_desc_msg_t * job_specs, uid_t uid)
 			update_accounting = true;
 		}
 	}
+
+	if (job_specs->std_out) {
+		if (!IS_JOB_PENDING(job_ptr))
+			error_code = ESLURM_DISABLED;
+		else if (detail_ptr) {
+			xfree(detail_ptr->std_out);
+			detail_ptr->std_out = job_specs->std_out;
+			job_specs->std_out = NULL;
+		}
+	}
+	if (error_code != SLURM_SUCCESS)
+		goto fini;
 
 	if (job_specs->wckey) {
 		if (!IS_JOB_PENDING(job_ptr))
@@ -8540,6 +8594,7 @@ int update_job(job_desc_msg_t * job_specs, uid_t uid)
 			error_code = ESLURM_QOS_THRES;
 		else if ((fail_reason == WAIT_PART_TIME_LIMIT) ||
 			 (fail_reason == WAIT_PART_NODE_LIMIT) ||
+			 (fail_reason == WAIT_PART_DOWN) ||
 			 (fail_reason == WAIT_HELD))
 			error_code = SLURM_SUCCESS;
 		else
@@ -9521,6 +9576,7 @@ extern bool job_epilog_complete(uint32_t job_id, char *node_name,
 	xfree(job_ptr->nodes_completing);
 	if (!IS_JOB_COMPLETING(job_ptr)) {	/* COMPLETED */
 		if (IS_JOB_PENDING(job_ptr) && (job_ptr->batch_flag)) {
+			time_t now = time(NULL);
 			info("requeue batch job %u", job_ptr->job_id);
 			/* Clear everything so this appears to be a new job
 			 * and then restart it in accounting. */
@@ -9554,6 +9610,19 @@ extern bool job_epilog_complete(uint32_t job_id, char *node_name,
 					jobacct_storage_g_job_start(
 						acct_db_conn, job_ptr);
 			}
+
+			/* Reset this after the batch step has
+			 * finished or the batch step information will
+			 * be attributed to the next run of the job. */
+			job_ptr->db_index = 0;
+
+			/* Since this could happen on a launch we need to make
+			 * sure the submit isn't the same as the last submit so
+			 * put now + 1 so we get different records in the
+			 * database */
+			if (now == job_ptr->details->submit_time)
+				now++;
+			job_ptr->details->submit_time = now;
 		}
 		return true;
 	} else
@@ -9655,15 +9724,16 @@ extern bool job_independent(struct job_record *job_ptr, int will_run)
 	time_t now = time(NULL);
 	int depend_rc;
 
+	if ((job_ptr->state_reason == WAIT_HELD) ||
+	    (job_ptr->state_reason == WAIT_HELD_USER))
+		return false;
+
 	/* Test dependencies first so we can cancel jobs before dependent
 	 * job records get purged (e.g. afterok, afternotok) */
 	depend_rc = test_job_dependency(job_ptr);
 	if (depend_rc == 1) {
-		if ((job_ptr->state_reason != WAIT_HELD) &&
-		    (job_ptr->state_reason != WAIT_HELD_USER)) {
-			job_ptr->state_reason = WAIT_DEPENDENCY;
-			xfree(job_ptr->state_desc);
-		}
+		job_ptr->state_reason = WAIT_DEPENDENCY;
+		xfree(job_ptr->state_desc);
 		return false;
 	} else if (depend_rc == 2) {
 		time_t now = time(NULL);
@@ -10218,7 +10288,7 @@ extern int job_requeue (uid_t uid, uint32_t job_id, slurm_fd_t conn_fd,
 		goto reply;
 	}
 
-	slurm_sched_requeue(job_ptr, "Job requeued by user/admin");
+	slurm_sched_g_requeue(job_ptr, "Job requeued by user/admin");
 	last_job_update = now;
 
 	if (IS_JOB_SUSPENDED(job_ptr)) {
@@ -10246,12 +10316,15 @@ extern int job_requeue (uid_t uid, uint32_t job_id, slurm_fd_t conn_fd,
 	job_completion_logger(job_ptr, true);
 	deallocate_nodes(job_ptr, false, suspended, preempt);
 	xfree(job_ptr->details->req_node_layout);
-	job_ptr->db_index = 0;
+
+	/* do this after the epilog complete, setting it here is too early */
+	//job_ptr->db_index = 0;
+	//job_ptr->details->submit_time = now;
+
 	job_ptr->job_state = JOB_PENDING;
 	if (job_ptr->node_cnt)
 		job_ptr->job_state |= JOB_COMPLETING;
 
-	job_ptr->details->submit_time = now;
 	job_ptr->pre_sus_time = (time_t) 0;
 	job_ptr->suspend_time = (time_t) 0;
 	job_ptr->tot_sus_time = (time_t) 0;

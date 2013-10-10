@@ -128,8 +128,13 @@ main (int argc, char *argv[])
 		working_cluster_rec = list_peek(clusters);
 	}
 
-	while((opt_char = getopt_long(argc, argv, "adhM:oQvV",
-			long_options, &option_index)) != -1) {
+	while (1) {
+		if ((optind < argc) &&
+		    !strncasecmp(argv[optind], "setdebugflags", 8))
+			break;	/* avoid parsing "-<flagname>" as option */
+		if ((opt_char = getopt_long(argc, argv, "adhM:oQvV",
+					    long_options, &option_index)) == -1)
+			break;
 		switch (opt_char) {
 		case (int)'?':
 			fprintf(stderr, "Try \"scontrol --help\" for "

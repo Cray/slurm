@@ -15,7 +15,7 @@
 
 @SET_MAKE@
 
-# Makefile for wiki2 scheduler plugin
+# Makefile for job_submit/pbs and spank/pbs plugins
 
 VPATH = @srcdir@
 am__make_dryrun = \
@@ -54,7 +54,7 @@ POST_UNINSTALL = :
 build_triplet = @build@
 host_triplet = @host@
 target_triplet = @target@
-subdir = src/plugins/sched/wiki2
+subdir = src/plugins/job_submit/pbs
 DIST_COMMON = $(srcdir)/Makefile.am $(srcdir)/Makefile.in
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/auxdir/ax_lib_hdf5.m4 \
@@ -132,17 +132,18 @@ am__uninstall_files_from_dir = { \
   }
 am__installdirs = "$(DESTDIR)$(pkglibdir)"
 LTLIBRARIES = $(pkglib_LTLIBRARIES)
-sched_wiki2_la_LIBADD =
-am_sched_wiki2_la_OBJECTS = cancel_job.lo crypto.lo event.lo \
-	get_jobs.lo get_nodes.lo hostlist.lo initialize.lo \
-	job_add_task.lo job_modify.lo job_notify.lo \
-	job_release_task.lo job_requeue.lo job_signal.lo \
-	job_will_run.lo msg.lo resume_job.lo sched_wiki2.lo \
-	start_job.lo suspend_job.lo
-sched_wiki2_la_OBJECTS = $(am_sched_wiki2_la_OBJECTS)
-sched_wiki2_la_LINK = $(LIBTOOL) --tag=CC $(AM_LIBTOOLFLAGS) \
+job_submit_pbs_la_LIBADD =
+am_job_submit_pbs_la_OBJECTS = job_submit_pbs.lo
+job_submit_pbs_la_OBJECTS = $(am_job_submit_pbs_la_OBJECTS)
+job_submit_pbs_la_LINK = $(LIBTOOL) --tag=CC $(AM_LIBTOOLFLAGS) \
 	$(LIBTOOLFLAGS) --mode=link $(CCLD) $(AM_CFLAGS) $(CFLAGS) \
-	$(sched_wiki2_la_LDFLAGS) $(LDFLAGS) -o $@
+	$(job_submit_pbs_la_LDFLAGS) $(LDFLAGS) -o $@
+spank_pbs_la_LIBADD =
+am_spank_pbs_la_OBJECTS = spank_pbs.lo
+spank_pbs_la_OBJECTS = $(am_spank_pbs_la_OBJECTS)
+spank_pbs_la_LINK = $(LIBTOOL) --tag=CC $(AM_LIBTOOLFLAGS) \
+	$(LIBTOOLFLAGS) --mode=link $(CCLD) $(AM_CFLAGS) $(CFLAGS) \
+	$(spank_pbs_la_LDFLAGS) $(LDFLAGS) -o $@
 DEFAULT_INCLUDES = -I.@am__isrc@ -I$(top_builddir) -I$(top_builddir)/slurm
 depcomp = $(SHELL) $(top_srcdir)/auxdir/depcomp
 am__depfiles_maybe = depfiles
@@ -156,8 +157,8 @@ CCLD = $(CC)
 LINK = $(LIBTOOL) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) \
 	--mode=link $(CCLD) $(AM_CFLAGS) $(CFLAGS) $(AM_LDFLAGS) \
 	$(LDFLAGS) -o $@
-SOURCES = $(sched_wiki2_la_SOURCES)
-DIST_SOURCES = $(sched_wiki2_la_SOURCES)
+SOURCES = $(job_submit_pbs_la_SOURCES) $(spank_pbs_la_SOURCES)
+DIST_SOURCES = $(job_submit_pbs_la_SOURCES) $(spank_pbs_la_SOURCES)
 am__can_run_installinfo = \
   case $$AM_UPDATE_INFO_DIR in \
     n|no|NO) false;; \
@@ -398,34 +399,18 @@ top_build_prefix = @top_build_prefix@
 top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
 AUTOMAKE_OPTIONS = foreign
-AM_CXXFLAGS = -fexceptions
+AM_CPPFLAGS = -DDEFAULT_SCRIPT_DIR=\"$(sysconfdir)\"
 PLUGIN_FLAGS = -module -avoid-version --export-dynamic
-AM_CPPFLAGS = -I$(top_srcdir) -I$(top_srcdir)/src/common
-pkglib_LTLIBRARIES = sched_wiki2.la
-sched_wiki2_la_SOURCES = \
-	cancel_job.c	\
-	crypto.c	\
-	crypto.h	\
-	event.c		\
-	get_jobs.c	\
-	get_nodes.c	\
-	hostlist.c	\
-	initialize.c	\
-	job_add_task.c	\
-	job_modify.c	\
-	job_notify.c	\
-	job_release_task.c \
-	job_requeue.c	\
-	job_signal.c	\
-	job_will_run.c	\
-	msg.c		\
-	msg.h		\
-	resume_job.c	\
-	sched_wiki2.c	\
-	start_job.c	\
-	suspend_job.c
+INCLUDES = -I$(top_srcdir) -I$(top_srcdir)/src/common
 
-sched_wiki2_la_LDFLAGS = $(SO_LDFLAGS) $(PLUGIN_FLAGS)
+# Job submit PBS plugin.
+pkglib_LTLIBRARIES = job_submit_pbs.la spank_pbs.la
+job_submit_pbs_la_SOURCES = job_submit_pbs.c
+job_submit_pbs_la_LDFLAGS = $(SO_LDFLAGS) $(PLUGIN_FLAGS)
+
+# SPANK PBS plugin.
+spank_pbs_la_SOURCES = spank_pbs.c
+spank_pbs_la_LDFLAGS = $(SO_LDFLAGS) $(PLUGIN_FLAGS)
 all: all-am
 
 .SUFFIXES:
@@ -439,9 +424,9 @@ $(srcdir)/Makefile.in: @MAINTAINER_MODE_TRUE@ $(srcdir)/Makefile.am  $(am__confi
 	      exit 1;; \
 	  esac; \
 	done; \
-	echo ' cd $(top_srcdir) && $(AUTOMAKE) --foreign src/plugins/sched/wiki2/Makefile'; \
+	echo ' cd $(top_srcdir) && $(AUTOMAKE) --foreign src/plugins/job_submit/pbs/Makefile'; \
 	$(am__cd) $(top_srcdir) && \
-	  $(AUTOMAKE) --foreign src/plugins/sched/wiki2/Makefile
+	  $(AUTOMAKE) --foreign src/plugins/job_submit/pbs/Makefile
 .PRECIOUS: Makefile
 Makefile: $(srcdir)/Makefile.in $(top_builddir)/config.status
 	@case '$?' in \
@@ -492,8 +477,10 @@ clean-pkglibLTLIBRARIES:
 	  echo "rm -f \"$${dir}/so_locations\""; \
 	  rm -f "$${dir}/so_locations"; \
 	done
-sched_wiki2.la: $(sched_wiki2_la_OBJECTS) $(sched_wiki2_la_DEPENDENCIES) $(EXTRA_sched_wiki2_la_DEPENDENCIES) 
-	$(sched_wiki2_la_LINK) -rpath $(pkglibdir) $(sched_wiki2_la_OBJECTS) $(sched_wiki2_la_LIBADD) $(LIBS)
+job_submit_pbs.la: $(job_submit_pbs_la_OBJECTS) $(job_submit_pbs_la_DEPENDENCIES) $(EXTRA_job_submit_pbs_la_DEPENDENCIES) 
+	$(job_submit_pbs_la_LINK) -rpath $(pkglibdir) $(job_submit_pbs_la_OBJECTS) $(job_submit_pbs_la_LIBADD) $(LIBS)
+spank_pbs.la: $(spank_pbs_la_OBJECTS) $(spank_pbs_la_DEPENDENCIES) $(EXTRA_spank_pbs_la_DEPENDENCIES) 
+	$(spank_pbs_la_LINK) -rpath $(pkglibdir) $(spank_pbs_la_OBJECTS) $(spank_pbs_la_LIBADD) $(LIBS)
 
 mostlyclean-compile:
 	-rm -f *.$(OBJEXT)
@@ -501,25 +488,8 @@ mostlyclean-compile:
 distclean-compile:
 	-rm -f *.tab.c
 
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/cancel_job.Plo@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/crypto.Plo@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/event.Plo@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/get_jobs.Plo@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/get_nodes.Plo@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/hostlist.Plo@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/initialize.Plo@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/job_add_task.Plo@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/job_modify.Plo@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/job_notify.Plo@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/job_release_task.Plo@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/job_requeue.Plo@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/job_signal.Plo@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/job_will_run.Plo@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/msg.Plo@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/resume_job.Plo@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/sched_wiki2.Plo@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/start_job.Plo@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/suspend_job.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/job_submit_pbs.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/spank_pbs.Plo@am__quote@
 
 .c.o:
 @am__fastdepCC_TRUE@	$(COMPILE) -MT $@ -MD -MP -MF $(DEPDIR)/$*.Tpo -c -o $@ $<

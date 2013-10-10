@@ -359,7 +359,7 @@ static void _opt_default()
 
 	for (i=0; i<HIGHEST_DIMENSIONS; i++) {
 		opt.conn_type[i]    = (uint16_t) NO_VAL;
-		opt.geometry[i]	    = (uint16_t) NO_VAL;
+		opt.geometry[i]	    = 0;
 	}
 	opt.reboot          = false;
 	opt.no_rotate	    = false;
@@ -1719,10 +1719,9 @@ static void _set_pbs_options(int argc, char **argv)
 		{NULL, 0, 0, 0}
 	};
 
-
 	optind = 0;
-	while((opt_char = getopt_long(argc, argv, pbs_opt_string,
-				      pbs_long_options, &option_index))
+	while ((opt_char = getopt_long(argc, argv, pbs_opt_string,
+				       pbs_long_options, &option_index))
 	      != -1) {
 		switch (opt_char) {
 		case 'a':
@@ -1735,8 +1734,6 @@ static void _set_pbs_options(int argc, char **argv)
 		case 'c':
 			break;
 		case 'C':
-			xfree(opt.cwd);
-			opt.cwd = xstrdup(optarg);
 			break;
 		case 'e':
 			xfree(opt.efname);
@@ -1823,9 +1820,11 @@ static void _set_pbs_options(int argc, char **argv)
 					error("Invalid umask ignored");
 					opt.umask = -1;
 				}
+			} else if (!strncasecmp(optarg, "depend=", 7)) {
+				xfree(opt.dependency);
+				opt.dependency = xstrdup(optarg+7);
 			} else {
-				xfree(opt.constraints);
-				opt.constraints = xstrdup(optarg);
+				verbose("Ignored PBS attributes: %s", optarg);
 			}
 			break;
 		case 'z':
@@ -1932,12 +1931,12 @@ static void _get_next_pbs_option(char *pbs_options, int *i)
 		(*i)++;
 }
 
-static char *_get_pbs_option_value(char *pbs_options, int *i)
+static char *_get_pbs_option_value(char *pbs_options, int *i, char sep)
 {
 	int start = (*i);
 	char *value = NULL;
 
-	while (pbs_options[*i] && pbs_options[*i] != ',')
+	while (pbs_options[*i] && pbs_options[*i] != sep)
 		(*i)++;
 	value = xmalloc((*i)-start+1);
 	memcpy(value, pbs_options+start, (*i)-start);
@@ -1953,6 +1952,7 @@ static void _parse_pbs_resource_list(char *rl)
 	int i = 0;
 	int gpus = 0;
 	char *temp = NULL;
+	int pbs_pro_flag = 0;	/* Bits: select:1 ncpus:2 mpiprocs:4 */
 
 	while (rl[i]) {
 		if (!strncasecmp(rl+i, "accelerator=", 12)) {
@@ -1965,7 +1965,7 @@ static void _parse_pbs_resource_list(char *rl)
 			_get_next_pbs_option(rl, &i);
 		} else if (!strncmp(rl+i, "cput=", 5)) {
 			i+=5;
-			temp = _get_pbs_option_value(rl, &i);
+			temp = _get_pbs_option_value(rl, &i, ',');
 			if (!temp) {
 				error("No value given for cput");
 				exit(error_exit);
@@ -1977,7 +1977,7 @@ static void _parse_pbs_resource_list(char *rl)
 			int end = 0;
 
 			i+=5;
-			temp = _get_pbs_option_value(rl, &i);
+			temp = _get_pbs_option_value(rl, &i, ',');
 			if (!temp) {
 				error("No value given for file");
 				exit(error_exit);
@@ -2003,7 +2003,7 @@ static void _parse_pbs_resource_list(char *rl)
 			int end = 0;
 
 			i+=4;
-			temp = _get_pbs_option_value(rl, &i);
+			temp = _get_pbs_option_value(rl, &i, ',');
 			if (!temp) {
 				error("No value given for mem");
 				exit(error_exit);
@@ -2023,11 +2023,12 @@ static void _parse_pbs_resource_list(char *rl)
 			}
 
 			xfree(temp);
-		} else if (!strncasecmp(rl+i, "mpiproc=", 8)) {
-			i += 8;
-			temp = _get_pbs_option_value(rl, &i);
+		} else if (!strncasecmp(rl+i, "mpiprocs=", 9)) {
+			i += 9;
+			temp = _get_pbs_option_value(rl, &i, ':');
 			if (temp) {
-				opt.ntasks_per_node = _get_int(temp, "mpiproc");
+				pbs_pro_flag |= 4;
+				opt.ntasks_per_node = _get_int(temp, "mpiprocs");
 				xfree(temp);
 			}
 #ifdef HAVE_ALPS_CRAY
@@ -2038,7 +2039,7 @@ static void _parse_pbs_resource_list(char *rl)
 		} else if (!strncmp(rl + i, "mppdepth=", 9)) {
 			/* Cray: number of CPUs (threads) per processing element */
 			i += 9;
-			temp = _get_pbs_option_value(rl, &i);
+			temp = _get_pbs_option_value(rl, &i, ',');
 			if (temp) {
 				opt.cpus_per_task = _get_int(temp, "mppdepth");
 				opt.cpus_set	  = true;
@@ -2047,7 +2048,7 @@ static void _parse_pbs_resource_list(char *rl)
 		} else if (!strncmp(rl + i, "mppnodes=", 9)) {
 			/* Cray `nodes' variant: hostlist without prefix */
 			i += 9;
-			temp = _get_pbs_option_value(rl, &i);
+			temp = _get_pbs_option_value(rl, &i, ',');
 			if (!temp) {
 				error("No value given for mppnodes");
 				exit(error_exit);
@@ -2057,14 +2058,14 @@ static void _parse_pbs_resource_list(char *rl)
 		} else if (!strncmp(rl + i, "mppnppn=", 8)) {
 			/* Cray: number of processing elements per node */
 			i += 8;
-			temp = _get_pbs_option_value(rl, &i);
+			temp = _get_pbs_option_value(rl, &i, ',');
 			if (temp)
 				opt.ntasks_per_node = _get_int(temp, "mppnppn");
 			xfree(temp);
 		} else if (!strncmp(rl + i, "mppwidth=", 9)) {
 			/* Cray: task width (number of processing elements) */
 			i += 9;
-			temp = _get_pbs_option_value(rl, &i);
+			temp = _get_pbs_option_value(rl, &i, ',');
 			if (temp) {
 				opt.ntasks     = _get_int(temp, "mppwidth");
 				opt.ntasks_set = true;
@@ -2073,22 +2074,22 @@ static void _parse_pbs_resource_list(char *rl)
 #endif	/* HAVE_ALPS_CRAY */
 		} else if (!strncasecmp(rl+i, "naccelerators=", 14)) {
 			i += 14;
-			temp = _get_pbs_option_value(rl, &i);
+			temp = _get_pbs_option_value(rl, &i, ',');
 			if (temp) {
 				gpus = _get_int(temp, "naccelerators");
 				xfree(temp);
 			}
 		} else if (!strncasecmp(rl+i, "ncpus=", 6)) {
 			i += 6;
-			temp = _get_pbs_option_value(rl, &i);
+			temp = _get_pbs_option_value(rl, &i, ':');
 			if (temp) {
-				opt.ntasks = _get_int(temp, "ncpus");
-				opt.ntasks_set = true;
+				pbs_pro_flag |= 2;
+				opt.mincpus = _get_int(temp, "ncpus");
 				xfree(temp);
 			}
 		} else if (!strncmp(rl+i, "nice=", 5)) {
 			i+=5;
-			temp = _get_pbs_option_value(rl, &i);
+			temp = _get_pbs_option_value(rl, &i, ',');
 			if (temp)
 				opt.nice = strtol(temp, NULL, 10);
 			else
@@ -2110,7 +2111,7 @@ static void _parse_pbs_resource_list(char *rl)
 			xfree(temp);
 		} else if (!strncmp(rl+i, "nodes=", 6)) {
 			i+=6;
-			temp = _get_pbs_option_value(rl, &i);
+			temp = _get_pbs_option_value(rl, &i, ',');
 			if (!temp) {
 				error("No value given for nodes");
 				exit(error_exit);
@@ -2125,7 +2126,7 @@ static void _parse_pbs_resource_list(char *rl)
 			_get_next_pbs_option(rl, &i);
 		} else if (!strncmp(rl+i, "pcput=", 6)) {
 			i+=6;
-			temp = _get_pbs_option_value(rl, &i);
+			temp = _get_pbs_option_value(rl, &i, ',');
 			if (!temp) {
 				error("No value given for pcput");
 				exit(error_exit);
@@ -2136,13 +2137,22 @@ static void _parse_pbs_resource_list(char *rl)
 		} else if (!strncmp(rl+i, "pmem=", 5)) {
 			i+=5;
 			_get_next_pbs_option(rl, &i);
+		} else if (!strncmp(rl+i, "proc=", 5)) {
+			i += 5;
+			if (opt.constraints)
+				xstrcat(opt.constraints, ",");
+			temp = _get_pbs_option_value(rl, &i, ',');
+			xstrcat(opt.constraints, temp);
+			xfree(temp);
+			_get_next_pbs_option(rl, &i);
 		} else if (!strncmp(rl+i, "pvmem=", 6)) {
 			i+=6;
 			_get_next_pbs_option(rl, &i);
 		} else if (!strncasecmp(rl+i, "select=", 7)) {
 			i += 7;
-			temp = _get_pbs_option_value(rl, &i);
+			temp = _get_pbs_option_value(rl, &i, ':');
 			if (temp) {
+				pbs_pro_flag |= 1;
 				opt.min_nodes = _get_int(temp, "select");
 				opt.max_nodes = opt.min_nodes;
 				opt.nodes_set = true;
@@ -2156,7 +2166,7 @@ static void _parse_pbs_resource_list(char *rl)
 			_get_next_pbs_option(rl, &i);
 		} else if (!strncmp(rl+i, "walltime=", 9)) {
 			i+=9;
-			temp = _get_pbs_option_value(rl, &i);
+			temp = _get_pbs_option_value(rl, &i, ',');
 			if (!temp) {
 				error("No value given for walltime");
 				exit(error_exit);
@@ -2168,6 +2178,14 @@ static void _parse_pbs_resource_list(char *rl)
 			i++;
 	}
 
+	if ((pbs_pro_flag == 7) && (opt.mincpus > opt.ntasks_per_node)) {
+		/* This logic will allocate the proper CPU count on each
+		 * node if the CPU count per node is evenly divisible by
+		 * the task count on each node. Slurm can't handle something
+		 * like cpus_per_node=10 and ntasks_per_node=8 */
+		opt.cpus_per_task = opt.mincpus / opt.ntasks_per_node;
+		opt.cpus_set = true;
+	}
 	if (gpus > 0) {
 		char *sep = "";
 		if (opt.gres)
@@ -2733,7 +2751,6 @@ static void _fullpath(char **filename, const char *cwd)
 
 static void _opt_list(void)
 {
-	int i;
 	char *str;
 
 	info("defined options for program `%s'", opt.progname);
@@ -2789,10 +2806,10 @@ static void _opt_list(void)
 	str = print_constraints();
 	info("constraints       : %s", str);
 	xfree(str);
-	for (i = 0; i < HIGHEST_DIMENSIONS; i++) {
-		if (opt.conn_type[i] == (uint16_t) NO_VAL)
-			break;
-		info("conn_type[%d]    : %u", i, opt.conn_type[i]);
+	if (opt.conn_type[0] != (uint16_t) NO_VAL) {
+		str = conn_type_string_full(opt.conn_type);
+		info("conn_type      : %s", str);
+		xfree(str);
 	}
 	str = print_geometry(opt.geometry);
 	info("geometry          : %s", str);

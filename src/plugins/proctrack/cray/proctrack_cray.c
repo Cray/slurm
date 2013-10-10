@@ -171,6 +171,7 @@ extern int proctrack_p_plugin_create(stepd_step_rec_t *job)
 			slurm_mutex_unlock(&notify_mutex);
 			debug("Last thread done 0x%08lx", threadid);
 		}
+
 		/* We have to protect the notify_mutex here since the
 		   thread could possibly signal things before we
 		   started waiting for it, so we control that with the

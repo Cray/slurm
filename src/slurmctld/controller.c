@@ -244,6 +244,14 @@ int main(int argc, char *argv[])
 	char *dir_name;
 
 	/*
+	 * Make sure we have no extra open files which
+	 * would be propagated to spawned tasks.
+	 */
+	cnt = sysconf(_SC_OPEN_MAX);
+	for (i = 3; i < cnt; i++)
+		close(i);
+
+	/*
 	 * Establish initial configuration
 	 */
 	_init_config();
@@ -258,6 +266,9 @@ int main(int argc, char *argv[])
 	update_logging();
 	_update_nice();
 	_kill_old_slurmctld();
+
+	for (i = 0; i < 3; i++)
+		fd_set_close_on_exec(i);
 
 	if (daemonize) {
 		slurmctld_config.daemonize = 1;
@@ -675,7 +686,7 @@ int main(int argc, char *argv[])
 	slurm_preempt_fini();
 	g_slurm_jobcomp_fini();
 	jobacct_gather_fini();
-	acct_gather_conf_fini();
+	acct_gather_conf_destroy();
 	slurm_select_fini();
 	slurm_topo_fini();
 	checkpoint_fini();
@@ -797,7 +808,7 @@ static int _reconfigure_slurm(void)
 		_update_cred_key();
 		set_slurmctld_state_loc();
 	}
-	slurm_sched_partition_change();	/* notify sched plugin */
+	slurm_sched_g_partition_change();	/* notify sched plugin */
 	unlock_slurmctld(config_write_lock);
 	assoc_mgr_set_missing_uids();
 	start_power_mgr(&slurmctld_config.thread_id_power);
@@ -931,6 +942,7 @@ static void *_slurmctld_rpc_mgr(void *no_data)
 			fatal("slurm_init_msg_engine_addrname_port error %m");
 			return NULL;	/* Fix CLANG false positive */
 		}
+		fd_set_close_on_exec(sockfd[i]);
 		slurm_get_stream_addr(sockfd[i], &srv_addr);
 		slurm_get_ip_str(&srv_addr, &port, ip, sizeof(ip));
 		debug2("slurmctld listening on %s:%d", ip, ntohs(port));
@@ -982,6 +994,7 @@ static void *_slurmctld_rpc_mgr(void *no_data)
 			_free_server_thread();
 			continue;
 		}
+		fd_set_close_on_exec(newsockfd);
 		conn_arg = xmalloc(sizeof(connection_arg_t));
 		conn_arg->newsockfd = newsockfd;
 		if (slurmctld_config.shutdown_time)
@@ -1599,7 +1612,7 @@ static void *_slurmctld_background(void *no_data)
 			last_node_acct = now;
 			_accounting_cluster_ready();
 		}
- 
+
 
 		if (last_proc_req_start == 0) {
 			/* Stats will reset at midnight (aprox).
@@ -2075,10 +2088,9 @@ static void _init_pidfile(void)
 		error("SlurmctldPid == SlurmdPid, use different names");
 
 	/* Don't close the fd returned here since we need to keep the
-	   fd open to maintain the write lock.
-	*/
-	create_pidfile(slurmctld_conf.slurmctld_pidfile,
-		       slurmctld_conf.slurm_user_id);
+	 * fd open to maintain the write lock */
+	(void) create_pidfile(slurmctld_conf.slurmctld_pidfile,
+			      slurmctld_conf.slurm_user_id);
 }
 
 /*
