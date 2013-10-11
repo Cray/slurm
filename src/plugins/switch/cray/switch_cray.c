@@ -1667,6 +1667,11 @@ static void _recursiveRmdir(const char *dirnm) {
  *
  * RETURNS
  *  Returns the number of online cpus on the node.  On error, it returns -1.
+ *
+ * TODO:
+ * 	Danny suggests using xcgroup_get_param to read the CPU values instead of
+ * 	this function.  Look at the way task/cgroup/task_cgroup_cpuset.c or
+ * 	jobacct_gather/cgroup/jobacct_gather_cgroup.c does it.
  */
 static int _get_cpu_total(void) {
 	FILE *f = NULL;
@@ -1790,9 +1795,18 @@ static int _init_port() {
 /*
  * Function: assign_port
  * Description:
- *  Looks for and assigns the next free port.
+ *  Looks for and assigns the next free port.   This port is used by Cray's
+ *  PMI for its communications to manage its control tree.
+ *
+ *  To avoid port conflicts, this function selects a large range of
+ *  ports within the middle of the port range where it assumes no
+ *  ports are used.  No special precautions are taken to handle a
+ *  selected port already in use by some other non-SLURM component
+ *  on the node.
+ *
  *  If there are no free ports, then it loops through the entire table
  *  ATTEMPTS number of times before declaring a failure.
+ *
  * Returns:
  *  0 on success and -1 on failure.
  */
