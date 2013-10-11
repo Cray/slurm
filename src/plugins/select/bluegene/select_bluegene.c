@@ -162,6 +162,7 @@ static void _destroy_bg_config(bg_config_t *bg_conf)
 			bg_conf->ramdisk_list = NULL;
 		}
 
+		FREE_NULL_BITMAP(bg_conf->reboot_qos_bitmap);
 		xfree(bg_conf->slurm_user_name);
 		xfree(bg_conf->slurm_node_prefix);
 		xfree(bg_conf);
@@ -1254,6 +1255,7 @@ extern int init(void)
 		if (bg_conf->ramdisk_list)
 			list_destroy(bg_conf->ramdisk_list);
 		bg_conf->ramdisk_list = list_create(destroy_image);
+		bg_conf->reboot_qos_bitmap = NULL;
 
 		ba_init(NULL, 1);
 
@@ -1766,11 +1768,21 @@ extern int select_p_job_signal(struct job_record *job_ptr, int signal)
 
 extern int select_p_job_fini(struct job_record *job_ptr)
 {
+	int	rc = SLURM_ERROR;
+
 #ifdef HAVE_BG
-	return term_job(job_ptr);
-#else
-	return SLURM_ERROR;
+	select_jobinfo_t *jobinfo = job_ptr->select_jobinfo->data;
+
+	jobinfo->cleaning = 1;
+
+	rc = term_job(job_ptr);
+	if (rc != SLURM_SUCCESS) {
+		error("select_p_job_fini: failed to terminate job %u",
+		      job_ptr->job_id);
+		return rc;
+	}
 #endif
+	return rc;
 }
 
 extern int select_p_job_suspend(struct job_record *job_ptr, bool indf_susp)
@@ -1817,7 +1829,8 @@ extern bitstr_t *select_p_step_pick_nodes(struct job_record *job_ptr,
 			      "and ending job.",
 			      job_ptr->job_id, jobinfo->bg_block_id);
 			slurm_mutex_unlock(&block_state_mutex);
-			bg_requeue_job(job_ptr->job_id, 0, 1, JOB_NODE_FAIL);
+			bg_requeue_job(job_ptr->job_id, 0, 1, JOB_NODE_FAIL,
+				       false);
 			return NULL;
 		}
 		error("select_p_step_pick_nodes: Whoa, some how we got a "
@@ -1836,7 +1849,7 @@ extern bitstr_t *select_p_step_pick_nodes(struct job_record *job_ptr,
 		     "it has an action item of 'D' on it, ending job %u.",
 		     bg_record->bg_block_id, job_ptr->job_id);
 		slurm_mutex_unlock(&block_state_mutex);
-		bg_requeue_job(job_ptr->job_id, 0, 1, JOB_NODE_FAIL);
+		bg_requeue_job(job_ptr->job_id, 0, 1, JOB_NODE_FAIL, false);
 		return NULL;
 	}
 
@@ -2774,6 +2787,7 @@ extern int select_p_fail_cnode(struct step_record *step_ptr)
 	ListIterator itr, itr2;
 	ba_mp_t *ba_mp = NULL, *found_ba_mp;
 	int i;
+	List kill_list = NULL;
 
 	xassert(step_ptr);
 
@@ -2879,10 +2893,16 @@ extern int select_p_fail_cnode(struct step_record *step_ptr)
 	}
 	list_iterator_destroy(itr);
 	slurm_mutex_unlock(&ba_system_mutex);
-	slurm_mutex_unlock(&block_state_mutex);
-	if (step_ptr->job_ptr->kill_on_node_fail)
-		bg_requeue_job(step_ptr->job_ptr->job_id, 0, 1, JOB_NODE_FAIL);
 
+	bg_record_hw_failure(jobinfo->bg_record, &kill_list);
+
+	slurm_mutex_unlock(&block_state_mutex);
+
+	if (kill_list)
+		bg_record_post_hw_failure(&kill_list, 1);
+	else if (step_ptr->job_ptr->kill_on_node_fail)
+		bg_requeue_job(step_ptr->job_ptr->job_id, 0, 1, JOB_NODE_FAIL,
+			       false);
 #endif
 	return SLURM_SUCCESS;
 }
