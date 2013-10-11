@@ -424,25 +424,3 @@ extern char*switch_g_sprintf_node_info(switch_node_info_t *switch_node,
 	char *buf, size_t size);
 
 #endif /* _SWITCH_H */
-
-/********************************************************************\
- * Helper Functions *
-\********************************************************************/
-
-/*
- * Function: assign_free_port
- * Description:
- *  Assigns a free port to the job step.  This port is used by Cray's
- *  PMI for its communications to manage its control tree.
- *
- *  To avoid port conflicts, this function selects a large range of
- *  ports within the middle of the port range where it assumes the
- *  ports are used.  No special precautions are taken to handle a
- *  selected port already being in use by some other non-SLURM component
- *  on the node.
- *
- *  Returns:
- *   The assigned port on success and -1 on failure.
- */
-
-int assign_free_port();

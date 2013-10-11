@@ -74,7 +74,6 @@ static pthread_t threadid = 0;
 static pthread_cond_t notify = PTHREAD_COND_INITIALIZER;
 static pthread_mutex_t notify_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t thread_mutex = PTHREAD_MUTEX_INITIALIZER;
-static pthread_mutex_t start_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static void *_create_container_thread(void *args)
 {
@@ -86,12 +85,8 @@ static void *_create_container_thread(void *args)
 		return NULL;
 	}
 
-	/* Make sure we are waiting for this signal */
-	slurm_mutex_lock(&start_mutex);
 	/* Signal the container_create we are done */
 	slurm_mutex_lock(&notify_mutex);
-	slurm_mutex_unlock(&start_mutex);
-
 	pthread_cond_signal(&notify);
 	/* Don't unlock the notify_mutex here, wait, it is not needed
 	 * and can cause deadlock if done. */
