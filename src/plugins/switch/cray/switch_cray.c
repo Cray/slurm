@@ -763,9 +763,10 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 			cpu_scaling = 100;
 		}
 		if (cpu_scaling <= 0) {
-			error("(%s: %d: %s) Cpu scaling out of bounds: %d", THIS_FILE,
+			error("(%s: %d: %s) Cpu scaling out of bounds: %d.  Increasing to "
+					"1%%", THIS_FILE,
 					__LINE__, __FUNCTION__, cpu_scaling);
-			return SLURM_ERROR;
+			cpu_scaling = 1;
 		}
 
 		/*
@@ -800,9 +801,10 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 		}
 
 		if (mem_scaling <= 0) {
-			error("(%s: %d: %s) Memory scaling out of bounds: %d", THIS_FILE,
+			error("(%s: %d: %s) Memory scaling out of bounds: %d.  Increasing "
+					"to 1%%", THIS_FILE,
 					__LINE__, __FUNCTION__, mem_scaling);
-			return SLURM_ERROR;
+			mem_scaling = 1;
 		}
 
 		if (slurm_get_debug_flags() & DEBUG_FLAG_SWITCH) {
