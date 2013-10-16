@@ -171,6 +171,28 @@ def format_nodes(class_reps, class_nodes):
  	return nodestr
 
 #######################################
+# get_mem_per_cpu
+#######################################
+def get_mem_per_cpu(nodes):
+	""" Give a list of nodes formatted as in get_nodes, determines the
+		default memory per cpu (mem)/(cores) 
+		and max memory per cpu, returned as a tuple """
+	
+	defmem = 0
+	maxmem = 0
+	for node in nodes:
+		if node[1] > maxmem:
+			maxmem = node[1]
+
+		mem_per_thread = node[1] / node[2]
+		if defmem == 0 or mem_per_thread < defmem:
+			defmem = mem_per_thread
+	
+	return (defmem, maxmem)
+
+
+
+#######################################
 # cluster_name
 #######################################
 def get_cluster_name():
@@ -321,13 +343,16 @@ if __name__ == "__main__":
 	# Split them into equivalence classes
 	class_reps, class_nodes = split_nodes(nodes)
 
+	# Determine the min and max memory per cpu
+	defmem, maxmem = get_mem_per_cpu(nodes)
+
 	# Create the replacement dictionary
 	replace = { 
 		'{sysconfdir}' : sysconfdir, 
 		'{slurmdspooldir}' : "/var/spool/slurmd",
 		'{slurmctldspooldir}' : "/var/spool/slurm",
-		'{minmem}' : str(min(node[1] for node in nodes)),
-		'{maxmem}' : str(max(node[1] for node in nodes) * 95 / 100),
+		'{defmem}' : defmem,
+		'{maxmem}' : maxmem,
 		'{clustername}' : get_cluster_name(),
 		'{computenodes}' : format_nodes(class_reps, class_nodes),
 		'{nodelist}' : rli_compress([node[0] for node in nodes]),

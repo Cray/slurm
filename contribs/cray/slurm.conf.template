@@ -98,9 +98,9 @@ Waittime=0
 #
 #
 # SCHEDULING
-#DefMemPerNode={minmem}
+DefMemPerCPU={defmem}
 FastSchedule=2
-#MaxMemPerNode={maxmem}
+MaxMemPerCPU={maxmem}
 #SchedulerRootFilter=1
 #SchedulerTimeSlice=30
 SchedulerType=sched/backfill
@@ -165,4 +165,4 @@ SlurmdLogFile={slurmdspooldir}/%h.log
 #
 # COMPUTE NODES
 {computenodes}
-PartitionName=workq Nodes={nodelist} Shared=EXCLUSIVE Priority=1 Default=YES DefaultTime=60 MaxTime=24:00:00 State=UP
+PartitionName=workq Nodes={nodelist} Shared=YES Priority=1 Default=YES DefaultTime=60 MaxTime=24:00:00 State=UP
