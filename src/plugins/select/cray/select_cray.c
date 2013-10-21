@@ -145,29 +145,42 @@ const uint32_t plugin_version	= 100;
 
 extern int select_p_select_jobinfo_free(select_jobinfo_t *jobinfo);
 
-static int _run_nhc(uint64_t id, char *nodelist, bool step)
+static int _run_nhc(uint32_t jobid, uint64_t apid, char *nodelist, bool step)
 {
 #ifdef HAVE_NATIVE_CRAY
-	int argc = 5, status = 1, wait_rc;
+	int argc = 9, status = 1, wait_rc;
 	char *argv[argc];
 	pid_t cpid;
+	char *jobid_char = NULL, *apid_char = NULL, *nodelist_nids = NULL;
 	DEF_TIMERS;
 
 	START_TIMER;
+
+	jobid_char = xstrdup_printf("%u", jobid);
+	apid_char = xstrdup_printf("%"PRIu64"", apid);
+	nodelist_nids = cray_nodelist2nids(NULL, nodelist);
+
 	argv[0] = "/opt/cray/nodehealth/default/bin/xtcleanup_after";
-	if (step)
-		argv[1] = "-a";
-	else
-		argv[1] = "-r";
-	argv[2] = xstrdup_printf("%"PRIu64"", id);
-	argv[3] = cray_nodelist2nids(NULL, nodelist);
-	argv[4] = NULL;
+	argv[1] = "-r";
+	argv[2] = jobid_char;
+	argv[3] = "-a";
+	argv[4] = apid_char;
+	argv[5] = "-m";
+	if (step) {
+		argv[6] = "application";
+	} else {
+		argv[6] = "reservation";
+	}
+	argv[7] = nodelist_nids;
+	argv[8] = NULL;
 
-	if (debug_flags & DEBUG_FLAG_SELECT_TYPE)
-		info("Calling NHC for id %"PRIu64" on nodes %s(%s)",
-		     id, nodelist, argv[3]);
+	if (debug_flags & DEBUG_FLAG_SELECT_TYPE) {
+		info("Calling NHC for jobid %u and apid %"PRIu64" "
+		     "on nodes %s(%s)",
+		     jobid, apid, nodelist, nodelist_nids);
+	}
 
-	if (!nodelist || !argv[3]) {
+	if (!nodelist || !nodelist_nids) {
 		/* already done */
 		goto fini;
 	}
@@ -200,21 +213,25 @@ static int _run_nhc(uint64_t id, char *nodelist, bool step)
 	}
 	END_TIMER;
 	if (status != 0) {
-		error("_run_nhc %s %"PRIu64" exit status %u:%u took: %s",
-		      step ? "step" : "job", step ? id : id,
-		      WEXITSTATUS(status), WTERMSIG(status), TIME_STR);
+		error("_run_nhc jobid %u and apid %"PRIu64" exit "
+		      "status %u:%u took: %s",
+		      jobid, apid, WEXITSTATUS(status),
+		      WTERMSIG(status), TIME_STR);
 	} else if (debug_flags & DEBUG_FLAG_SELECT_TYPE)
-		info("_run_nhc %s %"PRIu64" completed took: %s",
-		     step ? "step" : "job", step ? id : id, TIME_STR);
+		info("_run_nhc jobid %u and apid %"PRIu64" completed took: %s",
+		     jobid, apid, TIME_STR);
 
  fini:
-	xfree(argv[2]);
-	xfree(argv[3]);
+	xfree(jobid_char);
+	xfree(apid_char);
+	xfree(nodelist_nids);
+
 	return status;
 #else
 	if (debug_flags & DEBUG_FLAG_SELECT_TYPE)
-		info("simluating calling NHC for id %"PRIu64" on nodes %s",
-		     id, nodelist);
+		info("simluating calling NHC for jobid %u "
+		     "and apid %"PRIu64" on nodes %s",
+		     jobid, apid, nodelist);
 
 	/* simulate sleeping */
 	sleep(2);
@@ -247,7 +264,7 @@ static void *_job_fini(void *args)
 	unlock_slurmctld(job_read_lock);
 
 	/* run NHC */
-	_run_nhc(job_id, node_list, 0);
+	_run_nhc(job_id, 0, node_list, 0);
 	/***********/
 	xfree(node_list);
 
@@ -272,6 +289,7 @@ static void *_step_fini(void *args)
 	struct step_record *step_ptr = (struct step_record *)args;
 	select_jobinfo_t *jobinfo = NULL;
 	uint64_t apid = 0;
+	uint32_t jobid = 0;
 	char *node_list = NULL;
 
 	/* Locks: Write job, write node */
@@ -289,6 +307,7 @@ static void *_step_fini(void *args)
 	}
 
 	lock_slurmctld(job_read_lock);
+	jobid = step_ptr->job_ptr->job_id;
 	apid = SLURM_ID_HASH(step_ptr->job_ptr->job_id, step_ptr->step_id);
 
 	if (!step_ptr->step_layout || !step_ptr->step_layout->node_list) {
@@ -299,7 +318,7 @@ static void *_step_fini(void *args)
 	unlock_slurmctld(job_read_lock);
 
 	/* run NHC */
-	_run_nhc(apid, node_list, 0);
+	_run_nhc(jobid, apid, node_list, 1);
 	/***********/
 
 	xfree(node_list);
@@ -413,6 +432,15 @@ extern int select_p_state_restore(char *dir_name)
 
 extern int select_p_job_init(List job_list)
 {
+	static bool run_already = false;
+
+	/* Execute only on initial startup. We don't support bgblock
+	 * creation on demand today, so there is no need to re-sync data. */
+	if (run_already)
+		return other_job_init(job_list);
+
+	run_already = true;
+
 	if (!(slurmctld_conf.select_type_param & CR_NHC_NO)
 	    && job_list && list_count(job_list)) {
 		ListIterator itr = list_iterator_create(job_list);
@@ -426,7 +454,7 @@ extern int select_p_job_init(List job_list)
 				job_ptr->select_jobinfo->data;
 
 			if (!(slurmctld_conf.select_type_param & CR_NHC_STEP_NO)
-			    && !jobinfo->cleaning && job_ptr->step_list
+			    && job_ptr->step_list
 			    && list_count(job_ptr->step_list)) {
 				ListIterator itr_step = list_iterator_create(
 					job_ptr->step_list);
@@ -435,15 +463,15 @@ extern int select_p_job_init(List job_list)
 					jobinfo =
 						step_ptr->select_jobinfo->data;
 
-					if (!jobinfo->cleaning)
-						continue;
-					_spawn_cleanup_thread(step_ptr,
-							      _step_fini);
+					if (jobinfo && jobinfo->cleaning)
+						_spawn_cleanup_thread(
+							step_ptr, _step_fini);
 				}
 				list_iterator_destroy(itr_step);
-				continue;
 			}
-			_spawn_cleanup_thread(job_ptr, _job_fini);
+			jobinfo = job_ptr->select_jobinfo->data;
+			if (jobinfo && jobinfo->cleaning)
+				_spawn_cleanup_thread(job_ptr, _job_fini);
 		}
 		list_iterator_destroy(itr);
 	}
@@ -761,7 +789,7 @@ extern int select_p_select_jobinfo_get(select_jobinfo_t *jobinfo,
 	select_jobinfo_t **select_jobinfo = (select_jobinfo_t **) data;
 
 	if (jobinfo == NULL) {
-		error("select/cray jobinfo_get: jobinfo not set");
+		debug("select/cray jobinfo_get: jobinfo not set");
 		return SLURM_ERROR;
 	}
 	if (jobinfo->magic != JOBINFO_MAGIC) {

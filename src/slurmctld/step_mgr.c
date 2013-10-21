@@ -205,7 +205,7 @@ static void _build_pending_step(struct job_record *job_ptr,
 	step_ptr->state     = JOB_PENDING;
 	step_ptr->cpu_count = step_specs->num_tasks;
 	step_ptr->time_last_active = time(NULL);
-	step_ptr->step_id = NO_VAL;
+	step_ptr->step_id   = INFINITE;
 }
 
 static void _internal_step_complete(
@@ -2482,10 +2482,7 @@ static void _pack_ctld_job_step_info(struct step_record *step_ptr, Buf buffer,
 		task_cnt = step_ptr->step_layout->task_cnt;
 		node_list = step_ptr->step_layout->node_list;
 	} else {
-		if (step_ptr->job_ptr->details)
-			task_cnt = step_ptr->job_ptr->details->min_cpus;
-		else
-			task_cnt = step_ptr->job_ptr->cpu_cnt;
+		task_cnt = step_ptr->cpu_count;
 		node_list = step_ptr->job_ptr->nodes;
 	}
 	cpu_cnt = step_ptr->cpu_count;

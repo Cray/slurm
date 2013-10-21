@@ -128,8 +128,13 @@ main (int argc, char *argv[])
 		working_cluster_rec = list_peek(clusters);
 	}
 
-	while((opt_char = getopt_long(argc, argv, "adhM:oQvV",
-			long_options, &option_index)) != -1) {
+	while (1) {
+		if ((optind < argc) &&
+		    !strncasecmp(argv[optind], "setdebugflags", 8))
+			break;	/* avoid parsing "-<flagname>" as option */
+		if ((opt_char = getopt_long(argc, argv, "adhM:oQvV",
+					    long_options, &option_index)) == -1)
+			break;
 		switch (opt_char) {
 		case (int)'?':
 			fprintf(stderr, "Try \"scontrol --help\" for "
@@ -842,7 +847,7 @@ _process_command (int argc, char *argv[])
 		}
 	}
 	else if (strncasecmp (tag, "requeue", MAX(tag_len, 3)) == 0) {
-		if (argc > 2) {
+		if (argc > 3) {
 			exit_code = 1;
 			if (quiet_flag != 1)
 				fprintf(stderr,
@@ -855,7 +860,30 @@ _process_command (int argc, char *argv[])
 					"too few arguments for keyword:%s\n",
 					tag);
 		} else {
-			error_code = scontrol_requeue(argv[1]);
+			error_code = scontrol_requeue((argc - 1), &argv[1]);
+			if (error_code) {
+				exit_code = 1;
+				if (quiet_flag != 1)
+					slurm_perror ("slurm_requeue error");
+			}
+		}
+
+	}
+	else if (strncasecmp(tag, "requeuehold", 11) == 0) {
+		if (argc > 3) {
+			exit_code = 1;
+			if (quiet_flag != 1)
+				fprintf(stderr,
+					"too many arguments for keyword:%s\n",
+					tag);
+		} else if (argc < 2) {
+			exit_code = 1;
+			if (quiet_flag != 1)
+				fprintf(stderr,
+					"too few arguments for keyword:%s\n",
+					tag);
+		} else {
+			error_code = scontrol_requeue_hold((argc - 1), &argv[1]);
 			if (error_code) {
 				exit_code = 1;
 				if (quiet_flag != 1)
