@@ -1,3 +1,4 @@
+/* -*- Mode: C; tab-width:8 ; c-basic-offset:8 ; indent-tabs-mode:t -*- */
 /*****************************************************************************\
  *  read_config.c - read the overall slurm configuration file
  *****************************************************************************
@@ -7,6 +8,7 @@
  *  Portions Copyright (C) 2010-2013 SchedMD <http://www.schedmd.com>.
  *  Portions (boards) copyright (C) 2012 Bull, <rod.schultz@bull.com>
  *  Copyright (C) 2012-2013 Los Alamos National Security, LLC.
+ *  Copyright (C) 2013 Intel, Inc.
  *  Produced at Lawrence Livermore National Laboratory (cf, DISCLAIMER).
  *  Written by Morris Jette <jette1@llnl.gov>.
  *  CODE-OCEC-09-009. All rights reserved.
@@ -292,6 +294,7 @@ s_p_options_t slurm_conf_options[] = {
 	{"SlurmdDebug", S_P_STRING},
 	{"SlurmdLogFile", S_P_STRING},
 	{"SlurmdPidFile",  S_P_STRING},
+	{"SlurmdPlugstack", S_P_STRING},
 	{"SlurmdPort", S_P_UINT32},
 	{"SlurmdSpoolDir", S_P_STRING},
 	{"SlurmdTimeout", S_P_UINT16},
@@ -2161,6 +2164,7 @@ free_slurm_conf (slurm_ctl_conf_t *ctl_conf_ptr, bool purge_node_hash)
 	xfree (ctl_conf_ptr->slurmctld_plugstack);
 	xfree (ctl_conf_ptr->slurmd_logfile);
 	xfree (ctl_conf_ptr->slurmd_pidfile);
+	xfree (ctl_conf_ptr->slurmd_plugstack);
 	xfree (ctl_conf_ptr->slurmd_spooldir);
 	xfree (ctl_conf_ptr->slurmd_user_name);
 	xfree (ctl_conf_ptr->srun_epilog);
@@ -2309,6 +2313,7 @@ init_slurm_conf (slurm_ctl_conf_t *ctl_conf_ptr)
 	ctl_conf_ptr->slurmd_debug		= (uint16_t) NO_VAL;
 	xfree (ctl_conf_ptr->slurmd_logfile);
 	xfree (ctl_conf_ptr->slurmd_pidfile);
+	xfree (ctl_conf_ptr->slurmd_plugstack);
  	ctl_conf_ptr->slurmd_port		= (uint32_t) NO_VAL;
 	xfree (ctl_conf_ptr->slurmd_spooldir);
 	ctl_conf_ptr->slurmd_timeout		= (uint16_t) NO_VAL;
@@ -3316,8 +3321,12 @@ _validate_and_set_defaults(slurm_ctl_conf_t *conf, s_p_hashtbl_t *hashtbl)
 			conf->priority_flags |= PRIORITY_FLAGS_ACCRUE_ALWAYS;
 		if (slurm_strcasestr(temp_str, "SMALL_RELATIVE_TO_TIME"))
 			conf->priority_flags |= PRIORITY_FLAGS_SIZE_RELATIVE;
+
 		if (slurm_strcasestr(temp_str, "TICKET_BASED"))
 			conf->priority_flags |= PRIORITY_FLAGS_TICKET_BASED;
+		else if (slurm_strcasestr(temp_str, "DEPTH_OBLIVIOUS"))
+			conf->priority_flags |= PRIORITY_FLAGS_DEPTH_OBLIVIOUS;
+
 		xfree(temp_str);
 	}
 	if (s_p_get_string(&temp_str, "PriorityMaxAge", hashtbl)) {
@@ -3697,6 +3706,9 @@ _validate_and_set_defaults(slurm_ctl_conf_t *conf, s_p_hashtbl_t *hashtbl)
 	if (!s_p_get_uint32(&conf->slurmd_port, "SlurmdPort", hashtbl))
 		conf->slurmd_port = SLURMD_PORT;
 
+	s_p_get_string(&conf->slurmd_plugstack, "SlurmdPlugstack",
+		       hashtbl);
+
 	s_p_get_string(&conf->sched_logfile, "SlurmSchedLogFile", hashtbl);
 
 	if (!s_p_get_uint16(&conf->sched_log_level,
@@ -4009,11 +4021,6 @@ extern char * debug_flags2str(uint32_t debug_flags)
 		if (rc)
 			xstrcat(rc, ",");
 		xstrcat(rc, "Switch");
-	}
-	if (debug_flags & DEBUG_FLAG_THREADID) {
-		if (rc)
-			xstrcat(rc, ",");
-		xstrcat(rc, "ThreadID");
 	}
 	if (debug_flags & DEBUG_FLAG_TRIGGERS) {
 		if (rc)

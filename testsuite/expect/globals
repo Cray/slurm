@@ -188,7 +188,7 @@ cset max_job_delay 120
 # Files must be propogated between nodes within this number of seconds.
 # The delay may be due to NFS.
 #
-cset max_file_delay 60
+cset max_file_delay 90
 
 #
 # Desired job state must be reached within this number of seconds.
@@ -1815,7 +1815,7 @@ proc default_partition {} {
 	set name ""
 	set fd [open "|$scontrol --all --oneliner show partition"]
 	while {[gets $fd line] != -1} {
-		if {[regexp {^PartitionName=(\w+).*Default=YES} $line frag name]
+		if {[regexp {^PartitionName=([^ ]*).*Default=YES} $line frag name]
 				== 1} {
 			break
 		}
@@ -2564,22 +2564,51 @@ proc change_subbp_state { node ionodes state } {
 ################################################################
 
 proc get_array_config { } {
-     global scontrol number
+	global scontrol number
 
-     	  log_user 0
-     	  set array_size 1
-	  spawn $scontrol show config
-	  expect {
-		  -re "MaxArraySize *= ($number)" {
-		    	   set array_size $expect_out(1,string)
-			   exp_continue
-		  }
-		  eof {
-		  	   wait
-		  }
-	   }
-	   log_user 1
-	   return $array_size
+	log_user 0
+	set array_size 1
+	spawn $scontrol show config
+	expect {
+		-re "MaxArraySize *= ($number)" {
+			set array_size $expect_out(1,string)
+			exp_continue
+		}
+		eof {
+			wait
+		}
+	}
+	log_user 1
+	return $array_size
+}
+
+################################################################
+#
+# Proc: get_max_tasks
+#
+# Purpose: Use scontrol to determine the MaxTasksPerNode
+#
+# Returns: MaxTasksPerNode value
+#
+################################################################
+
+proc get_max_tasks { } {
+	global scontrol number
+
+	log_user 0
+	set max_tasks 1
+	spawn $scontrol show config
+	expect {
+		-re "MaxTasksPerNode *= ($number)" {
+			set max_tasks $expect_out(1,string)
+			exp_continue
+		}
+		eof {
+			wait
+		}
+	}
+	log_user 1
+	return $max_tasks
 }
 
 #################################################
