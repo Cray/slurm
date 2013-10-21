@@ -73,6 +73,7 @@
 #include "src/common/switch.h"
 #include "src/common/xstring.h"
 #include "src/common/slurm_ext_sensors.h"
+#include "src/common/slurm_acct_gather.h"
 
 #include "src/slurmctld/agent.h"
 #include "src/slurmctld/front_end.h"
@@ -168,6 +169,7 @@ inline static void  _slurm_rpc_update_partition(slurm_msg_t * msg);
 inline static void  _slurm_rpc_update_block(slurm_msg_t * msg);
 inline static void  _slurm_rpc_dump_spank(slurm_msg_t * msg);
 inline static void  _slurm_rpc_dump_stats(slurm_msg_t * msg);
+inline static void  _slurm_rpc_dump_licenses(slurm_msg_t * msg);
 
 inline static void  _update_cred_key(void);
 
@@ -455,6 +457,10 @@ void slurmctld_req (slurm_msg_t * msg)
 		_slurm_rpc_dump_stats(msg);
 		slurm_free_stats_info_request_msg(msg->data);
 		break;
+	 case REQUEST_LICENSE_INFO:
+		 _slurm_rpc_dump_licenses(msg);
+		 slurm_free_license_info_request_msg(msg->data);
+		break;
 	default:
 		error("invalid RPC msg_type=%d", msg->msg_type);
 		slurm_send_rc_msg(msg, EINVAL);
@@ -494,6 +500,7 @@ static void _throttle_fini(int *active_rpc_cnt)
  */
 void _fill_ctld_conf(slurm_ctl_conf_t * conf_ptr)
 {
+	char *licenses_used = get_licenses_used();  /* Do before config lock */
 	slurm_ctl_conf_t *conf = slurm_conf_lock();
 
 	memset(conf_ptr, 0, sizeof(slurm_ctl_conf_t));
@@ -503,6 +510,8 @@ void _fill_ctld_conf(slurm_ctl_conf_t * conf_ptr)
 		conf->accounting_storage_enforce;
 	conf_ptr->accounting_storage_host =
 		xstrdup(conf->accounting_storage_host);
+	conf_ptr->accounting_storage_backup_host =
+		xstrdup(conf->accounting_storage_backup_host);
 	conf_ptr->accounting_storage_loc =
 		xstrdup(conf->accounting_storage_loc);
 	conf_ptr->accounting_storage_port = conf->accounting_storage_port;
@@ -510,9 +519,9 @@ void _fill_ctld_conf(slurm_ctl_conf_t * conf_ptr)
 		xstrdup(conf->accounting_storage_type);
 	conf_ptr->accounting_storage_user =
 		xstrdup(conf->accounting_storage_user);
-	conf_ptr->accounting_storage_port = conf->accounting_storage_port;
 	conf_ptr->acctng_store_job_comment = conf->acctng_store_job_comment;
 
+	conf_ptr->acct_gather_conf = acct_gather_conf_values();
 	conf_ptr->acct_gather_energy_type =
 		xstrdup(conf->acct_gather_energy_type);
 	conf_ptr->acct_gather_filesystem_type =
@@ -546,6 +555,7 @@ void _fill_ctld_conf(slurm_ctl_conf_t * conf_ptr)
 	conf_ptr->epilog              = xstrdup(conf->epilog);
 	conf_ptr->epilog_msg_time     = conf->epilog_msg_time;
 	conf_ptr->epilog_slurmctld    = xstrdup(conf->epilog_slurmctld);
+	ext_sensors_g_get_config(&conf_ptr->ext_sensors_conf);
 	conf_ptr->ext_sensors_type    = xstrdup(conf->ext_sensors_type);
 	conf_ptr->ext_sensors_freq    = conf->ext_sensors_freq;
 
@@ -590,7 +600,7 @@ void _fill_ctld_conf(slurm_ctl_conf_t * conf_ptr)
 
 	conf_ptr->launch_type         = xstrdup(conf->launch_type);
 	conf_ptr->licenses            = xstrdup(conf->licenses);
-	conf_ptr->licenses_used       = get_licenses_used();
+	conf_ptr->licenses_used       = licenses_used;
 	conf_ptr->log_fmt             = conf->log_fmt;
 
 	conf_ptr->mail_prog           = xstrdup(conf->mail_prog);
@@ -653,7 +663,7 @@ void _fill_ctld_conf(slurm_ctl_conf_t * conf_ptr)
 	if (conf->sched_params)
 		conf_ptr->sched_params = xstrdup(conf->sched_params);
 	else
-		conf_ptr->sched_params = slurm_sched_p_get_conf();
+		conf_ptr->sched_params = slurm_sched_g_get_conf();
 	conf_ptr->schedport           = conf->schedport;
 	conf_ptr->schedrootfltr       = conf->schedrootfltr;
 	conf_ptr->sched_logfile       = xstrdup(conf->sched_logfile);
@@ -663,7 +673,6 @@ void _fill_ctld_conf(slurm_ctl_conf_t * conf_ptr)
 	conf_ptr->select_type         = xstrdup(conf->select_type);
 	select_g_get_info_from_plugin(SELECT_CONFIG_INFO, NULL,
 				      &conf_ptr->select_conf_key_pairs);
-
 	conf_ptr->select_type_param   = conf->select_type_param;
 	conf_ptr->slurm_user_id       = conf->slurm_user_id;
 	conf_ptr->slurm_user_name     = xstrdup(conf->slurm_user_name);
@@ -677,6 +686,7 @@ void _fill_ctld_conf(slurm_ctl_conf_t * conf_ptr)
 	conf_ptr->slurmd_debug        = conf->slurmd_debug;
 	conf_ptr->slurmd_logfile      = xstrdup(conf->slurmd_logfile);
 	conf_ptr->slurmd_pidfile      = xstrdup(conf->slurmd_pidfile);
+	conf_ptr->slurmd_plugstack    = xstrdup(conf->slurmd_plugstack);
 	conf_ptr->slurmd_port         = conf->slurmd_port;
 	conf_ptr->slurmd_spooldir     = xstrdup(conf->slurmd_spooldir);
 	conf_ptr->slurmd_timeout      = conf->slurmd_timeout;
@@ -840,7 +850,7 @@ static void _slurm_rpc_allocate_resources(slurm_msg_t * msg)
 	int immediate = job_desc_msg->immediate;
 	bool do_unlock = false;
 	bool job_waiting = false;
-	struct job_record *job_ptr;
+	struct job_record *job_ptr = NULL;
 	uint16_t port;	/* dummy value */
 	slurm_addr_t resp_addr;
 	char *err_msg = NULL;
@@ -1745,7 +1755,7 @@ static void _slurm_rpc_complete_batch_script(slurm_msg_t * msg)
 #endif
 	/* Handle non-fatal errors here. All others drain the node. */
 	} else if ((comp_msg->slurm_rc == SLURM_COMMUNICATIONS_SEND_ERROR) ||
-	           (comp_msg->slurm_rc == ESLURM_USER_ID_MISSING) ||
+		   (comp_msg->slurm_rc == ESLURM_USER_ID_MISSING) ||
 		   (comp_msg->slurm_rc == ESLURMD_UID_NOT_FOUND)  ||
 		   (comp_msg->slurm_rc == ESLURMD_GID_NOT_FOUND)  ||
 		   (comp_msg->slurm_rc == ESLURMD_INVALID_ACCT_FREQ)) {
@@ -2460,7 +2470,7 @@ static void _slurm_rpc_reconfigure_controller(slurm_msg_t * msg)
 			msg_to_slurmd(REQUEST_RECONFIGURE);
 		}
 		in_progress = false;
-		slurm_sched_partition_change();	/* notify sched plugin */
+		slurm_sched_g_partition_change();	/* notify sched plugin */
 		unlock_slurmctld(config_write_lock);
 		assoc_mgr_set_missing_uids();
 		start_power_mgr(&slurmctld_config.thread_id_power);
@@ -2776,7 +2786,7 @@ static void _slurm_rpc_submit_batch_job(slurm_msg_t * msg)
 	int error_code = SLURM_SUCCESS;
 	DEF_TIMERS;
 	uint32_t step_id = 0;
-	struct job_record *job_ptr;
+	struct job_record *job_ptr = NULL;
 	slurm_msg_t response_msg;
 	submit_response_msg_t submit_msg;
 	job_desc_msg_t *job_desc_msg = (job_desc_msg_t *) msg->data;
@@ -2925,6 +2935,8 @@ static void _slurm_rpc_submit_batch_job(slurm_msg_t * msg)
 			slurm_send_rc_err_msg(msg, error_code, err_msg);
 		else
 			slurm_send_rc_msg(msg, error_code);
+	} else if (!job_ptr) {	/* Mostly to avoid CLANG error */
+		fatal("job_allocate failed to allocate job, rc=%d",error_code);
 	} else {
 		if (job_ptr->part_ptr_list)
 			schedule_cnt *= list_count(job_ptr->part_ptr_list);
@@ -3023,11 +3035,12 @@ extern int slurm_drain_nodes(char *node_list, char *reason, uint32_t reason_uid)
  * slurm_fail_job - terminate a job due to a launch failure
  *      no-op for jobs already terminated
  * job_id IN - slurm job id
+ * IN job_state - desired job state (JOB_BOOT_FAIL, JOB_NODE_FAIL, etc.)
  * RET SLURM_SUCCESS or error code
  * NOTE: This is utilzed by plugins and not via RPC and it sets its
  *      own locks.
  */
-extern int slurm_fail_job(uint32_t job_id)
+extern int slurm_fail_job(uint32_t job_id, uint16_t job_state)
 {
 	int error_code;
 	DEF_TIMERS;
@@ -3037,7 +3050,7 @@ extern int slurm_fail_job(uint32_t job_id)
 
 	START_TIMER;
 	lock_slurmctld(job_write_lock);
-	error_code = job_fail(job_id);
+	error_code = job_fail(job_id, job_state);
 	unlock_slurmctld(job_write_lock);
 	END_TIMER2("slurm_fail_job");
 
@@ -3632,30 +3645,68 @@ inline static void _slurm_rpc_requeue(slurm_msg_t * msg)
 {
 	int error_code = SLURM_SUCCESS;
 	DEF_TIMERS;
-	job_id_msg_t *requeue_ptr = (job_id_msg_t *) msg->data;
+	requeue_msg_t *req_ptr = (requeue_msg_t *)msg->data;
 	/* Locks: write job and node */
 	slurmctld_lock_t job_write_lock = {
 		NO_LOCK, WRITE_LOCK, WRITE_LOCK, NO_LOCK };
 	uid_t uid = g_slurm_auth_get_uid(msg->auth_cred, NULL);
+	struct job_record *job_ptr;
 
 	START_TIMER;
-	info("Processing RPC: REQUEST_REQUEUE from uid=%d", uid);
+	info("%s: Processing RPC: REQUEST_REQUEUE from uid=%d", __func__, uid);
+
+	job_ptr = find_job_record(req_ptr->job_id);
+	if (job_ptr == NULL) {
+		info("%s: %u: %s", __func__, req_ptr->job_id,
+		     slurm_strerror(ESLURM_INVALID_JOB_ID));
+		return;
+	}
 
 	lock_slurmctld(job_write_lock);
-	error_code = job_requeue(uid, requeue_ptr->job_id,
-				 msg->conn_fd, msg->protocol_version, false);
+	error_code = job_requeue(uid,
+	                         req_ptr->job_id,
+	                         msg->conn_fd,
+	                         msg->protocol_version,
+	                         false);
 	unlock_slurmctld(job_write_lock);
 	END_TIMER2("_slurm_rpc_requeue");
 
 	if (error_code) {
-		info("_slurm_rpc_requeue %u: %s", requeue_ptr->job_id,
-		     slurm_strerror(error_code));
-	} else {
-		info("_slurm_rpc_requeue %u: %s", requeue_ptr->job_id,
-		     TIME_STR);
-		/* Functions below provide their own locking */
-		schedule_job_save();
+
+		if (error_code == ESLURM_TRANSITION_STATE_NO_UPDATE) {
+			/* The job is in state JOB_COMPLETING save the
+			 * requested operation and carry on. The requeue
+			 * will be done after the last job epilog completes.
+			 */
+			if (req_ptr->state & JOB_SPECIAL_EXIT)
+				job_ptr->job_state |= JOB_SPECIAL_EXIT;
+			if (req_ptr->state & JOB_REQUEUE_HOLD)
+				job_ptr->job_state |= JOB_REQUEUE_HOLD;
+			job_ptr->job_state |= JOB_REQUEUE;
+
+		} else {
+			info("%s: %u: %s", __func__, req_ptr->job_id,
+			     slurm_strerror(error_code));
+		}
+
+		return;
 	}
+
+	/* Requeue operation went all right, see if the user
+	 * wants to mark the job as special case or hold it.
+	 */
+	if (req_ptr->state & JOB_SPECIAL_EXIT)
+		job_ptr->job_state |= JOB_SPECIAL_EXIT;
+	if (req_ptr->state & JOB_REQUEUE_HOLD)
+		job_ptr->job_state |= JOB_REQUEUE_HOLD;
+
+	job_hold_requeue(job_ptr);
+
+	info("%s: %u: %s", __func__, req_ptr->job_id, TIME_STR);
+
+	/* Functions below provide their own locking
+	 */
+	schedule_job_save();
 }
 
 /* Assorted checkpoint operations */
@@ -4215,7 +4266,7 @@ inline static void  _slurm_rpc_set_debug_flags(slurm_msg_t *msg)
 	gres_plugin_reconfig(NULL);
 	priority_g_reconfig();
 	select_g_reconfigure();
-	(void) slurm_sched_reconfig();
+	(void) slurm_sched_g_reconfig();
 	(void) switch_g_reconfig();
 
 	unlock_slurmctld (config_write_lock);
@@ -4516,7 +4567,7 @@ inline static void _slurm_rpc_dump_spank(slurm_msg_t * msg)
 
 
 /* _slurm_rpc_dump_stats - process RPC for statistics information */
-static void _slurm_rpc_dump_stats(slurm_msg_t * msg)
+inline static void _slurm_rpc_dump_stats(slurm_msg_t * msg)
 {
 	char *dump;
 	int dump_size;
@@ -4558,3 +4609,54 @@ static void _slurm_rpc_dump_stats(slurm_msg_t * msg)
 	xfree(dump);
 }
 
+/* _slurm_rpc_dump_licenses()
+ *
+ * Pack the io buffer and send it back to the library.
+ */
+inline static void
+_slurm_rpc_dump_licenses(slurm_msg_t * msg)
+{
+	DEF_TIMERS;
+	char *dump;
+	int dump_size;
+	slurm_msg_t response_msg;
+	license_info_request_msg_t  *lic_req_msg;
+	uid_t uid = g_slurm_auth_get_uid(msg->auth_cred, NULL);
+
+	START_TIMER;
+	debug2("%s: Processing RPC: REQUEST_LICENSE_INFO uid=%d",
+	       __func__, uid);
+	lic_req_msg = (license_info_request_msg_t *)msg->data;
+
+	if ((lic_req_msg->last_update - 1) >= last_license_update) {
+		/* Dont send unnecessary data
+		 */
+		debug2("%s: no change SLURM_NO_CHANGE_IN_DATA", __func__);
+		slurm_send_rc_msg(msg, SLURM_NO_CHANGE_IN_DATA);
+
+		return;
+	}
+
+	get_all_license_info(&dump, &dump_size, uid, msg->protocol_version);
+
+	END_TIMER2("_slurm_rpc_dump_licenses");
+	debug2("%s: size=%d %s", __func__, dump_size, TIME_STR);
+
+	/* init response_msg structure
+	 */
+	slurm_msg_t_init(&response_msg);
+
+	response_msg.flags = msg->flags;
+	response_msg.protocol_version = msg->protocol_version;
+	response_msg.address = msg->address;
+	response_msg.msg_type = RESPONSE_LICENSE_INFO;
+	response_msg.data = dump;
+	response_msg.data_size = dump_size;
+
+	/* send message
+	 */
+	slurm_send_node_msg(msg->conn_fd, &response_msg);
+	xfree(dump);
+	/* Ciao!
+	 */
+}

@@ -1093,9 +1093,10 @@ extern void job_fini (void);
 /*
  * job_fail - terminate a job due to initiation failure
  * IN job_id - id of the job to be killed
+ * IN job_state - desired job state (JOB_BOOT_FAIL, JOB_NODE_FAIL, etc.)
  * RET 0 on success, otherwise ESLURM error code
  */
-extern int job_fail(uint32_t job_id);
+extern int job_fail(uint32_t job_id, uint16_t job_state);
 
 /*
  * determine if job is ready to execute per the node select plugin
@@ -1230,9 +1231,11 @@ extern int job_req_node_filter(struct job_record *job_ptr,
  * IN preempt - true if job being preempted
  * RET 0 on success, otherwise ESLURM error code
  */
-extern int job_requeue (uid_t uid, uint32_t job_id, slurm_fd_t conn_fd,
-			uint16_t protocol_version, bool preempt);
-
+extern int job_requeue(uid_t uid,
+                       uint32_t job_id,
+                       slurm_fd_t conn_fd,
+                       uint16_t protocol_version,
+                       bool preempt);
 /*
  * job_step_complete - note normal completion the specified job step
  * IN job_id - id of the job to be completed
@@ -1991,5 +1994,12 @@ extern bool validate_super_user(uid_t uid);
  * RET true if permitted to run, false otherwise
  */
 extern bool validate_operator(uid_t uid);
+
+/* job_hold_requeue() - requeue a job in hold or requeue_exit
+ *                      state.
+ *
+ * IN - job record
+ */
+extern void job_hold_requeue(struct job_record *job_ptr);
 
 #endif /* !_HAVE_SLURMCTLD_H */

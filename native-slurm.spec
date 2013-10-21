@@ -5,6 +5,7 @@
 #
 # build options      .rpmmacros options      change to default action
 # ===============    ====================    ========================
+# --enable-multiple-slurmd %_with_multiple_slurmd 1 build with the multiple slurmd option.  Typically used to simulate a larger system than one has access to.
 # --enable-salloc-background %_with_salloc_background 1 on a cray system alloc salloc to execute as a background process.
 # --prefix           %_prefix        path    install path for commands, libraries, etc.
 # --with aix         %_with_aix         1    build aix RPM
@@ -55,6 +56,7 @@
 %slurm_without_opt debug
 %slurm_without_opt sun_const
 %slurm_without_opt salloc_background
+%slurm_without_opt multiple_slurmd
 
 # These options are only here to force there to be these on the build.
 # If they are not set they will still be compiled if the packages exist.
@@ -459,6 +461,7 @@ export CFLAGS="$RPM_OPT_FLAGS -Werror -O0 -g"
 	%{?slurm_with_cray:--enable-native-cray}      \
 	%{?slurm_with_salloc_background:--enable-salloc-background} \
 	%{!?slurm_with_readline:--without-readline} \
+	%{?slurm_with_multiple_slurmd:--enable-multiple-slurmd} \
 	%{?with_cflags}
 fi
 
@@ -481,7 +484,10 @@ DESTDIR="$RPM_BUILD_ROOT" make install-contrib
    fi
 %endif
 
+# Do not package Slurm's version of libpmi on Cray systems.
+# Cray's version of libpmi should be used.
 %if %{slurm_with cray} || %{slurm_with cray_alps}
+   rm -f $RPM_BUILD_ROOT/%{_libdir}/libpmi*
    install -D -m644 contribs/cray/opt_modulefiles_slurm $RPM_BUILD_ROOT/opt/modulefiles/slurm/%{version}-%{release}
    echo -e '#%Module\nset ModulesVersion "%{version}-%{release}"' > $RPM_BUILD_ROOT/opt/modulefiles/slurm/.version 
 %else
@@ -583,6 +589,8 @@ rm -f ${RPM_BUILD_ROOT}%{_libdir}/slurm/switch_nrt.so
 # Build man pages that are generated directly by the tools
 rm -f $RPM_BUILD_ROOT/%{_mandir}/man1/sjobexitmod.1
 ${RPM_BUILD_ROOT}%{_bindir}/sjobexitmod --roff > $RPM_BUILD_ROOT/%{_mandir}/man1/sjobexitmod.1
+rm -f $RPM_BUILD_ROOT/%{_mandir}/man1/sjstat.1
+${RPM_BUILD_ROOT}%{_bindir}/sjstat --roff > $RPM_BUILD_ROOT/%{_mandir}/man1/sjstat.1
 
 # Build conditional file list for main package
 LIST=./slurm.files
@@ -631,6 +639,13 @@ LIST=./aix.files
 touch $LIST
 test -f $RPM_BUILD_ROOT/%{_libdir}/slurm/proctrack_aix.so      &&
   echo %{_libdir}/slurm/proctrack_aix.so               >> $LIST
+
+LIST=./devel.files
+touch $LIST
+test -f $RPM_BUILD_ROOT/%{_libdir}/libpmi.la			&&
+  echo %{_libdir}/libpmi.la				>> $LIST
+test -f $RPM_BUILD_ROOT/%{_libdir}/libpmi2.la			&&
+  echo %{_libdir}/libpmi2.la				>> $LIST
 
 LIST=./percs.files
 touch $LIST
@@ -763,19 +778,18 @@ rm -rf $RPM_BUILD_ROOT
 %config %{_sysconfdir}/cgroup/release_memory
 %config %{_sysconfdir}/slurm.epilog.clean
 %exclude %{_mandir}/man1/sjobexit*
+%exclude %{_mandir}/man1/sjstat*
 %if %{slurm_with blcr}
 %exclude %{_mandir}/man1/srun_cr*
 %exclude %{_bindir}/srun_cr
 %endif
 #############################################################################
 
-%files devel
+%files -f devel.files devel
 %defattr(-,root,root)
 %dir %attr(0755,root,root)
 %dir %{_prefix}/include/slurm
 %{_prefix}/include/slurm/*
-%{_libdir}/libpmi.la
-%{_libdir}/libpmi2.la
 %{_libdir}/libslurm.la
 %{_libdir}/libslurmdb.la
 %{_mandir}/man3/slurm_*
@@ -921,13 +935,17 @@ rm -rf $RPM_BUILD_ROOT
 %files torque
 %defattr(-,root,root)
 %{_bindir}/pbsnodes
+%{_bindir}/qalter
 %{_bindir}/qdel
 %{_bindir}/qhold
+%{_bindir}/qrerun
 %{_bindir}/qrls
 %{_bindir}/qstat
 %{_bindir}/qsub
 %{_bindir}/mpiexec
 %{_bindir}/generate_pbs_nodefile
+%{_libdir}/slurm/job_submit_pbs.so
+%{_libdir}/slurm/spank_pbs.so
 #############################################################################
 
 %files sjobexit
@@ -974,6 +992,7 @@ rm -rf $RPM_BUILD_ROOT
 %files sjstat
 %defattr(-,root,root)
 %{_bindir}/sjstat
+%{_mandir}/man1/sjstat*
 #############################################################################
 
 %if %{slurm_with pam}
@@ -1004,12 +1023,14 @@ rm -rf $RPM_BUILD_ROOT
 #    fi
 #fi
 
+%post
+if [ -x /sbin/chkconfig ]; then
+    /sbin/chkconfig --add slurm
+fi
+
 %post libs
 if [ -x /sbin/ldconfig ]; then
     /sbin/ldconfig %{_libdir}
-    if [ $1 = 1 ]; then
-	[ -x /sbin/chkconfig ] && /sbin/chkconfig --add slurm
-    fi
 fi
 
 %if %{slurm_with bluegene}

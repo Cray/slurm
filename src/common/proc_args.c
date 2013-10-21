@@ -574,7 +574,7 @@ bool verify_socket_core_thread_count(const char *arg, int *min_sockets,
 {
 	bool tmp_val,ret_val;
 	int i,j;
-	int max_sockets, max_cores, max_threads;
+	int max_sockets = 0, max_cores, max_threads;
 	const char *cur_ptr = arg;
 	char buf[3][48]; /* each can hold INT64_MAX - INT64_MAX */
 	buf[0][0] = '\0';
@@ -834,8 +834,8 @@ char *print_geometry(const uint16_t *geometry)
 	char buf[32], *rc = NULL;
 	int dims = slurmdb_setup_cluster_dims();
 
-	if ((dims == 0)
-	||  (geometry[0] == (uint16_t)NO_VAL))
+	if ((dims == 0) || !geometry[0]
+	    ||  (geometry[0] == (uint16_t)NO_VAL))
 		return NULL;
 
 	for (i=0; i<dims; i++) {

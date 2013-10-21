@@ -2,6 +2,7 @@
 /*
  *  (C) 2007 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
+ *  Copyright (C) 2013      Intel, Inc.
  */
 
 #include "pmi2_util.h"
@@ -378,12 +379,14 @@ int PMI2_Initialized(void)
 
 int PMI2_Abort(int flag, const char msg[])
 {
-    PMI2U_printf("aborting job:\n%s", msg);
+	if (msg)
+		PMI2U_printf("aborting job:\n%s", msg);
 
-    /* ignoring return code, because we're exiting anyway */
-    PMIi_WriteSimpleCommandStr(PMI2_fd, NULL, ABORT_CMD, ISWORLD_KEY, flag ? TRUE_VAL : FALSE_VAL, MSG_KEY, msg, NULL);
+    PMIi_WriteSimpleCommandStr(PMI2_fd, NULL, ABORT_CMD, ISWORLD_KEY,
+                               flag ? TRUE_VAL : FALSE_VAL,
+                               MSG_KEY, ((msg == NULL) ? "": msg), NULL);
 
-    exit(PMII_EXIT_CODE);
+    exit(flag);
     return PMI2_SUCCESS;
 }
 
@@ -1489,8 +1492,16 @@ int PMIi_WriteSimpleCommand( int fd, PMI2_Command *resp, const char cmd[], PMI2_
 
     PMI2U_ERR_CHKANDJUMP(strlen(cmd) > PMI2_MAX_VALLEN, pmi2_errno, PMI2_ERR_OTHER, "**cmd_too_long");
 
-    ret = sprintf(c, "cmd=%s;", cmd);
+    /* Subtract the PMII_COMMANDLEN_SIZE to prevent
+     * certain implementation of snprintf() to
+     * segfault when zero out the buffer.
+     * PMII_COMMANDLEN_SIZE must be added later on
+     * back again to send out the right protocol
+     * message size.
+     */
+    remaining_len -= PMII_COMMANDLEN_SIZE;
 
+    ret = snprintf(c, remaining_len, "cmd=%s;", cmd);
     PMI2U_ERR_CHKANDJUMP(ret >= remaining_len, pmi2_errno, PMI2_ERR_OTHER, "**intern %s", "Ran out of room for command");
     c += ret;
     remaining_len -= ret;
@@ -1533,8 +1544,11 @@ int PMIi_WriteSimpleCommand( int fd, PMI2_Command *resp, const char cmd[], PMI2_
         --remaining_len;
     }
 
-    /* prepend the buffer length stripping off the trailing '\0' */
-    cmdlen = PMII_MAX_COMMAND_LEN - PMII_COMMANDLEN_SIZE - remaining_len;
+    /* prepend the buffer length stripping off the trailing '\0'
+     * Add back the PMII_COMMANDLEN_SIZE to get the correct
+     * protocol size.
+     */
+    cmdlen = PMII_MAX_COMMAND_LEN - (remaining_len + PMII_COMMANDLEN_SIZE);
     ret = snprintf(cmdlenbuf, sizeof(cmdlenbuf), "%d", cmdlen);
     PMI2U_ERR_CHKANDJUMP(ret >= PMII_COMMANDLEN_SIZE, pmi2_errno, PMI2_ERR_OTHER, "**intern %s", "Command length won't fit in length buffer");
 
@@ -1622,7 +1636,10 @@ int PMIi_WriteSimpleCommandStr(int fd, PMI2_Command *resp, const char cmd[], ...
         pairs_p[i] = &pairs[i];
         pairs[i].key = key;
         pairs[i].value = val;
-        pairs[i].valueLen = strlen(val);
+        if (val == NULL)
+	        pairs[i].valueLen = 0;
+        else
+	        pairs[i].valueLen = strlen(val);
         pairs[i].isCopy = 0/*FALSE*/;
         ++i;
     }

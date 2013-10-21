@@ -48,11 +48,11 @@ use lib "${FindBin::Bin}/../lib/perl";
 use autouse 'Pod::Usage' => qw(pod2usage);
 use Slurm ':all';
 use Switch;
+use English;
 
 my ($start_time,
     $account,
  #   $checkpoint_interval,
-    $directive_prefix,
     $err_path,
     $interactive,
     $hold,
@@ -68,9 +68,9 @@ my ($start_time,
 #    $rerunable,
 #    $script_path,
 #    $running_user_list,
-#    $variable_list,
+     $variable_list,
 #    $all_env,
-    $additional_attributes,
+    @additional_attributes,
 #    $no_std,
     $help,
     $man);
@@ -82,7 +82,6 @@ my $srun = "${FindBin::Bin}/srun";
 GetOptions('a=s'      => \$start_time,
 	   'A=s'      => \$account,
 #	   'c=i'      => \$checkpoint_interval,
-	   'C=s'      => \$directive_prefix,
 	   'e=s'      => \$err_path,
 	   'h'        => \$hold,
 	   'I'        => \$interactive,
@@ -99,13 +98,11 @@ GetOptions('a=s'      => \$start_time,
 #	   'r=s'      => \$rerunable,
 #	   'S=s'      => \$script_path,
 #	   'u=s'      => \$running_user_list,
-	   'v=s'      => sub { warn "option -v is not supported, " .
-				    "since the current environment " .
-				    "is exported by default\n" },
+	   'v=s'      => \$variable_list,
 	   'V'        => sub { warn "option -V is not necessary, " .
 				    "since the current environment " .
 				    "is exported by default\n" },
-	   'W'        => \$additional_attributes,
+	   'W=s'      => \@additional_attributes,
 #	   'z'        => \$no_std,
 	   'help|?'   => \$help,
 	   'man'      => \$man,
@@ -135,11 +132,27 @@ if ($ARGV[0]) {
 	foreach (@ARGV) {
 	        $script .= "$_ ";
 	}
-} else {
-        pod2usage(2);
 }
+my $depend;
+my $group_list;
 my %res_opts;
 my %node_opts;
+
+# Process options provided with the -W name=value syntax.
+my $W;
+foreach $W (@additional_attributes) {
+	my($name, $value) = split('=', $W);
+	if ($name eq 'umask') {
+		$ENV{SLURM_UMASK} = $value;
+	} elsif ($name eq 'depend') {
+		$depend = $value;
+	} elsif ($name eq 'group_list') {
+		$group_list = $value;
+#	} else {
+#		print("Invalid attribute: $W!");
+#		exit(1);
+	}
+}
 
 if($resource_list) {
 	%res_opts = %{parse_resource_list($resource_list)};
@@ -156,6 +169,26 @@ if($resource_list) {
 	if($res_opts{nodes}) {
 		%node_opts =  %{parse_node_opts($res_opts{nodes})};
 	}
+	if ($res_opts{select} && (!$node_opts{node_cnt} || ($res_opts{select} > $node_opts{node_cnt}))) {
+		$node_opts{node_cnt} = $res_opts{select};
+	}
+	if ($res_opts{select} && $res_opts{ncpus} && $res_opts{mpiprocs}) {
+		my $cpus_per_task = int ($res_opts{ncpus} / $res_opts{mppnppn});
+		if (!$res_opts{mppdepth} || ($cpus_per_task > $res_opts{mppdepth})) {
+			$res_opts{mppdepth} = $cpus_per_task;
+		}
+	}
+}
+
+if($variable_list) {
+	$variable_list =~ s/\'/\"/g;
+	my @parts = $variable_list =~ m/(?:(?<=")[^"]*(?=(?:\s*"\s*,|\s*"\s*$)))|(?<=,)(?:[^",]*(?=(?:\s*,|\s*$)))|(?<=^)(?:[^",]+(?=(?:\s*,|\s*$)))|(?<=^)(?:[^",]*(?=(?:\s*,)))/g;
+	foreach my $part (@parts) {
+		my ($key, $value) = $part =~ /(.*)=(.*)/;
+		if ($key && $value) {
+			$ENV{$key} = $value;
+		}
+	}
 }
 
 my $command;
@@ -163,17 +196,43 @@ my $command;
 if($interactive) {
 	$command = "$salloc";
 
+#	Always want at least one node in the allocation
+	if (!$node_opts{node_cnt}) {
+		$node_opts{node_cnt} = 1;
+	}
+
+#	Calculate the task count based of the node cnt and the amount
+#	of ppn's in the request
+	if ($node_opts{task_cnt}) {
+		$node_opts{task_cnt} *= $node_opts{node_cnt};
+	}
+
+	if (!$node_opts{node_cnt} && !$node_opts{task_cnt} && !$node_opts{hostlist}) {
+		$node_opts{task_cnt} = 1;
+	}
 } else {
+	if (!$script) {
+		pod2usage(2);
+	}
+
 	$command = "$sbatch";
 
-	$command .= " -D $directive_prefix" if $directive_prefix;
 	$command .= " -e $err_path" if $err_path;
 	$command .= " -o $out_path" if $out_path;
+
+#	The job size specification may be within the batch script,
+#	Reset task count if node count also specified
+	if ($node_opts{task_cnt} && $node_opts{node_cnt}) {
+		$node_opts{task_cnt} *= $node_opts{node_cnt};
+	}
 }
 
 $command .= " -N$node_opts{node_cnt}" if $node_opts{node_cnt};
 $command .= " -n$node_opts{task_cnt}" if $node_opts{task_cnt};
 $command .= " -w$node_opts{hostlist}" if $node_opts{hostlist};
+
+$command .= " --mincpus=$res_opts{ncpus}"            if $res_opts{ncpus};
+$command .= " --ntasks-per-node=$res_opts{mppnppn}"  if $res_opts{mppnppn};
 
 if($res_opts{walltime}) {
 	$command .= " -t$res_opts{walltime}";
@@ -183,14 +242,18 @@ if($res_opts{walltime}) {
 	$command .= " -t$res_opts{pcput}";
 }
 
-$command .= " --tmp=$res_opts{file}" if $res_opts{file};
-$command .= " --mem=$res_opts{mem}" if $res_opts{mem};
+$command .= " --constraint='$res_opts{proc}'" if $res_opts{proc};
+$command .= " --dependency=$depend"   if $depend;
+$command .= " --tmp=$res_opts{file}"  if $res_opts{file};
+$command .= " --mem=$res_opts{mem}"   if $res_opts{mem};
 $command .= " --nice=$res_opts{nice}" if $res_opts{nice};
+
+$command .= " --gres=gpu:$res_opts{naccelerators}"  if $res_opts{naccelerators};
+
 # Cray-specific options
 $command .= " -n$res_opts{mppwidth}"		    if $res_opts{mppwidth};
 $command .= " -w$res_opts{mppnodes}"		    if $res_opts{mppnodes};
 $command .= " --cpus-per-task=$res_opts{mppdepth}"  if $res_opts{mppdepth};
-$command .= " --ntasks-per-node=$res_opts{mppnppn}" if $res_opts{mppnppn};
 
 $command .= " --begin=$start_time" if $start_time;
 $command .= " --account=$account" if $account;
@@ -205,47 +268,110 @@ $command .= " --mail-user=$mail_user_list" if $mail_user_list;
 $command .= " -J $job_name" if $job_name;
 $command .= " --nice=$priority" if $priority;
 $command .= " -p $destination" if $destination;
-$command .= " -C $additional_attributes" if $additional_attributes;
+$command .= " $script" if $script;
 
+# print "$command\n";
 
-$command .= " $script";
+# Execute the command and capture its stdout, stderr, and exit status. Note
+# that if interactive mode was requested, the standard output and standard
+# error are _not_ captured.
+if ($interactive) {
+	my $ret = system($command);
+	exit ($ret >> 8);
+} else {
+	# Capture stderr from the command to the stdout stream.
+	$command .= ' 2>&1';
 
-my $ret = system($command);
-exit ($ret >> 8);
+	# Execute the command and capture the combined stdout and stderr.
+	my $command_output = `$command 2>&1`;
+	chomp($command_output);
+
+	# Save the command exit status.
+	my $command_exit_status = $CHILD_ERROR;
+
+	# If available, extract the job ID from the command output and print
+	# it to stdout, as done in the PBS version of qsub.
+	if ($command_exit_status == 0) {
+#		This prints "Submitted batch job #"
+#		print "$command_output\n";
+#		This only prints the job ID number, e.g. "#"
+		my($job_ID) = $command_output =~ /^.* (\d+)$/;
+		print "$job_ID\n";
+	} else {
+		print("There was an error running the SLURM sbatch command.\n" .
+		      "The command was:\n" .
+		      "'$command'\n" .
+		      "and the output was:\n" .
+		      "'$command_output'\n");
+	}
+
+	# Exit with the command return code.
+	exit($command_exit_status >> 8);
+}
 
 sub parse_resource_list {
 	my ($rl) = @_;
-	my %opt = ('arch' => "",
+	my %opt = ('accelerator' => "",
+		   'arch' => "",
 		   'cput' => "",
 		   'file' => "",
 		   'host' => "",
 		   'mem' => "",
+		   'mpiprocs' => "",
+		   'ncpus' => "",
 		   'nice' => "",
 		   'nodes' => "",
+		   'naccelerators' => "",
 		   'opsys' => "",
 		   'other' => "",
 		   'pcput' => "",
 		   'pmem' => "",
+		   'proc' => '',
 		   'pvmem' => "",
+		   'select' => "",
 		   'software' => "",
 		   'vmem' => "",
+		   'walltime' => "",
 		   # Cray-specific resources
 		   'mppwidth' => "",
 		   'mppdepth' => "",
 		   'mppnppn' => "",
 		   'mppmem' => "",
-		   'mppnodes' => "",
-		   'walltime' => ""
+		   'mppnodes' => ""
 		   );
 	my @keys = keys(%opt);
 
+#	The select option uses a ":" separator rather than ","
+#	This wrapper currently does not support multiple select options
+
+#	Protect the colons used to separate elements in walltime=hh:mm:ss.
+#	Convert to NNhNNmNNs format.
+	$rl =~ s/walltime=(\d{1,2}):(\d{2}):(\d{2})/walltime=$1h$2m$3s/;
+
+	$rl =~ s/:/,/g;
 	foreach my $key (@keys) {
 		#print "$rl\n";
 		($opt{$key}) = $rl =~ m/$key=([\w:\+=+]+)/;
 
 	}
+
+#	If needed, un-protect the walltime string.
+	if ($opt{walltime}) {
+		$opt{walltime} =~ s/(\d{1,2})h(\d{2})m(\d{2})s/$1:$2:$3/;
+#		Convert to minutes for SLURM.
+		$opt{walltime} = get_minutes($opt{walltime});
+	}
+
+	if($opt{accelerator} && $opt{accelerator} =~ /^[Tt]/ && !$opt{naccelerators}) {
+		$opt{naccelerators} = 1;
+	}
+
 	if($opt{cput}) {
 		$opt{cput} = get_minutes($opt{cput});
+	}
+
+	if ($opt{mpiprocs} && (!$opt{mppnppn} || ($opt{mpiprocs} > $opt{mppnppn}))) {
+		$opt{mppnppn} = $opt{mpiprocs};
 	}
 
 	if($opt{mppmem}) {
@@ -293,18 +419,6 @@ sub parse_node_opts {
 
 	my $hl_cnt = Slurm::Hostlist::count($hl);
 	$opt{node_cnt} = $hl_cnt if $hl_cnt > $opt{node_cnt};
-
-	# we always want at least one here
-	if(!$opt{node_cnt}) {
-
-		$opt{node_cnt} = 1;
-	}
-
-	# figure out the amount of tasks based of the node cnt and the amount
-	# of ppn's in the request
-	if($opt{task_cnt}) {
-		$opt{task_cnt} *= $opt{node_cnt};
-	}
 
 	return \%opt;
 }
@@ -369,7 +483,6 @@ B<qsub> - submit a batch job in a familiar pbs format
 qsub  [-a date_time]
       [-A account_string]
       [-b secs]
-      [-C directive_prefix]
       [-e path]
       [-I]
       [-l resource_list]
@@ -404,8 +517,9 @@ It is not necessary (currently also not possible) since stderr/stdout are always
 
 =item B<-v> [variable_list]
 
-Exporting single variables via -v is not supported, since the entire login environment
-is exported by the default.
+Exporting single variables via -v is generally not required, since the entire
+login environment is exported by the default. However this option can be used
+to add newly defined environment variables to specific jobs.
 
 =item B<-V>
 

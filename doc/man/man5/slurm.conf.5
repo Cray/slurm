@@ -1,4 +1,4 @@
-.TH "slurm.conf" "5" "August 2013" "slurm.conf 13.12" "Slurm configuration file"
+.TH "slurm.conf" "5" "October 2013" "slurm.conf 13.12" "Slurm configuration file"
 
 .SH "NAME"
 slurm.conf \- Slurm configuration file
@@ -121,28 +121,21 @@ Also see \fBDefaultStoragePort\fR.
 \fBAccountingStorageType\fR
 The accounting storage mechanism type.  Acceptable values at
 present include "accounting_storage/filetxt",
-"accounting_storage/mysql", "accounting_storage/none",
-"accounting_storage/pgsql", and "accounting_storage/slurmdbd".  The
+"accounting_storage/mysql", "accounting_storage/none"
+and "accounting_storage/slurmdbd".  The
 "accounting_storage/filetxt" value indicates that accounting records
 will be written to the file specified by the
 \fBAccountingStorageLoc\fR parameter.  The "accounting_storage/mysql"
-value indicates that accounting records will be written to a MySQL
-database specified by the \fBAccountingStorageLoc\fR parameter.  The
-"accounting_storage/pgsql" value indicates that accounting records
-will be written to a PostgreSQL database specified by the
-\fBAccountingStorageLoc\fR parameter.  The
-"accounting_storage/slurmdbd" value indicates that accounting records
-will be written to the SLURM DBD, which manages an underlying MySQL or
-PostgreSQL database. See "man slurmdbd" for more information.  The
+value indicates that accounting records will be written to a MySQL or
+MariaDB database specified by the \fBAccountingStorageLoc\fR parameter.
+The "accounting_storage/slurmdbd" value indicates that accounting records
+will be written to the SLURM DBD, which manages an underlying MySQL
+database. See "man slurmdbd" for more information.  The
 default value is "accounting_storage/none" and indicates that account
 records are not maintained.
 Note: The filetxt plugin records only a limited subset of accounting
 information and will prevent some sacct options from proper operation.
-Note: The PostgreSQL plugin is not
-complete and should not be used if wanting to use associations.  It
-will however work with basic accounting of jobs and job steps.  If
-interested in completing, please email slurm-dev@schedmd.com.  Also
-see \fBDefaultStorageType\fR.
+Also see \fBDefaultStorageType\fR.
 
 .TP
 \fBAccountingStorageUser\fR
@@ -469,9 +462,6 @@ Slurmctld triggers
 .TP
 \fBWiki\fR
 Sched/wiki and wiki2 communications
-.TP
-\fBThreadID\fR
-Prints the thread ID in the log file
 .RE
 
 .TP
@@ -535,15 +525,11 @@ Also see \fBAccountingStoragePort\fR and \fBJobCompPort\fR.
 .TP
 \fBDefaultStorageType\fR
 The accounting and job completion storage mechanism type.  Acceptable
-values at present include "filetxt", "mysql", "none", "pgsql", and
-"slurmdbd".  The value "filetxt" indicates that records will be
-written to a file.  The value "mysql" indicates that accounting
-records will be written to a mysql database.  The default value is
-"none", which means that records are not maintained.  The value
-"pgsql" indicates that records will be written to a PostgreSQL
-database.  The value "slurmdbd" indicates that records will be written
-to the SLURM DBD, which maintains its own database. See "man slurmdbd"
-for more information.
+values at present include "filetxt", "mysql" and "none".
+The value "filetxt" indicates that records will be written to a file.
+The value "mysql" indicates that accounting records will be written to a MySQL
+or MariaDB database.
+The default value is "none", which means that records are not maintained.
 Also see \fBAccountingStorageType\fR and \fBJobCompType\fR.
 
 .TP
@@ -599,7 +585,7 @@ Fully qualified pathname of a program for the slurmctld to execute
 upon termination of a job allocation (e.g.
 "/usr/local/slurm/epilog_controller").
 The program executes as SlurmUser, which gives it permission to drain
-nodes and requeue the job if a failure occurs or cancel the job if appropriate.
+nodes and requeue the job if a failure occurs (See scontrol(1)).
 Exactly what the program does and how it accomplishes this is completely at
 the discretion of the system administrator.
 Information about the job being initiated, it's allocated nodes, etc. are
@@ -779,7 +765,7 @@ The default value is unlimited (zero) and may not exceed 65533 seconds.
 The job accounting mechanism type.
 Acceptable values at present include "jobacct_gather/aix" (for AIX operating
 system), "jobacct_gather/linux" (for Linux operating system),
-"jobacct_gather/cgroup (experimental) and "jobacct_gather/none"
+"jobacct_gather/cgroup" (experimental) and "jobacct_gather/none"
 (no accounting data collected).
 The default value is "jobacct_gather/none".
 "jobacct_gather/cgroup" is an experimental plugin for the Linux operating system
@@ -790,21 +776,65 @@ cgroup cpuacct subsystem: user cpu time and system cpu time. No value
 is provided by cgroups for virtual memory size ('vsize').
 In order to use the \fBsstat\fR tool, "jobacct_gather/aix", "jobacct_gather/linux",
 or "jobacct_gather/cgroup" must be configured.
+.br
+\fBNOTE:\fR Changing this configuration parameter changes the contents of 
+the messages between Slurm daemons. Any previously running job steps are
+managed by a slurmstepd daemon that will persist through the lifetime of
+that job step and not change it's communication prototol. Only change this
+configuration parameter when there are no running job steps.
 
 .TP
 \fBJobAcctGatherFrequency\fR
-The job accounting sampling interval.
-For jobacct_gather/none this parameter is ignored.
-For  jobacct_gather/aix and jobacct_gather/linux the parameter is a number is
-seconds between sampling job state.
-The default value is 30 seconds.
-A value of zero disables real the periodic job sampling and provides accounting
-information only on job termination (reducing SLURM interference with the job).
-Smaller (non\-zero) values have a greater impact upon job performance, but
-a value of 30 seconds is not likely to be noticeable for applications having
-less than 10,000 tasks.
-Users can override this value on a per job basis using the \fB\-\-acctg\-freq\fR
-option when submitting the job.
+The job accounting and profiling sampling intervals.
+The supported format is follows:
+.RS
+.TP 12
+\fBJobAcctGatherFrequency=\fR\fI<datatype>\fR\fB=\fR\fI<interval>\fR
+where \fI<datatype>\fR=\fI<interval>\fR specifies the task sampling
+interval for the jobacct_gather plugin or a
+sampling interval for a profiling type by the
+acct_gather_profile plugin. Multiple,
+comma-separated \fI<datatype>\fR=\fI<interval>\fR intervals
+may be specified. Supported datatypes are as follows:
+.RS
+.TP
+\fBtask=\fI<interval>\fR
+where \fI<interval>\fR is the task sampling interval in seconds
+for the jobacct_gather plugins and for task
+profiling by the acct_gather_profile plugin.
+.TP
+\fBenergy=\fI<interval>\fR
+where \fI<interval>\fR is the sampling interval in seconds
+for energy profiling using the acct_gather_energy plugin
+.TP
+\fBnetwork=\fI<interval>\fR
+where \fI<interval>\fR is the sampling interval in seconds
+for infiniband profiling using the acct_gather_infiniband
+plugin.
+.TP
+\fBfilesystem=\fI<interval>\fR
+where \fI<interval>\fR is the sampling interval in seconds
+for filesystem profiling using the acct_gather_filesystem
+plugin.
+.TP
+.RE
+.RE
+The default value for task sampling interval
+is 30 seconds. The default value for all other intervals is 0.
+An interval of 0 disables sampling of the specified type.
+If the task sampling interval is 0, accounting
+information is collected only at job termination (reducing SLURM
+interference with the job).
+.br
+.br
+Smaller (non\-zero) values have a greater impact upon job performance,
+but a value of 30 seconds is not likely to be noticeable for
+applications having less than 10,000 tasks.
+.br
+.br
+Users can independently override each interval on a per job basis using the
+\fB\-\-acctg\-freq\fR option when submitting the job.
+.RE
 
 .TP
 \fBJobAcctGatherParams\fR
@@ -857,7 +887,7 @@ Also see \fBDefaultStoragePort\fR.
 \fBJobCompType\fR
 The job completion logging mechanism type.
 Acceptable values at present include "jobcomp/none", "jobcomp/filetxt",
-"jobcomp/mysql", "jobcomp/pgsql", and "jobcomp/script"".
+"jobcomp/mysql", and "jobcomp/script"".
 The default value is "jobcomp/none", which means that upon job completion
 the record of the job is purged from the system.  If using the accounting
 infrastructure this plugin may not be of interest since the information
@@ -865,9 +895,8 @@ here is redundant.
 The value "jobcomp/filetxt" indicates that a record of the job should be
 written to a text file specified by the \fBJobCompLoc\fR parameter.
 The value "jobcomp/mysql" indicates that a record of the job should be
-written to a mysql database specified by the \fBJobCompLoc\fR parameter.
-The value "jobcomp/pgsql" indicates that a record of the job should be
-written to a PostgreSQL database specified by the \fBJobCompLoc\fR parameter.
+written to a MySQL or MariaDB database specified by the \fBJobCompLoc\fR
+parameter.
 The value "jobcomp/script" indicates that a script specified by the
 \fBJobCompLoc\fR parameter is to be executed with environment variables
 indicating the job information.
@@ -879,11 +908,11 @@ Only used for database type storage plugins, ignored otherwise.
 Also see \fBDefaultStorageUser\fR.
 
 .TP
-\fBJobContainerPlugin\fR
+\fBJobContainerType\fR
 Identifies the plugin to be used for job tracking.
-The slurmd daemon must be restarted for a change in JobContainerPlugin
+The slurmd daemon must be restarted for a change in JobContainerType
 to take effect.
-NOTE: The \fBJobContainerPlugin\fR applies to a job allocation, while
+NOTE: The \fBJobContainerType\fR applies to a job allocation, while
 \fBProctrackType\fR applies to job steps.
 Acceptable values at present include:
 .RS
@@ -1029,9 +1058,14 @@ The maximum number of jobs SLURM can have in its active database
 at one time. Set the values of \fBMaxJobCount\fR and \fBMinJobAge\fR
 to insure the slurmctld daemon does not exhaust its memory or other
 resources. Once this limit is reached, requests to submit additional
-jobs will fail. The default value is 10000 jobs. This value may not
-be reset via "scontrol reconfig". It only takes effect upon restart
-of the slurmctld daemon.
+jobs will fail. The default value is 10000 jobs.
+Performance can suffer with more than a couple hundred thousand jobs.
+Setting per MaxSubmitJobs per user is generally valuable to prevent a single
+user from filling the system with jobs.
+This is accomplished using Slurm's database and configuring enforcement of
+resource limits.
+This value may not be reset via "scontrol reconfig".
+It only takes effect upon restart of the slurmctld daemon.
 
 .TP
 \fBMaxJobId\fR
@@ -1253,6 +1287,8 @@ Supported values are "YES" and "NO".  The default value is "NO".
 \fBPriorityFlags\fR
 Flags to modify priority behavior
 Applicable only if PriorityType=priority/multifactor.
+The keywords below have no associated value
+(e.g. "PriorityFlags=ACCRUE_ALWAYS,SMALL_RELATIVE_TO_TIME").
 .RS
 .TP 17
 \fBACCRUE_ALWAYS\fR
@@ -1265,6 +1301,11 @@ the job's size divided by it's time limit.
 .TP
 \fBTICKET_BASED\fR
 If set, priority will be calculated based on the ticket system.
+.TP
+\fBDEPTH_OBLIVIOUS\fR
+If set, priority will be calculated based similar to the normal multifactor
+calculation, but depth of the associations in the tree do not adversely effect
+their priority.
 .RE
 
 .TP
@@ -1366,30 +1407,31 @@ Acceptable values include:
 .RS
 .TP
 \fBaccounts\fR
-(NON-SLURMDBD ACCOUNTING ONLY) prevents users from viewing any account
+(NON-SLURMDBD ACCOUNTING ONLY) Prevents users from viewing any account
 definitions unless they are coordinators of them.
 .TP
 \fBjobs\fR
-prevents users from viewing jobs or job steps belonging
-to other users. (NON-SLURMDBD ACCOUNTING ONLY) prevents users from viewing
+Prevents users from viewing jobs or job steps belonging
+to other users. (NON-SLURMDBD ACCOUNTING ONLY) Prevents users from viewing
 job records belonging to other users unless they are coordinators of
 the association running the job when using sacct.
 .TP
 \fBnodes\fR
-prevents users from viewing node state information.
+Prevents users from viewing node state information.
 .TP
 \fBpartitions\fR
-prevents users from viewing partition state information.
+Prevents users from viewing partition state information.
 .TP
 \fBreservations\fR
-prevents regular users from viewing reservations.
+Prevents regular users from viewing reservations.
 .TP
 \fBusage\fR
-(NON-SLURMDBD ACCOUNTING ONLY) prevents users from viewing
-usage of any other user.  This applies to sreport.
+Prevents users from viewing usage of any other user, this applies to sshare.
+(NON-SLURMDBD ACCOUNTING ONLY) Prevents users from viewing
+usage of any other user, this applies to sreport.
 .TP
 \fBusers\fR
-(NON-SLURMDBD ACCOUNTING ONLY) prevents users from viewing
+(NON-SLURMDBD ACCOUNTING ONLY) Prevents users from viewing
 information of any user other than themselves, this also makes it so users can
 only see associations they deal with.
 Coordinators can see associations of all users they are coordinator of,
@@ -1706,7 +1748,7 @@ be changed.
 \fB2\fR
 A DOWN node will become available for use upon registration with a
 valid configuration.  The node could have been set DOWN for any reason.
-(Disabled on Cray systems.)
+(Disabled on Cray ALPS systems.)
 .RE
 
 .TP
@@ -1744,8 +1786,14 @@ Multiple options may be comma separated.
 The default number of jobs to attempt scheduling (i.e. the queue depth) when a
 running job completes or other routine actions occur. The full queue will be
 tested on a less frequent basis. The default value is 100.
-In the case of large clusters, configuring a relatively
+In the case of large clusters (more than 1000 nodes), configuring a relatively
 small value may be desirable.
+Specifying a large value (say 1000 or higher) can be expected to result in
+poor system responsiveness since this scheduling logic will not release
+locks for other events to occur.
+It would be better to let the backfill scheduler process a larger number of jobs
+(see \fBmax_job_bf\fR, \fBbf_continue\fR  and other options here for more
+information).
 .TP
 \fBdefer\fR
 Setting this option will avoid attempting to schedule each job
@@ -1772,6 +1820,14 @@ Higher values result in less overhead and better responsiveness.
 The default value is 30 seconds.
 This option applies only to \fBSchedulerType=sched/backfill\fR.
 .TP
+\fBbf_max_job_part=#\fR
+The maximum number of jobs per partition to attempt backfill scheduling for,
+not counting jobs which cannot be started due to an association resource
+limit. This can be especially helpful for systems with large numbers of
+partitions and jobs.
+The default value is 0, which means no limit.
+This option applies only to \fBSchedulerType=sched/backfill\fR.
+.TP
 \fBbf_max_job_user=#\fR
 The maximum number of jobs per user to attempt backfill scheduling for,
 not counting jobs which cannot be started due to an association resource
@@ -1792,6 +1848,11 @@ This option applies only to \fBSchedulerType=sched/backfill\fR.
 The number of minutes into the future to look when considering jobs to schedule.
 Higher values result in more overhead and less responsiveness.
 The default value is 1440 minutes (one day).
+A value at least as long as the highest allowed time limit is generally
+advisable to prevent job starvation.
+In order limit the amount of data managed by the backfill scheduler,
+if the value of \fBbf_window\fR is increased, then it is generally advisable
+to also increase \fBbf_resolution\fR.
 This option applies only to \fBSchedulerType=sched/backfill\fR.
 .TP
 \fBmax_job_bf=#\fR
@@ -1928,11 +1989,25 @@ The only supported options for \fBSelectType=select/linear\fR are
 \fBCR_ONE_TASK_PER_CORE\fR and
 \fBCR_Memory\fR, which treats memory as a consumable resource and
 prevents memory over subscription with job preemption or gang scheduling.
-\fBOTHER_CONS_RES\fR (meaning laying the select/cons_res plugin under the
-select/cray plugin, the default is to layer on select/linear) is supported by
-SelectType=select/cray along with all the options for select/cons_res when
-using \fBOTHER_CONS_RES\fR.
-The following values are supported for \fBSelectType=select/cons_res\fR:
+.RS
+.TP
+The following options are supported for \fBSelectType=select/cray\fR:
+.RS
+.TP
+\fBOTHER_CONS_RES\fR
+Layer the select/cons_res plugin under the select/cray plugin, the default is
+to layer on select/linear.  This also allows all the options for
+\fBSelectType=select/cons_res\fR.
+.TP
+\fBNHC_NO_STEPS\fR Do not run the node health check after each step.  Default
+is to run after each step.
+.TP
+\fBNHC_NO\fR
+Do not run the node health check after each allocation.  Default is to run
+after each allocation.  This also sets NHC_No_Steps, so the NHC will never run.
+.RE
+.TP
+The following options are supported for \fBSelectType=select/cons_res\fR:
 .RS
 .TP
 \fBCR_ALLOCATE_FULL_SOCKET\fR
@@ -1943,18 +2018,22 @@ Must be used with \fBCR_Socket\fR or \fBCR_Socket_Memory\fR option.
 CPUs are consumable resources.
 Configure the number of \fBCPUs\fR on each node, which may be equal to the
 count of cores or hyper\-threads on the node depending upon the desired minimum
-resource allocation. The node's \fBSockets\fR, \fBCoresPerSocket\fR and
-\fBThreadsPerCore\fR may also be configured if desired and may result in job
-allocations which have improved locality.
+resource allocation.
+The node's \fBBoards\fR, \fBSockets\fR, \fBCoresPerSocket\fR and
+\fBThreadsPerCore\fR may optionally be configured and result in job
+allocations which have improved locality; however doing so will prevent
+more than one job being from being allocated on each core.
 
 .TP
 \fBCR_CPU_Memory\fR
 CPUs and memory are consumable resources.
 Configure the number of \fBCPUs\fR on each node, which may be equal to the
 count of cores or hyper\-threads on the node depending upon the desired minimum
-resource allocation. The node's \fBSockets\fR, \fBCoresPerSocket\fR and
-\fBThreadsPerCore\fR may also be configured if desired and may result in job
-allocations which have improved locality.
+resource allocation.
+The node's \fBBoards\fR, \fBSockets\fR, \fBCoresPerSocket\fR and
+\fBThreadsPerCore\fR may optionally be configured and result in job
+allocations which have improved locality; however doing so will prevent
+more than one job being from being allocated on each core.
 Setting a value for \fBDefMemPerCPU\fR is strongly recommended.
 .TP
 \fBCR_Core\fR
@@ -2018,9 +2097,7 @@ Memory is a consumable resource.
 NOTE: This implies \fIShared=YES\fR or \fIShared=FORCE\fR for all partitions.
 Setting a value for \fBDefMemPerCPU\fR is strongly recommended.
 .TP
-\fBother_cons_res\fR
-When SelectType=select/cray plugin, then the underlying select plugin used
-wiill be select/cons_res.
+.RE
 .RE
 
 .TP
@@ -2171,6 +2248,12 @@ Any "%h" within the name is replaced with the hostname on which the
 Any "%n" within the name is replaced with the SLURM node name on which the
 \fBslurmd\fR is running.
 The default value is "/var/run/slurmd.pid".
+
+.TP
+\fBSlurmdPlugstack\fR
+A comma delimited list of SLURM compute node plugins to be started when the
+daemon begins and terminated when it ends.
+Only the plugin's init and fini functions are called.
 
 .TP
 \fBSlurmdPort\fR
@@ -2628,10 +2711,12 @@ used for scheduling purposes (depending upon the value of
 \fBFastSchedule\fR in the configuration file.
 .LP
 Default values can be specified with a record in which
-"NodeName" is "DEFAULT".
+\fBNodeName\fR is "DEFAULT".
 The default entry values will apply only to lines following it in the
 configuration file and the default values can be reset multiple times
 in the configuration file with multiple entries where "NodeName=DEFAULT".
+Each line where \fBNodeName\fR is "DEFAULT" will replace or add to previous
+default values and not a reinitialize the default values.
 The "NodeName=" specification must be placed on every line
 describing the configuration of nodes.
 A single node name can not appear as a NodeName value in more than one line
@@ -2693,6 +2778,8 @@ If the \fBNodeName\fR is "DEFAULT", the values specified
 with that record will apply to subsequent node specifications
 unless explicitly set to other values in that node record or
 replaced with a different set of default values.
+Each line where \fBNodeName\fR is "DEFAULT" will replace or add to previous
+default values and not a reinitialize the default values.
 For architectures in which the node order is significant,
 nodes will be considered consecutive in the order defined.
 For example, if the configuration for "NodeName=charlie" immediately
@@ -3001,6 +3088,8 @@ If the \fBFrontendName\fR is "DEFAULT", the values specified
 with that record will apply to subsequent node specifications
 unless explicitly set to other values in that frontend node record or
 replaced with a different set of default values.
+Each line where \fBFrontendName\fR is "DEFAULT" will replace or add to previous
+default values and not a reinitialize the default values.
 Note that since the naming of front end nodes would typically not follow that
 of the compute nodes (e.g. lacking X, Y and Z coordinates found in the compute
 node naming scheme), each front end node name should be listed separately and
@@ -3065,12 +3154,14 @@ partitions, each with different constraints (time limit, job sizes,
 groups allowed to use the partition, etc.).
 Jobs are allocated resources within a single partition.
 Default values can be specified with a record in which
-"PartitionName" is "DEFAULT".
+\fBPartitionName\fR is "DEFAULT".
 The default entry values will apply only to lines following it in the
 configuration file and the default values can be reset multiple times
 in the configuration file with multiple entries where "PartitionName=DEFAULT".
 The "PartitionName=" specification must be placed on every line
 describing the configuration of partitions.
+Each line where \fBPartitionName\fR is "DEFAULT" will replace or add to previous
+default values and not a reinitialize the default values.
 A single partition name can not appear as a PartitionName value in more than
 one line (duplicate partition name records will be ignored).
 If a partition that is in use is deleted from the configuration and slurm
@@ -3298,6 +3389,8 @@ If the \fBPartitionName\fR is "DEFAULT", the values specified
 with that record will apply to subsequent partition specifications
 unless explicitly set to other values in that partition record or
 replaced with a different set of default values.
+Each line where \fBPartitionName\fR is "DEFAULT" will replace or add to previous
+default values and not a reinitialize the default values.
 
 .TP
 \fBPreemptMode\fR
@@ -3495,9 +3588,18 @@ The highest exit code of all of the job steps.
 Available in \fBEpilogSlurmctld\fR only.
 .TP
 \fBSLURM_JOB_EXIT_CODE\fR
-The exit code of the job script (or salloc).
+The exit code of the job script (or salloc). The value is the status
+as returned by the wait() system call (See wait(2))
 Available in \fBEpilogSlurmctld\fR only.
 .TP
+\fBSLURM_JOB_EXIT_CODE2\fR
+The exit code of the job script (or salloc). The value has the format
+<exit>:<sig>. The first number is the exit code, typically as set by the
+exit() function. The second number of the signal that caused the process to
+terminante if it was terminated by a signal.
+Available in \fBEpilogSlurmctld\fR only.
+.TP
+
 \fBSLURM_JOB_GID\fR
 Group ID of the job's owner.
 Available in \fBPrologSlurmctld\fR and \fBEpilogSlurmctld\fR only.

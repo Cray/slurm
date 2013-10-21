@@ -651,6 +651,7 @@ int load_all_part_state(void)
 
 			if (priority > part_max_priority)
 				part_max_priority = priority;
+			cr_type = 0;	/* Default value */
 
 			safe_unpack16(&state_up, buffer);
 			safe_unpackstr_xmalloc(&allow_groups,
@@ -1571,7 +1572,7 @@ extern int update_part (update_part_msg_t * part_desc, bool create_flag)
 	}
 
 	if (error_code == SLURM_SUCCESS) {
-		slurm_sched_partition_change();	/* notify sched plugin */
+		slurm_sched_g_partition_change();	/* notify sched plugin */
 		select_g_reconfigure();		/* notify select plugin too */
 	}
 
@@ -1772,7 +1773,7 @@ extern int delete_partition(delete_part_msg_t *part_desc_ptr)
 	list_delete_all(part_list, list_find_part, part_desc_ptr->name);
 	last_part_update = time(NULL);
 
-	slurm_sched_partition_change();	/* notify sched plugin */
+	slurm_sched_g_partition_change();	/* notify sched plugin */
 	select_g_reconfigure();		/* notify select plugin too */
 
 	return SLURM_SUCCESS;

@@ -288,6 +288,8 @@ static slurm_errtab_t slurm_errtab[] = {
 	  "Reservation request lacks users or accounts"		},
 	{ ESLURM_INVALID_ARRAY,
 	  "Invalid job array specification"			},
+	{ ESLURM_RESERVATION_NAME_DUP,
+	  "Duplicate reservation name"			},
 
 	/* slurmd error codes */
 
@@ -397,7 +399,7 @@ static slurm_errtab_t slurm_errtab[] = {
 
 	/* plugin and custom errors */
 	{ ESLURM_MISSING_TIME_LIMIT,
-	  "Missing time limit"                                  }
+	  "Time limit specification required, but not provided"  }
 };
 
 /*

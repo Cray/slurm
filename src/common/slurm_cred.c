@@ -1154,7 +1154,8 @@ void format_core_allocs(slurm_cred_t *cred, char *node_name, uint16_t cpus,
 	else {
 		uint32_t i = cpus / (i_last_bit - i_first_bit);
 		if (i > 1) {
-			info("scaling CPU count by factor of %d", i);
+			info("scaling CPU count by factor of %d (%u/(%u-%u)",
+			     i, cpus, i_last_bit, i_first_bit);
 			step_cpu_cnt *= i;
 			job_cpu_cnt *= i;
 		}
@@ -2123,22 +2124,6 @@ sbcast_cred_t *create_sbcast_cred(slurm_cred_ctx_t ctx,
 	}
 
 	return sbcast_cred;
-}
-
-/* Copy an sbcast credential created using create_sbcast_cred() or
- *	unpack_sbcast_cred() */
-sbcast_cred_t *copy_sbcast_cred(sbcast_cred_t *sbcast_cred)
-{
-	sbcast_cred_t *rcred = NULL;
-
-	xassert(sbcast_cred);
-	rcred->ctime      = sbcast_cred->ctime;
-	rcred->expiration = sbcast_cred->expiration;
-	rcred->jobid      = sbcast_cred->jobid;
-	rcred->nodes      = xstrdup(sbcast_cred->nodes);
-	rcred->siglen     = sbcast_cred->siglen;
-	rcred->signature  = xstrdup(sbcast_cred->signature);
-	return rcred;
 }
 
 /* Delete an sbcast credential created using create_sbcast_cred() or

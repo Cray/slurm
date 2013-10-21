@@ -127,12 +127,15 @@ expect {
 #
 # Reading a second prompt is required by some versions of Expect
 #
-if { 0 } {
-	expect {
-		-re $prompt {
-		}
+set timeout 1
+expect {
+	-re $prompt {
+		exp_continue
+	}
+	timeout {
 	}
 }
+set timeout 30
 
 #
 # Run a job step to get allocated processor count and affinity
@@ -253,7 +256,7 @@ expect {
 	-re $prompt
 }
 if {$verbose_cnt != $task_cnt} {
-	send_user "\nFAILURE: verbose messages count inconsisent ($verbose_cnt,$task_cnt)\n"
+	send_user "\nFAILURE: verbose messages count inconsisent ($verbose_cnt != $task_cnt)\n"
 	set exit_code 1
 }
 
@@ -284,7 +287,7 @@ while {$cpu_cnt < $task_cnt} {
 		-re $prompt
 	}
 	if {$mask_sum != $task_cnt * $mask} {
-		send_user "\nFAILURE: affinity mask inconsistent ($mask_sum,$task_cnt)\n"
+		send_user "\nFAILURE: affinity mask inconsistent ($mask_sum != $task_cnt * $mask)\n"
 		set exit_code 1
 	}
 	incr cpu_cnt 1
@@ -318,7 +321,7 @@ while {$cpu_cnt < $task_cnt} {
 		-re $prompt
 	}
 	if {$mask_sum != $task_cnt * $mask} {
-		send_user "\nFAILURE: affinity mask inconsistent ($mask_sum,$task_cnt)\n"
+		send_user "\nFAILURE: affinity mask inconsistent ($mask_sum != $task_cnt * $mask)\n"
 		set exit_code 1
 	}
 	incr cpu_cnt 1
@@ -394,7 +397,7 @@ expect {
 	-re $prompt
 }
 if {$task_mask != $full_mask} {
-	send_user "\nFAILURE: affinity mask inconsistent ($task_mask,$full_mask)\n"
+	send_user "\nFAILURE: affinity mask inconsistent ($task_mask != $full_mask)\n"
 	set exit_code 1
 }
 
@@ -422,7 +425,7 @@ expect {
 	-re $prompt
 }
 if {$task_mask != $full_mask} {
-	send_user "\nFAILURE: affinity mask inconsistent ($task_mask,$full_mask)\n"
+	send_user "\nFAILURE: affinity mask inconsistent ($task_mask != $full_mask)\n"
 	set exit_code 1
 }
 
@@ -450,7 +453,7 @@ expect {
 	-re $prompt
 }
 if {$task_mask != $full_mask} {
-	send_user "\nFAILURE: affinity mask inconsistent ($task_mask,$full_mask)\n"
+	send_user "\nFAILURE: affinity mask inconsistent ($task_mask != $full_mask)\n"
 	set exit_code 1
 }
 
@@ -478,7 +481,7 @@ expect {
 	-re $prompt
 }
 if {$task_mask != $full_mask} {
-	send_user "\nFAILURE: affinity mask inconsistent ($task_mask,$full_mask)\n"
+	send_user "\nFAILURE: affinity mask inconsistent ($task_mask != $full_mask)\n"
 	set exit_code 1
 }
 
@@ -506,7 +509,7 @@ expect {
 	-re $prompt
 }
 if {$task_mask != $full_mask} {
-	send_user "\nFAILURE: affinity mask inconsistent ($task_mask,$full_mask)\n"
+	send_user "\nFAILURE: affinity mask inconsistent ($task_mask != $full_mask)\n"
 	set exit_code 1
 }
 
@@ -534,7 +537,7 @@ expect {
 	-re $prompt
 }
 if {$task_mask != $full_mask} {
-	send_user "\nFAILURE: affinity mask inconsistent ($task_mask,$full_mask)\n"
+	send_user "\nFAILURE: affinity mask inconsistent ($task_mask != $full_mask)\n"
 	set exit_code 1
 }
 

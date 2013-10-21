@@ -51,7 +51,7 @@
 
 uint16_t _get_slurm_version(uint32_t rpc_version)
 {
-	if (rpc_version >= SLURMDBD_VERSION)
+	if (rpc_version >= SLURM_PROTOCOL_VERSION)
 		return SLURM_PROTOCOL_VERSION;
 	else if (rpc_version >= SLURMDBD_2_6_VERSION)
 		return SLURM_2_6_PROTOCOL_VERSION;
@@ -120,7 +120,7 @@ int check_header_version(header_t * header)
  */
 void init_header(header_t *header, slurm_msg_t *msg, uint16_t flags)
 {
-	memset(header, 0, sizeof(header));
+	memset(header, 0, sizeof(header_t));
 	/* Since the slurmdbd could talk to a host of different
 	   versions of slurm this needs to be kept current when the
 	   protocol version changes. */
