@@ -1,8 +1,50 @@
 This file describes changes in recent versions of SLURM. It primarily
 documents those changes that are of interest to users and admins.
 
+* Changes in Slurm 13.12.0pre4
+==============================
+ -- Remove the ThreadID documentation from slurm.conf. This functionality has
+    been obsoleted by the LogTimeFormat.
+ -- Sched plugins - rename global and plugin functions names for consistency
+    with other plugin types.
+ -- BGQ - Added RebootQOSList option to bluegene.conf to allow an implicate
+    reboot of a block if only jobs in the list are running on it when cnodes
+    go into a failure state.
+ -- Correct task count of pending job steps.
+ -- Improve limit enforcement for jobs, set RLIMIT_RSS, RLIMIT_AS and/or
+    RLIMIT_DATA to enforce memory limit.
+ -- Pending job steps will have step_id of INFINITE rather than NO_VAL and
+    will be reported as "TBD" by scontrol and squeue commands.
+ -- Add logic so PMI_Abort or PMI2_Abort can propagate an exit code.
+ -- Added SlurmdPlugstack configuration parameter.
+ -- Added PriorityFlag DEPTH_OBLIVIOUS to have the depth of an association
+    not effect it's priorty.
+
 * Changes in Slurm 13.12.0pre3
 ==============================
+ -- Do not set SLURM_NODEID environment variable on front-end systems.
+ -- Convert bitmap functions to use int32_t instead of int in data structures
+    and function arguments. This is to reliably enable use of bitmaps containing
+    up to 4 billion elements. Several data structures containing index values
+    were also changed from data type int to int32_t:
+    - Struct job_info / slurm_job_info_t: Changed exc_node_inx, node_inx, and
+      req_node_inx from type int to type int32_t
+    - job_step_info_t: Changed node_inx from type int to type int32_t
+    - Struct partition_info / partition_info_t: Changed node_inx from type int
+      to type int32_t
+    - block_job_info_t: Changed cnode_inx from type int to type int32_t
+    - block_info_t: Changed ionode_inx and mp_inx from type int to type int32_t
+    - Struct reserve_info / reserve_info_t: Changed node_inx from type int to
+      type int32_t
+ -- Modify qsub wrapper output to match torque command output, just print the
+    job ID rather than "Submitted batch job #"
+ -- Change Slurm error string for ESLURM_MISSING_TIME_LIMIT from
+    "Missing time limit" to
+    "Time limit specification required, but not provided"
+ -- Change salloc job_allocate error message header from
+    "Failed to allocate resources" to
+    "Job submit/allocate failed"
+ -- Modify slurmctld message retry logic to support Cray cold-standby SDB.
 
 * Changes in Slurm 13.12.0pre2
 ==============================
@@ -74,6 +116,36 @@ documents those changes that are of interest to users and admins.
  -- Sched/backfill - Change default max_job_bf parameter from 50 to 100.
  -- Added -I|--item-extract option to sh5util to extract data item from series.
 
+* Changes in Slurm 2.6.4
+========================
+ -- Fixed sh5util to print its usage.
+ -- Corrected commit f9a3c7e4e8ec.
+ -- Honor ntasks-per-node option with exclusive node allocations.
+ -- sched/backfill - Prevent invalid memory reference if bf_continue option is
+    configured and slurm is reconfigured during one of the sleep cycles or if
+    there are any changes to the partition configuration or if the normal
+    scheduler runs and starts a job that the backfill scheduler is actively
+    working on.
+ -- Update man pages information about acct-freq and JobAcctGatherFrequency
+    to reflect only the latest supported format.
+ -- Minor document update to include note about PrivateData=Usage for the
+    slurm.conf when using the DBD.
+ -- Expand information reported with DebugFlags=backfill.
+ -- Initiate jobs pending to run in a reservation as soon as the reservation
+    becomes active.
+ -- Purged expired reservation even if it has pending jobs.
+ -- Corrections to calculation of a pending job's expected start time.
+ -- Remove some vestigial logic treating job priority of 1 as a special case.
+ -- Memory freeing up to avoid minor memory leaks at close of daemons
+ -- Updated documentation to give correct units being displayed.
+ -- Report AccountingStorageBackupHost with "scontrol show config".
+ -- init scripts ignore quotes around Pid file name specifications.
+ -- Fixed typo about command case in quickstart.html.
+ -- task/cgroup - handle new cpuset files, similar to commit c4223940.
+ -- Replace the tempname() function call with mkstemp().
+ -- Fix for --cpu_bind=map_cpu/mask_cpu/map_ldom/mask_ldom plus
+    --mem_bind=map_mem/mask_mem options, broken in 2.6.2.
+
 * Changes in Slurm 2.6.3
 ========================
  -- Add support for some new #PBS options in sbatch scripts and qsub wrapper:
@@ -83,7 +155,51 @@ documents those changes that are of interest to users and admins.
     -l select=#		(node count)
     -l ncpus=#		(task count)
     -v key=value	(environment variable)
+    -W depend=opts	(job dependencies, including "on" and "before" options)
     -W umask=#		(set job's umask)
+ -- Added qalter and qrerun commands to torque package.
+ -- Corrections to qstat logic: job CPU count and partition time format.
+ -- Add job_submit/pbs plugin to translate PBS job dependency options to the
+    extend possible (no support for PBS "before" options) and set some PBS
+    environment variables.
+ -- Add spank/pbs plugin to set a bunch of PBS environment variables.
+ -- Backported sh5util from master to 2.6 as there are some important
+    bugfixes and the new item extraction feature.
+ -- select/cons_res - Correct MacCPUsPerNode partition constraint for CR_Socket.
+ -- scontrol - for setdebugflags command, avoid parsing "-flagname" as an
+    scontrol command line option.
+ -- Fix issue with step accounting if a job is requeued.
+ -- Close file descriptors on exec of prolog, epilog, etc.
+ -- Fix issue when a user has held a job and then sets the begin time
+    into the future.
+ -- Scontrol - Enable changing a job's stdout file.
+ -- Fix issues where memory or node count of a srun job is altered while the
+    srun is pending.  The step creation would use the old values and possibly
+    hang srun since the step wouldn't be able to be created in the modified
+    allocation.
+ -- Add support for new SchedulerParameters value of "bf_max_job_part", the
+    maximum depth the backfill scheduler should go in any single partition.
+ -- acct_gather/infiniband plugin - Correct packets_in/out values.
+ -- BLUEGENE - Don't ignore a conn-type request from the user.
+ -- BGQ - Force a request on a Q for a MESH to be a TORUS in a dimension that
+    can only be a TORUS (1).
+ -- Change max message length from 100MB to 1GB before generating "Insane
+    message length" error.
+ -- sched/backfill - Prevent possible memory corruption due to use of
+    bf_continue option and long running scheduling cycle (pending jobs could
+    have been cancelled and purged).
+ -- CRAY - fix AcceleratorAllocation depth correctly for basil 1.3
+ -- Created the environment variable SLURM_JOB_NUM_NODES for srun jobs and
+    updated the srun man page.
+ -- BLUEGENE/CRAY - Don't set env variables that pertain to a node when Slurm
+    isn't doing the launching.
+ -- gres/gpu and gres/mic - Do not treat the existence of an empty gres.conf
+    file as a fatal error.
+ -- Fixed for if hours are specified as 0 the time days-0:min specification
+    is not parsed correctly.
+ -- switch/nrt - Fix for memory leak.
+ -- Subtract the PMII_COMMANDLEN_SIZE in contribs/pmi2/pmi2_api.c to prevent
+    certain implementation of snprintf() to segfault.
 
 * Changes in Slurm 2.6.2
 ========================
@@ -341,6 +457,12 @@ documents those changes that are of interest to users and admins.
     --exclusive and --cpus-per-task options
  -- switch/nrt - Don't allocate network resources unless job step has 2+ nodes.
  -- select/cons_res - Avoid extraneous "oversubscribe" error messages.
+ -- Reorder get config logic to avoid deadlock.
+ -- Enforce QOS MaxCPUsMin limit when job submission contains no user-specified
+    time limit.
+ -- EpilogSlurmctld pthread is passed required arguments rather than a pointer
+    to the job record, which under some conditions could be purged and result
+    in an invalid memory reference.
 
 * Changes in Slurm 2.5.7
 ========================

@@ -534,6 +534,7 @@ AC_CONFIG_FILES([Makefile
 		 src/plugins/job_submit/logging/Makefile
 		 src/plugins/job_submit/lua/Makefile
 		 src/plugins/job_submit/partition/Makefile
+		 src/plugins/job_submit/pbs/Makefile
 		 src/plugins/job_submit/require_timelimit/Makefile
 		 src/plugins/launch/Makefile
 		 src/plugins/launch/aprun/Makefile
@@ -578,6 +579,7 @@ AC_CONFIG_FILES([Makefile
 		 src/plugins/select/serial/Makefile
 		 src/plugins/slurmctld/Makefile
 		 src/plugins/slurmctld/dynalloc/Makefile
+		 src/plugins/slurmd/Makefile
 		 src/plugins/switch/Makefile
 		 src/plugins/switch/cray/Makefile
 		 src/plugins/switch/generic/Makefile
