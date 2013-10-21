@@ -935,13 +935,17 @@ rm -rf $RPM_BUILD_ROOT
 %files torque
 %defattr(-,root,root)
 %{_bindir}/pbsnodes
+%{_bindir}/qalter
 %{_bindir}/qdel
 %{_bindir}/qhold
+%{_bindir}/qrerun
 %{_bindir}/qrls
 %{_bindir}/qstat
 %{_bindir}/qsub
 %{_bindir}/mpiexec
 %{_bindir}/generate_pbs_nodefile
+%{_libdir}/slurm/job_submit_pbs.so
+%{_libdir}/slurm/spank_pbs.so
 #############################################################################
 
 %files sjobexit

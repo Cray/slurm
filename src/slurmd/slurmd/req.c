@@ -550,6 +550,7 @@ _send_slurmstepd_init(int fd, slurmd_step_type_t type, void *req,
 	safe_write(fd, &len, sizeof(int));
 	safe_write(fd, get_buf_data(buffer), len);
 	free_buf(buffer);
+	buffer = NULL;
 
 	/* send self address over to slurmstepd */
 	if (self) {
@@ -559,6 +560,8 @@ _send_slurmstepd_init(int fd, slurmd_step_type_t type, void *req,
 		safe_write(fd, &len, sizeof(int));
 		safe_write(fd, get_buf_data(buffer), len);
 		free_buf(buffer);
+		buffer = NULL;
+
 	} else {
 		len = 0;
 		safe_write(fd, &len, sizeof(int));
@@ -597,6 +600,7 @@ _send_slurmstepd_init(int fd, slurmd_step_type_t type, void *req,
 	safe_write(fd, &len, sizeof(int));
 	safe_write(fd, get_buf_data(buffer), len);
 	free_buf(buffer);
+	buffer = NULL;
 
 	/* send cached group ids array for the relevant uid */
 	debug3("_send_slurmstepd_init: call to getpwuid_r");
@@ -952,7 +956,9 @@ _check_job_credential(launch_tasks_request_msg_t *req, uid_t uid,
 		else {
 			i = conf->cpus / (i_last_bit - i_first_bit);
 			if (i > 1) {
-				info("scaling CPU count by factor of %d", i);
+				info("Scaling CPU count by factor of "
+				     "%d (%u/(%u-%u)",
+				     i, conf->cpus, i_last_bit, i_first_bit);
 				step_cpus *= i;
 				job_cpus *= i;
 			}
@@ -2804,13 +2810,19 @@ _rpc_file_bcast(slurm_msg_t *msg)
 		error("sbcast: fork failure");
 		return errno;
 	} else if (child > 0) {
-		if (container_g_add_pid(job_id, child, req_uid) !=
-		    SLURM_SUCCESS)
-			error("container_g_add_pid(%u): %m", job_id);
 		waitpid(child, &rc, 0);
 		xfree(groups);
 		return WEXITSTATUS(rc);
 	}
+
+	/* container_g_add_pid needs to be called in the
+	   forked process part of the fork to avoid a race
+	   condition where if this process makes a file or
+	   detacts itself from a child before we add the pid
+	   to the container in the parent of the fork.
+	*/
+	if (container_g_add_pid(job_id, getpid(), req_uid) != SLURM_SUCCESS)
+		error("container_g_add_pid(%u): %m", job_id);
 
 	/* The child actually performs the I/O and exits with
 	 * a return code, do not return! */
@@ -2825,6 +2837,7 @@ _rpc_file_bcast(slurm_msg_t *msg)
 	 * atfork_install_handlers() as defined in src/common/log.c.
 	 * Change the code below with caution.
 	\*********************************************************************/
+
         if (setgroups(ngroups, groups) < 0) {
 	        error("sbcast: uid: %u setgroups: %s", req_uid,
 		      strerror(errno));
@@ -3256,10 +3269,6 @@ _epilog_complete(uint32_t jobid, int rc)
 	req.job_id      = jobid;
 	req.return_code = rc;
 	req.node_name   = conf->node_name;
-	if (switch_g_alloc_node_info(&req.switch_nodeinfo))
-		error("switch_g_alloc_node_info: %m");
-	if (switch_g_build_node_info(req.switch_nodeinfo))
-		error("switch_g_build_node_info: %m");
 
 	msg.msg_type    = MESSAGE_EPILOG_COMPLETE;
 	msg.data        = &req;
@@ -3273,7 +3282,6 @@ _epilog_complete(uint32_t jobid, int rc)
 		debug ("Job %u: sent epilog complete msg: rc = %d", jobid, rc);
 	}
 
-	switch_g_free_node_info(&req.switch_nodeinfo);
 	return ret;
 }
 
@@ -4326,6 +4334,16 @@ _run_spank_job_script (const char *mode, char **env, uint32_t job_id, uid_t uid)
 			(char *) mode,
 			NULL };
 
+		/* container_g_add_pid needs to be called in the
+		   forked process part of the fork to avoid a race
+		   condition where if this process makes a file or
+		   detacts itself from a child before we add the pid
+		   to the container in the parent of the fork.
+		*/
+		if (container_g_add_pid(job_id, getpid(), getuid())
+		    != SLURM_SUCCESS)
+			error("container_g_add_pid(%u): %m", job_id);
+
 		if (dup2 (pfds[0], STDIN_FILENO) < 0)
 			fatal ("dup2: %m");
 #ifdef SETPGRP_TWO_ARGS
@@ -4338,8 +4356,6 @@ _run_spank_job_script (const char *mode, char **env, uint32_t job_id, uid_t uid)
 		exit (127);
 	}
 
-	if (container_g_add_pid(job_id, cpid, getuid()) != SLURM_SUCCESS)
-		error("container_g_add_pid(%u): %m", job_id);
 	close (pfds[0]);
 
 	if (_send_slurmd_conf_lite (pfds[1], conf) < 0)
