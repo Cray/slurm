@@ -74,7 +74,6 @@ typedef struct header {
 	time_t 	timestamp;
 	uint32_t uid;
 	uint32_t gid;
-	uint16_t rec_type;
 } filetxt_header_t;
 
 typedef struct {
@@ -1220,6 +1219,8 @@ extern int filetxt_jobacct_process_archive(slurmdb_archive_cond_t *arch_cond)
 		exp_rec = xmalloc(sizeof(expired_rec_t));
 		exp_rec->line = xstrdup(line);
 
+		for (i = 0; i < EXPIRE_READ_LENGTH; i++)
+			f[i] = fptr;	/* Initialization for bad data read */
 		for (i = 0; i < EXPIRE_READ_LENGTH; i++) {
 			f[i] = fptr;
 			fptr = strstr(fptr, " ");

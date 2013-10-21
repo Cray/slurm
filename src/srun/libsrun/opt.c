@@ -478,7 +478,7 @@ static void _opt_default()
 
 	for (i=0; i<HIGHEST_DIMENSIONS; i++) {
 		opt.conn_type[i]    = (uint16_t) NO_VAL;
-		opt.geometry[i]	    = (uint16_t) NO_VAL;
+		opt.geometry[i]	    = 0;
 	}
 	opt.reboot          = false;
 	opt.no_rotate	    = false;
@@ -2264,7 +2264,6 @@ static char *print_constraints()
 
 static void _opt_list(void)
 {
-	int i;
 	char *str;
 
 	info("defined options for program `%s'", opt.progname);
@@ -2340,10 +2339,10 @@ static void _opt_list(void)
 	str = print_constraints();
 	info("constraints    : %s", str);
 	xfree(str);
-	for (i = 0; i < HIGHEST_DIMENSIONS; i++) {
-		if (opt.conn_type[i] == (uint16_t) NO_VAL)
-			break;
-		info("conn_type[%d]    : %u", i, opt.conn_type[i]);
+	if (opt.conn_type[0] != (uint16_t) NO_VAL) {
+		str = conn_type_string_full(opt.conn_type);
+		info("conn_type      : %s", str);
+		xfree(str);
 	}
 	str = print_geometry(opt.geometry);
 	info("geometry       : %s", str);
@@ -2490,7 +2489,8 @@ static void _help(void)
 "  -l, --label                 prepend task number to lines of stdout/err\n"
 "  -L, --licenses=names        required license, comma separated\n"
 "      --launch-cmd            print external launcher command line if not SLURM\n"
-"      --launcher-opts=        options for the external launcher command if not SLURM\n"
+"      --launcher-opts=        options for the external launcher command if not\n"
+"                              SLURM\n"
 "  -m, --distribution=type     distribution method for processes to nodes\n"
 "                              (type = block|cyclic|arbitrary)\n"
 "      --mail-type=type        notify on state change: BEGIN, END, FAIL or ALL\n"
@@ -2539,7 +2539,8 @@ static void _help(void)
 "      --contiguous            demand a contiguous range of nodes\n"
 "  -C, --constraint=list       specify a list of constraints\n"
 "      --mem=MB                minimum amount of real memory\n"
-"      --mincpus=n             minimum number of logical processors (threads) per node\n"
+"      --mincpus=n             minimum number of logical processors (threads)\n"
+"                              per node\n"
 "      --reservation=name      allocate resources from named reservation\n"
 "      --tmp=MB                minimum amount of temporary disk\n"
 "  -w, --nodelist=hosts...     request a specific list of hosts\n"

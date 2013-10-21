@@ -645,6 +645,25 @@ static void _pack_ping_slurmd_resp(ping_slurmd_resp_msg_t *msg,
 static int _unpack_ping_slurmd_resp(ping_slurmd_resp_msg_t **msg_ptr,
 				    Buf buffer, uint16_t protocol_version);
 
+static void _pack_license_info_request_msg(license_info_request_msg_t *msg,
+                                           Buf buffer,
+                                           uint16_t protocol_version);
+static int _unpack_license_info_request_msg(license_info_request_msg_t **msg,
+                                            Buf buffer,
+                                            uint16_t protocol_version);
+static inline void _pack_license_info_msg(slurm_msg_t *msg, Buf buffer);
+static int _unpack_license_info_msg(license_info_msg_t **msg,
+                                    Buf buffer,
+                                    uint16_t protocol_version);
+static void
+_pack_job_requeue_msg(requeue_msg_t *msg,
+                      Buf buf,
+                      uint16_t protocol_version);
+static int
+_unpack_job_requeue_msg(requeue_msg_t **msg,
+                        Buf buf,
+                        uint16_t protocol_version);
+
 /* pack_header
  * packs a slurm protocol header that precedes every slurm message
  * IN header - the header structure to pack
@@ -1123,10 +1142,15 @@ pack_msg(slurm_msg_t const *msg, Buf buffer)
 		break;
 
 	case REQUEST_JOB_READY:
-	case REQUEST_JOB_REQUEUE:
 	case REQUEST_JOB_INFO_SINGLE:
 		_pack_job_ready_msg((job_id_msg_t *)msg->data, buffer,
 				    msg->protocol_version);
+		break;
+
+	case REQUEST_JOB_REQUEUE:
+		_pack_job_requeue_msg((requeue_msg_t *)msg->data,
+		                      buffer,
+		                      msg->protocol_version);
 		break;
 
 	case REQUEST_JOB_USER_INFO:
@@ -1261,7 +1285,15 @@ pack_msg(slurm_msg_t const *msg, Buf buffer)
 		_pack_ping_slurmd_resp((ping_slurmd_resp_msg_t *)msg->data,
 				       buffer, msg->protocol_version);
 		break;
-
+	case REQUEST_LICENSE_INFO:
+		 _pack_license_info_request_msg((license_info_request_msg_t *)
+		                                msg->data,
+		                                buffer,
+		                                msg->protocol_version);
+			break;
+	case RESPONSE_LICENSE_INFO:
+		_pack_license_info_msg((slurm_msg_t *) msg, buffer);
+		break;
 	default:
 		debug("No pack method for msg type %u", msg->msg_type);
 		return EINVAL;
@@ -1713,11 +1745,16 @@ unpack_msg(slurm_msg_t * msg, Buf buffer)
 		break;
 
 	case REQUEST_JOB_READY:
-	case REQUEST_JOB_REQUEUE:
 	case REQUEST_JOB_INFO_SINGLE:
 		rc = _unpack_job_ready_msg((job_id_msg_t **)
-					   & msg->data, buffer,
-					   msg->protocol_version);
+		                           & msg->data, buffer,
+		                           msg->protocol_version);
+		break;
+
+	case REQUEST_JOB_REQUEUE:
+		rc = _unpack_job_requeue_msg((requeue_msg_t **)&msg->data,
+		                             buffer,
+		                             msg->protocol_version);
 		break;
 
 	case REQUEST_JOB_USER_INFO:
@@ -1869,7 +1906,17 @@ unpack_msg(slurm_msg_t * msg, Buf buffer)
 					      &msg->data, buffer,
 					      msg->protocol_version);
 		break;
-
+	case RESPONSE_LICENSE_INFO:
+		rc = _unpack_license_info_msg((license_info_msg_t **)&(msg->data),
+		                              buffer,
+		                              msg->protocol_version);
+		break;
+	case REQUEST_LICENSE_INFO:
+		rc = _unpack_license_info_request_msg((license_info_request_msg_t **)
+		                                      &(msg->data),
+		                                      buffer,
+		                                      msg->protocol_version);
+		break;
 	default:
 		debug("No unpack method for msg type %u", msg->msg_type);
 		return EINVAL;
@@ -3652,10 +3699,21 @@ _pack_epilog_comp_msg(epilog_complete_msg_t * msg, Buf buffer,
 {
 	xassert(msg != NULL);
 
-	pack32((uint32_t)msg->job_id, buffer);
-	pack32((uint32_t)msg->return_code, buffer);
-	packstr(msg->node_name, buffer);
-	switch_g_pack_node_info(msg->switch_nodeinfo, buffer, protocol_version);
+	if (protocol_version >= SLURM_13_12_PROTOCOL_VERSION) {
+		pack32((uint32_t)msg->job_id, buffer);
+		pack32((uint32_t)msg->return_code, buffer);
+		packstr(msg->node_name, buffer);
+	} else {
+		switch_node_info_t *switch_nodeinfo = NULL;
+
+		pack32((uint32_t)msg->job_id, buffer);
+		pack32((uint32_t)msg->return_code, buffer);
+		packstr(msg->node_name, buffer);
+		switch_g_alloc_node_info(&switch_nodeinfo);
+		switch_g_pack_node_info(switch_nodeinfo, buffer,
+					protocol_version);
+		switch_g_free_node_info(&switch_nodeinfo);
+	}
 }
 
 static int
@@ -3670,13 +3728,25 @@ _unpack_epilog_comp_msg(epilog_complete_msg_t ** msg, Buf buffer,
 	tmp_ptr = xmalloc(sizeof(epilog_complete_msg_t));
 	*msg = tmp_ptr;
 
-	safe_unpack32(&(tmp_ptr->job_id), buffer);
-	safe_unpack32(&(tmp_ptr->return_code), buffer);
-	safe_unpackstr_xmalloc(& (tmp_ptr->node_name), &uint32_tmp, buffer);
-	if (switch_g_alloc_node_info(&tmp_ptr->switch_nodeinfo)
-	    ||  switch_g_unpack_node_info(tmp_ptr->switch_nodeinfo, buffer,
-					  protocol_version))
-		goto unpack_error;
+	if (protocol_version >= SLURM_13_12_PROTOCOL_VERSION) {
+		safe_unpack32(&(tmp_ptr->job_id), buffer);
+		safe_unpack32(&(tmp_ptr->return_code), buffer);
+		safe_unpackstr_xmalloc(&(tmp_ptr->node_name),
+				       &uint32_tmp, buffer);
+	} else {
+		switch_node_info_t *switch_nodeinfo = NULL;
+		safe_unpack32(&(tmp_ptr->job_id), buffer);
+		safe_unpack32(&(tmp_ptr->return_code), buffer);
+		safe_unpackstr_xmalloc(&(tmp_ptr->node_name),
+				       &uint32_tmp, buffer);
+		if (switch_g_alloc_node_info(&switch_nodeinfo)
+		    || switch_g_unpack_node_info(switch_nodeinfo, buffer,
+						 protocol_version)) {
+			switch_g_free_node_info(&switch_nodeinfo);
+			goto unpack_error;
+		}
+		switch_g_free_node_info(&switch_nodeinfo);
+	}
 
 	return SLURM_SUCCESS;
 
@@ -4621,6 +4691,23 @@ _pack_slurm_ctl_conf_msg(slurm_ctl_conf_info_msg_t * build_ptr, Buf buffer,
 		packstr(build_ptr->accounting_storage_type, buffer);
 		packstr(build_ptr->accounting_storage_user, buffer);
 		pack16(build_ptr->acctng_store_job_comment, buffer);
+
+		if (build_ptr->acct_gather_conf)
+			count = list_count(build_ptr->acct_gather_conf);
+
+		pack32(count, buffer);
+		if (count && count != NO_VAL) {
+			ListIterator itr = list_iterator_create(
+				(List)build_ptr->acct_gather_conf);
+			config_key_pair_t *key_pair = NULL;
+			while ((key_pair = list_next(itr))) {
+				pack_config_key_pair(key_pair,
+						     protocol_version, buffer);
+			}
+			list_iterator_destroy(itr);
+		}
+		count = NO_VAL;
+
 		packstr(build_ptr->acct_gather_energy_type, buffer);
 		packstr(build_ptr->acct_gather_filesystem_type, buffer);
 		packstr(build_ptr->acct_gather_infiniband_type, buffer);
@@ -4650,6 +4737,23 @@ _pack_slurm_ctl_conf_msg(slurm_ctl_conf_info_msg_t * build_ptr, Buf buffer,
 		packstr(build_ptr->epilog, buffer);
 		pack32(build_ptr->epilog_msg_time, buffer);
 		packstr(build_ptr->epilog_slurmctld, buffer);
+
+		if (build_ptr->ext_sensors_conf)
+			count = list_count(build_ptr->ext_sensors_conf);
+
+		pack32(count, buffer);
+		if (count && count != NO_VAL) {
+			ListIterator itr = list_iterator_create(
+				(List)build_ptr->ext_sensors_conf);
+			config_key_pair_t *key_pair = NULL;
+			while ((key_pair = list_next(itr))) {
+				pack_config_key_pair(key_pair,
+						     protocol_version, buffer);
+			}
+			list_iterator_destroy(itr);
+		}
+		count = NO_VAL;
+
 		packstr(build_ptr->ext_sensors_type, buffer);
 		pack16(build_ptr->ext_sensors_freq, buffer);
 
@@ -4792,6 +4896,7 @@ _pack_slurm_ctl_conf_msg(slurm_ctl_conf_info_msg_t * build_ptr, Buf buffer,
 		pack16(build_ptr->slurmd_debug, buffer);
 		packstr(build_ptr->slurmd_logfile, buffer);
 		packstr(build_ptr->slurmd_pidfile, buffer);
+		packstr(build_ptr->slurmd_plugstack, buffer);
 		if (!(cluster_flags & CLUSTER_FLAG_MULTSD))
 			pack32(build_ptr->slurmd_port, buffer);
 
@@ -5288,6 +5393,23 @@ _unpack_slurm_ctl_conf_msg(slurm_ctl_conf_info_msg_t **build_buffer_ptr,
 		safe_unpackstr_xmalloc(&build_ptr->accounting_storage_user,
 				       &uint32_tmp, buffer);
 		safe_unpack16(&build_ptr->acctng_store_job_comment, buffer);
+
+		safe_unpack32(&count, buffer);
+		if (count != NO_VAL) {
+			List tmp_list = list_create(destroy_config_key_pair);
+			config_key_pair_t *object = NULL;
+			int i;
+			for (i=0; i<count; i++) {
+				if (unpack_config_key_pair(
+					    (void *)&object, protocol_version,
+					    buffer)
+				    == SLURM_ERROR)
+					goto unpack_error;
+				list_append(tmp_list, object);
+			}
+			build_ptr->acct_gather_conf = (void *)tmp_list;
+		}
+
 		safe_unpackstr_xmalloc(&build_ptr->acct_gather_energy_type,
 				       &uint32_tmp, buffer);
 		safe_unpackstr_xmalloc(&build_ptr->acct_gather_filesystem_type,
@@ -5331,6 +5453,23 @@ _unpack_slurm_ctl_conf_msg(slurm_ctl_conf_info_msg_t **build_buffer_ptr,
 		safe_unpack32(&build_ptr->epilog_msg_time, buffer);
 		safe_unpackstr_xmalloc(&build_ptr->epilog_slurmctld,
 				       &uint32_tmp, buffer);
+
+		safe_unpack32(&count, buffer);
+		if (count != NO_VAL) {
+			List tmp_list = list_create(destroy_config_key_pair);
+			config_key_pair_t *object = NULL;
+			int i;
+			for (i=0; i<count; i++) {
+				if (unpack_config_key_pair(
+					    (void *)&object, protocol_version,
+					    buffer)
+				    == SLURM_ERROR)
+					goto unpack_error;
+				list_append(tmp_list, object);
+			}
+			build_ptr->ext_sensors_conf = (void *)tmp_list;
+		}
+
 		safe_unpackstr_xmalloc(&build_ptr->ext_sensors_type,
 				       &uint32_tmp, buffer);
 		safe_unpack16(&build_ptr->ext_sensors_freq, buffer);
@@ -5522,6 +5661,8 @@ _unpack_slurm_ctl_conf_msg(slurm_ctl_conf_info_msg_t **build_buffer_ptr,
 				       buffer);
 		safe_unpackstr_xmalloc(&build_ptr->slurmd_pidfile, &uint32_tmp,
 				       buffer);
+		safe_unpackstr_xmalloc(&build_ptr->slurmd_plugstack,
+				       &uint32_tmp, buffer);
 		if (!(cluster_flags & CLUSTER_FLAG_MULTSD))
 			safe_unpack32(&build_ptr->slurmd_port, buffer);
 
@@ -9479,6 +9620,51 @@ unpack_error:
 }
 
 static void
+_pack_job_requeue_msg(requeue_msg_t *msg, Buf buf, uint16_t protocol_version)
+{
+	xassert(msg != NULL);
+
+	if (protocol_version >= SLURM_13_12_PROTOCOL_VERSION) {
+		pack32(msg->job_id, buf);
+		pack32(msg->state, buf);
+	} else {
+		/* For backward compatibility we emulate _pack_job_ready_msg()
+		 */
+		uint16_t cc;
+		cc = 0;
+		pack32(msg->job_id, buf);
+		pack16(cc, buf);
+	}
+}
+
+static int
+_unpack_job_requeue_msg(requeue_msg_t **msg, Buf buf, uint16_t protocol_version)
+{
+	*msg = xmalloc(sizeof(requeue_msg_t));
+
+	if (protocol_version >= SLURM_13_12_PROTOCOL_VERSION) {
+		safe_unpack32(&(*msg)->job_id, buf);
+		safe_unpack32(&(*msg)->state, buf);
+	} else {
+		/* Translate job_id_msg_t into requeue_msg_t
+		 */
+		uint16_t cc;
+		safe_unpack32(&(*msg)->job_id, buf) ;
+		safe_unpack16(&cc, buf);
+		/* Arghh.. versions < 1312 pack random bytes
+		 * in the unused show_flag member.
+		 */
+		(*msg)->state = 0;
+	}
+
+	return SLURM_SUCCESS;
+unpack_error:
+	slurm_free_requeue_msg(*msg);
+	*msg = NULL;
+	return SLURM_ERROR;
+}
+
+static void
 _pack_job_user_msg(job_user_id_msg_t * msg, Buf buffer,
 		   uint16_t protocol_version)
 {
@@ -10421,12 +10607,29 @@ static void _pack_accounting_update_msg(accounting_update_msg_t *msg,
 	ListIterator itr = NULL;
 	slurmdb_update_object_t *rec = NULL;
 
-	/* We need to work off the SLURMDBD_VERSION here to be able to
-	   pack correctly.  Below we need to work off the
-	   SLURM_VERSION instead since we don't always know which
-	   SLURMDBD_VERSION is being sent yet.
+	/* We need to work off the version sent in the message since
+	   we might not know what the protocol_version is at this
+	   moment (we might not of been updated before other parts of
+	   SLURM).
+
+	   IN 14.12 we can remove rpc_version from the mix and just
+	   use protocol_version since we standarized them in 13.12.
 	*/
-	if (msg->rpc_version >= 8) {
+	if (protocol_version >= SLURM_13_12_PROTOCOL_VERSION) {
+		if (msg->update_list)
+			count = list_count(msg->update_list);
+
+		pack32(count, buffer);
+
+		if (count) {
+			itr = list_iterator_create(msg->update_list);
+			while ((rec = list_next(itr))) {
+				slurmdb_pack_update_object(
+					rec, protocol_version, buffer);
+			}
+			list_iterator_destroy(itr);
+		}
+	} else {
 		pack16(msg->rpc_version, buffer);
 		if (msg->update_list)
 			count = list_count(msg->update_list);
@@ -10441,32 +10644,6 @@ static void _pack_accounting_update_msg(accounting_update_msg_t *msg,
 			}
 			list_iterator_destroy(itr);
 		}
-	} else {
-		/* Since there are some new objects that can't be sent to
-		   older versions we need to take them out of the
-		   update since we will get errors if we send them.
-		*/
-		if (msg->update_list) {
-			itr = list_iterator_create(msg->update_list);
-			while ((rec = list_next(itr))) {
-				if (rec->type > SLURMDB_MODIFY_WCKEY)
-					list_remove(itr);
-			}
-			count = list_count(msg->update_list);
-		}
-
-		pack32(count, buffer);
-
-		if (count) {
-			list_iterator_reset(itr);
-			itr = list_iterator_create(msg->update_list);
-			while ((rec = list_next(itr))) {
-				slurmdb_pack_update_object(
-					rec, msg->rpc_version, buffer);
-			}
-		}
-		if (itr)
-			list_iterator_destroy(itr);
 	}
 }
 
@@ -10482,14 +10659,31 @@ static int _unpack_accounting_update_msg(accounting_update_msg_t **msg,
 
 	*msg = msg_ptr;
 
-	if (protocol_version >= SLURM_2_5_PROTOCOL_VERSION) {
-		safe_unpack16(&msg_ptr->rpc_version, buffer);
+	if (protocol_version >= SLURM_13_12_PROTOCOL_VERSION) {
 		safe_unpack32(&count, buffer);
 		msg_ptr->update_list = list_create(
 			slurmdb_destroy_update_object);
 		for (i=0; i<count; i++) {
 			if ((slurmdb_unpack_update_object(
-				    &rec, msg_ptr->rpc_version, buffer))
+				    &rec, protocol_version, buffer))
+			   == SLURM_ERROR)
+				goto unpack_error;
+			list_append(msg_ptr->update_list, rec);
+		}
+	} else if (protocol_version >= SLURM_2_5_PROTOCOL_VERSION) {
+		/* We need to work off the version sent in the message since
+		   we might not know what the protocol_version is at this
+		   moment (we might not of been updated before other parts of
+		   SLURM).
+		*/
+		uint16_t rpc_version;
+		safe_unpack16(&rpc_version, buffer);
+		safe_unpack32(&count, buffer);
+		msg_ptr->update_list = list_create(
+			slurmdb_destroy_update_object);
+		for (i=0; i<count; i++) {
+			if ((slurmdb_unpack_update_object(
+				    &rec, rpc_version, buffer))
 			   == SLURM_ERROR)
 				goto unpack_error;
 			list_append(msg_ptr->update_list, rec);
@@ -10703,6 +10897,100 @@ unpack_error:
 	slurm_free_stats_response_msg(msg);
 	return SLURM_ERROR;
 }
+
+/* _pack_license_info_request_msg()
+ */
+static void
+_pack_license_info_request_msg(license_info_request_msg_t *msg,
+                               Buf buffer,
+                               uint16_t protocol_version)
+{
+	pack_time(msg->last_update, buffer);
+	pack16((uint16_t)msg->show_flags, buffer);
+}
+
+/* _unpack_license_info_request_msg()
+ */
+static int
+_unpack_license_info_request_msg(license_info_request_msg_t **msg,
+                                 Buf buffer,
+                                 uint16_t protocol_version)
+{
+	*msg = xmalloc(sizeof(license_info_msg_t));
+
+	safe_unpack_time(&(*msg)->last_update, buffer);
+	safe_unpack16(&(*msg)->show_flags, buffer);
+
+	return SLURM_SUCCESS;
+
+unpack_error:
+	slurm_free_license_info_request_msg(*msg);
+	*msg = NULL;
+	return SLURM_ERROR;
+}
+
+/* _pack_license_info_msg()
+ */
+static inline void
+_pack_license_info_msg(slurm_msg_t *msg, Buf buffer)
+{
+	_pack_buffer_msg(msg, buffer);
+}
+
+/* _unpack_license_info_msg()
+ *
+ * Decode the array of license as it comes from the
+ * controller and build the API licenses structures
+ * as defined in slurm.h
+ *
+ */
+static int
+_unpack_license_info_msg(license_info_msg_t **msg,
+                         Buf buffer,
+                         uint16_t protocol_version)
+{
+	int i;
+	uint32_t zz;
+
+	xassert(msg != NULL);
+	*msg = xmalloc(sizeof(license_info_msg_t));
+
+	/* load buffer's header (data structure version and time)
+	 */
+	if (protocol_version >= SLURM_13_12_PROTOCOL_VERSION) {
+
+		safe_unpack32(&((*msg)->num_features), buffer);
+		safe_unpack_time(&((*msg)->last_update), buffer);
+
+		(*msg)->lic_array = xmalloc(sizeof(slurm_license_info_t)
+		                            * (*msg)->num_features);
+
+		/* Decode individual license data.
+		 */
+		for (i = 0; i < (*msg)->num_features; i++) {
+
+			safe_unpackstr_xmalloc(&((*msg)->lic_array[i]).feature, &zz, buffer);
+			safe_unpack32(&((*msg)->lic_array[i]).total, buffer);
+			safe_unpack32(&((*msg)->lic_array[i]).in_use, buffer);
+			(*msg)->lic_array[i].available
+				= (*msg)->lic_array[i].total - (*msg)->lic_array[i].in_use;
+			xassert((*msg)->lic_array[i].available >= 0);
+		}
+
+	} else {
+		error("_unpack_partition_info_msg: protocol_version "
+		      "%hu not supported", protocol_version);
+		goto unpack_error;
+	}
+
+	return SLURM_SUCCESS;
+
+unpack_error:
+	slurm_free_license_info_msg(*msg);
+	*msg = NULL;
+	return SLURM_ERROR;
+}
+
 
 /* template
    void pack_ ( * msg , Buf buffer )

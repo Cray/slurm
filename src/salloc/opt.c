@@ -348,7 +348,7 @@ static void _opt_default()
 
 	for (i=0; i<HIGHEST_DIMENSIONS; i++) {
 		opt.conn_type[i]    = (uint16_t) NO_VAL;
-		opt.geometry[i]	    = (uint16_t) NO_VAL;
+		opt.geometry[i]	    = 0;
 	}
 	opt.reboot          = false;
 	opt.no_rotate	    = false;
@@ -1220,8 +1220,11 @@ static void _opt_args(int argc, char **argv)
 			command_argc++;
 	}
 	command_argv = (char **) xmalloc((command_argc + 1) * sizeof(char *));
-	for (i = 0; i < command_argc; i++)
+	for (i = 0; i < command_argc; i++) {
+		if ((i == 0) && (rest == NULL))
+			break;	/* Fix for CLANG false positive */
 		command_argv[i] = xstrdup(rest[i]);
+	}
 	command_argv[i] = NULL;	/* End of argv's (for possible execv) */
 
 	if (!_opt_verify())
@@ -1721,7 +1724,6 @@ static char *print_constraints()
 
 static void _opt_list(void)
 {
-	int i;
 	char *str;
 
 	info("defined options for program `%s'", opt.progname);
@@ -1776,10 +1778,10 @@ static void _opt_list(void)
 	str = print_constraints();
 	info("constraints    : %s", str);
 	xfree(str);
-	for (i = 0; i < HIGHEST_DIMENSIONS; i++) {
-		if (opt.conn_type[i] == (uint16_t) NO_VAL)
-			break;
-		info("conn_type[%d]   : %u", i, opt.conn_type[i]);
+	if (opt.conn_type[0] != (uint16_t) NO_VAL) {
+		str = conn_type_string_full(opt.conn_type);
+		info("conn_type      : %s", str);
+		xfree(str);
 	}
 	str = print_geometry(opt.geometry);
 	info("geometry       : %s", str);
@@ -1921,7 +1923,7 @@ static void _help(void)
 "  -C, --constraint=list       specify a list of constraints\n"
 "  -F, --nodefile=filename     request a specific list of hosts\n"
 "      --mem=MB                minimum amount of real memory\n"
-"      --mincpus=n             minimum number of logical processors (threads) per node\n"
+"      --mincpus=n             minimum number of logical processors (threads)\n""                              per node\n"
 "      --reservation=name      allocate resources from named reservation\n"
 "      --tmp=MB                minimum amount of temporary disk\n"
 "  -w, --nodelist=hosts...     request a specific list of hosts\n"

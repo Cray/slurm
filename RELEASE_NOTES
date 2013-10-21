@@ -77,6 +77,15 @@ COMMAND CHANGES (see man pages for details)
  -- Add squeue output format options for job command and working directory
     (%o and %Z respectively).
  -- Add stdin/out/err to sview job output.
+ -- Added a new option to the scontrol command to view licenses that are configured
+    in use and avalable. 'scontrol show licenses'.
+ -- Permit jobs in finished state to be requeued.
+ -- Added a new option to scontrol to put a requeued job on hold. A requeued
+    job can be put in a new special state called SPECIAL_EXIT indicating
+    the job has exited with a special value.
+    "scontrol requeuehold state=SpecialExit 123".
+ -- Pending job steps will have step_id of INFINITE rather than NO_VAL and
+    will be reported as "TBD" by scontrol and squeue commands.
 
 OTHER CHANGES
 =============
@@ -90,6 +99,15 @@ Changed members of the following structs
 ========================================
  -- partition_info, added: allow_accounts, allow_qos, deny_accounts,
     deny_groups and deny_qos.
+ -- Struct job_info / slurm_job_info_t: Changed exc_node_inx, node_inx, and
+    req_node_inx from type int to type int32_t
+ -- job_step_info_t: Changed node_inx from type int to type int32_t
+ -- Struct partition_info / partition_info_t: Changed node_inx from type int
+    to type int32_t
+ -- block_job_info_t: Changed cnode_inx from type int to type int32_t
+ -- block_info_t: Changed ionode_inx and mp_inx from type int to type int32_t
+ -- Struct reserve_info / reserve_info_t: Changed node_inx from type int to
+    type int32_t
 
 
 Added the following struct definitions
@@ -104,8 +122,12 @@ Changed the following enums and #defines
 Added the following API's
 =========================
 
+-- API for retrieving license information.
 
-Changed the following API's
+extern int slurm_load_licenses PARAMS((license_info_msg_t **));
+extern void slurm_free_license_info_msg PARAMS((license_info_msg_t *));
+
+Change the following API's
 ===========================
  -- Add task pointer to the task_post_term() function in task plugins. The
     terminating task's PID is available in task->pid.

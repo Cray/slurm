@@ -84,6 +84,12 @@
 #define _DEBUG 0
 #define MAX_RETRIES 10
 
+typedef struct epilog_arg {
+	char *epilog_slurmctld;
+	uint32_t job_id;
+	char **my_env;
+} epilog_arg_t;
+
 static char **	_build_env(struct job_record *job_ptr);
 static void	_depend_list_del(void *dep_ptr);
 static void	_feature_list_delete(void *x);
@@ -140,6 +146,7 @@ static void _job_queue_append(List job_queue, struct job_record *job_ptr,
 	job_queue_rec_t *job_queue_rec;
 
 	job_queue_rec = xmalloc(sizeof(job_queue_rec_t));
+	job_queue_rec->job_id   = job_ptr->job_id;
 	job_queue_rec->job_ptr  = job_ptr;
 	job_queue_rec->part_ptr = part_ptr;
 	job_queue_rec->priority = prio;
@@ -468,6 +475,7 @@ extern bool replace_batch_job(slurm_msg_t * msg, void *fini_job)
 
 		if ((job_ptr == fini_job_ptr) ||
 		    (job_ptr->priority == 0)  ||
+		    (job_ptr->details == NULL) ||
 		    !avail_front_end(job_ptr))
 			continue;
 
@@ -551,7 +559,7 @@ next_part:		part_ptr = (struct part_record *)
 			job_ptr->state_reason = WAIT_NO_REASON;
 
 		if ((job_ptr->state_reason == WAIT_NODE_NOT_AVAIL) &&
-		    job_ptr->details && job_ptr->details->req_node_bitmap &&
+		    job_ptr->details->req_node_bitmap &&
 		    !bit_super_set(job_ptr->details->req_node_bitmap,
 				   avail_node_bitmap)) {
 			continue;
@@ -584,7 +592,7 @@ next_part:		part_ptr = (struct part_record *)
 			continue;
 		}
 
-		if (job_ptr->details && job_ptr->details->exc_node_bitmap)
+		if (job_ptr->details->exc_node_bitmap)
 			have_node_bitmaps = true;
 		else
 			have_node_bitmaps = false;
@@ -1520,7 +1528,7 @@ extern int update_job_dependency(struct job_record *job_ptr, char *new_depend)
 	int rc = SLURM_SUCCESS;
 	uint16_t depend_type = 0;
 	uint32_t job_id = 0;
-	char *tok = new_depend, *sep_ptr, *sep_ptr2;
+	char *tok = new_depend, *sep_ptr, *sep_ptr2 = NULL;
 	List new_depend_list = NULL;
 	struct depend_spec *dep_ptr;
 	struct job_record *dep_job_ptr;
@@ -1653,7 +1661,7 @@ extern int update_job_dependency(struct job_record *job_ptr, char *new_depend)
 				break;
 			sep_ptr = sep_ptr2 + 1;	/* skip over ":" */
 		}
-		if (sep_ptr2[0] == ',')
+		if (sep_ptr2 && (sep_ptr2[0] == ','))
 			tok = sep_ptr2 + 1;
 		else
 			break;
@@ -1765,8 +1773,8 @@ static void _delayed_job_start_time(struct job_record *job_ptr)
 		return;
 	part_node_cnt = job_ptr->part_ptr->total_nodes;
 	part_cpu_cnt  = job_ptr->part_ptr->total_cpus;
-	if (part_node_cnt > part_cpu_cnt)
-		part_cpus_per_node = part_node_cnt / part_cpu_cnt;
+	if (part_cpu_cnt > part_node_cnt)
+		part_cpus_per_node = part_cpu_cnt / part_node_cnt;
 	else
 		part_cpus_per_node = 1;
 
@@ -1787,7 +1795,7 @@ static void _delayed_job_start_time(struct job_record *job_ptr)
 			job_size_cpus = job_q_ptr->details->min_nodes;
 		job_size_cpus = MAX(job_size_cpus,
 				    (job_size_nodes * part_cpus_per_node));
-		if (job_ptr->time_limit == NO_VAL)
+		if (job_q_ptr->time_limit == NO_VAL)
 			job_time = job_q_ptr->part_ptr->max_time;
 		else
 			job_time = job_q_ptr->time_limit;
@@ -1964,6 +1972,7 @@ extern int epilog_slurmctld(struct job_record *job_ptr)
 	int rc;
 	pthread_t thread_id_epilog;
 	pthread_attr_t thread_attr_epilog;
+	epilog_arg_t *epilog_arg;
 
 	if ((slurmctld_conf.epilog_slurmctld == NULL) ||
 	    (slurmctld_conf.epilog_slurmctld[0] == '\0'))
@@ -1974,13 +1983,18 @@ extern int epilog_slurmctld(struct job_record *job_ptr)
 		return errno;
 	}
 
+	epilog_arg = xmalloc(sizeof(epilog_arg_t));
+	epilog_arg->job_id = job_ptr->job_id;
+	epilog_arg->epilog_slurmctld = xstrdup(slurmctld_conf.epilog_slurmctld);
+	epilog_arg->my_env = _build_env(job_ptr);
+
 	slurm_attr_init(&thread_attr_epilog);
 	pthread_attr_setdetachstate(&thread_attr_epilog,
 				    PTHREAD_CREATE_DETACHED);
 	while (1) {
 		rc = pthread_create(&thread_id_epilog,
 				    &thread_attr_epilog,
-				    _run_epilog, (void *) job_ptr);
+				    _run_epilog, (void *) epilog_arg);
 		if (rc == 0) {
 			slurm_attr_destroy(&thread_attr_epilog);
 			return SLURM_SUCCESS;
@@ -1996,6 +2010,9 @@ extern int epilog_slurmctld(struct job_record *job_ptr)
 static char **_build_env(struct job_record *job_ptr)
 {
 	char **my_env, *name;
+	char buf[32];
+	int exit_code;
+	int signal;
 
 	my_env = xmalloc(sizeof(char *));
 	my_env[0] = NULL;
@@ -2038,6 +2055,17 @@ static char **_build_env(struct job_record *job_ptr)
 	}
 	setenvf(&my_env, "SLURM_JOB_DERIVED_EC", "%u",
 		job_ptr->derived_ec);
+
+	exit_code = signal = 0;
+	if (WIFEXITED(job_ptr->exit_code)) {
+		exit_code = WEXITSTATUS(job_ptr->exit_code);
+	}
+	if (WIFSIGNALED(job_ptr->exit_code)) {
+		signal = WTERMSIG(job_ptr->exit_code);
+	}
+	sprintf(buf, "%d:%d", exit_code, signal);
+	setenvf(&my_env, "SLURM_JOB_EXIT_CODE2", "%s", buf);
+
 	setenvf(&my_env, "SLURM_JOB_EXIT_CODE", "%u", job_ptr->exit_code);
 	setenvf(&my_env, "SLURM_JOB_GID", "%u", job_ptr->group_id);
 	name = gid_to_string((uid_t) job_ptr->group_id);
@@ -2058,21 +2086,13 @@ static char **_build_env(struct job_record *job_ptr)
 
 static void *_run_epilog(void *arg)
 {
-	struct job_record *job_ptr = (struct job_record *) arg;
-	uint32_t job_id;
+	epilog_arg_t *epilog_arg = (epilog_arg_t *) arg;
 	pid_t cpid;
 	int i, status, wait_rc;
-	char *argv[2], **my_env;
-	/* Locks: Read config, job */
-	slurmctld_lock_t config_read_lock = {
-		READ_LOCK, READ_LOCK, NO_LOCK, NO_LOCK };
+	char *argv[2];
 
-	lock_slurmctld(config_read_lock);
-	argv[0] = xstrdup(slurmctld_conf.epilog_slurmctld);
+	argv[0] = epilog_arg->epilog_slurmctld;
 	argv[1] = NULL;
-	my_env = _build_env(job_ptr);
-	job_id = job_ptr->job_id;
-	unlock_slurmctld(config_read_lock);
 
 	if ((cpid = fork()) < 0) {
 		error("epilog_slurmctld fork error: %m");
@@ -2084,7 +2104,7 @@ static void *_run_epilog(void *arg)
 #else
 		setpgrp();
 #endif
-		execve(argv[0], argv, my_env);
+		execve(argv[0], argv, epilog_arg->my_env);
 		exit(127);
 	}
 
@@ -2102,14 +2122,18 @@ static void *_run_epilog(void *arg)
 	}
 	if (status != 0) {
 		error("epilog_slurmctld job %u epilog exit status %u:%u",
-		      job_id, WEXITSTATUS(status), WTERMSIG(status));
-	} else
-		debug2("epilog_slurmctld job %u epilog completed", job_id);
+		      epilog_arg->job_id, WEXITSTATUS(status),
+		      WTERMSIG(status));
+	} else {
+		debug2("epilog_slurmctld job %u epilog completed",
+		       epilog_arg->job_id);
+	}
 
- fini:	xfree(argv[0]);
-	for (i=0; my_env[i]; i++)
-		xfree(my_env[i]);
-	xfree(my_env);
+ fini:	xfree(epilog_arg->epilog_slurmctld);
+	for (i=0; epilog_arg->my_env[i]; i++)
+		xfree(epilog_arg->my_env[i]);
+	xfree(epilog_arg->my_env);
+	xfree(epilog_arg);
 	return NULL;
 }
 

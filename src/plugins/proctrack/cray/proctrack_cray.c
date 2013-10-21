@@ -88,12 +88,12 @@ static void *_create_container_thread(void *args)
 	/* Signal the container_create we are done */
 	slurm_mutex_lock(&notify_mutex);
 	pthread_cond_signal(&notify);
-	slurm_mutex_unlock(&notify_mutex);
+	/* Don't unlock the notify_mutex here, wait, it is not needed
+	 * and can cause deadlock if done. */
 
 	/* Wait around for something else to be added and then exit
 	   when that takes place.
 	*/
-	slurm_mutex_lock(&notify_mutex);
 	pthread_cond_wait(&notify, &notify_mutex);
 	slurm_mutex_unlock(&notify_mutex);
 
@@ -166,9 +166,14 @@ extern int proctrack_p_plugin_create(stepd_step_rec_t *job)
 			slurm_mutex_unlock(&notify_mutex);
 			debug("Last thread done 0x%08lx", threadid);
 		}
+		/* We have to lock the notify_mutex here since the
+		   thread could possibly signal things before we
+		   started waiting for it.
+
+		*/
+		slurm_mutex_lock(&notify_mutex);
 		pthread_attr_init(&attr);
 		pthread_create(&threadid, &attr, _create_container_thread, job);
-		slurm_mutex_lock(&notify_mutex);
 		pthread_cond_wait(&notify, &notify_mutex);
 		slurm_mutex_unlock(&notify_mutex);
 		slurm_mutex_unlock(&thread_mutex);

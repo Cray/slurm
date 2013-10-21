@@ -49,6 +49,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/types.h>
+#include <sys/param.h>
 #include <string.h>
 #include <strings.h>
 #include <unistd.h>
@@ -204,7 +205,7 @@ static void _build_pending_step(struct job_record *job_ptr,
 	step_ptr->state     = JOB_PENDING;
 	step_ptr->cpu_count = step_specs->num_tasks;
 	step_ptr->time_last_active = time(NULL);
-	step_ptr->step_id = NO_VAL;
+	step_ptr->step_id   = INFINITE;
 }
 
 static void _internal_step_complete(
@@ -1618,7 +1619,9 @@ static void _pick_step_cores(struct step_record *step_ptr,
 				return;
 		}
 	}
-	if (use_all_cores)
+	/* The test for cores==0 is just to avoid CLANG errors.
+	 * It should never happen */
+	if (use_all_cores || (cores == 0))
 		return;
 
 	/* We need to over-subscribe one or more cores.
@@ -1996,7 +1999,7 @@ step_create(job_step_create_request_msg_t *step_specs,
 		return ESLURM_TASKDIST_ARBITRARY_UNSUPPORTED;
 	}
 
-	if (_test_strlen(step_specs->ckpt_dir, "ckpt_dir", 1024)	||
+	if (_test_strlen(step_specs->ckpt_dir, "ckpt_dir", MAXPATHLEN)	||
 	    _test_strlen(step_specs->gres, "gres", 1024)		||
 	    _test_strlen(step_specs->host, "host", 1024)		||
 	    _test_strlen(step_specs->name, "name", 1024)		||
@@ -2484,10 +2487,7 @@ static void _pack_ctld_job_step_info(struct step_record *step_ptr, Buf buffer,
 		task_cnt = step_ptr->step_layout->task_cnt;
 		node_list = step_ptr->step_layout->node_list;
 	} else {
-		if (step_ptr->job_ptr->details)
-			task_cnt = step_ptr->job_ptr->details->min_cpus;
-		else
-			task_cnt = step_ptr->job_ptr->cpu_cnt;
+		task_cnt = step_ptr->cpu_count;
 		node_list = step_ptr->job_ptr->nodes;
 	}
 	cpu_cnt = step_ptr->cpu_count;

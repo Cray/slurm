@@ -53,6 +53,7 @@
 #include "src/common/slurm_auth.h"
 #include "src/common/slurm_protocol_api.h"
 #include "src/common/slurm_resource_info.h"
+#include "src/common/slurm_selecttype_info.h"
 #include "src/common/xmalloc.h"
 #include "src/common/xstring.h"
 #include "src/common/list.h"
@@ -102,7 +103,7 @@ void slurm_print_ctl_conf ( FILE* out,
 {
 	char time_str[32], tmp_str[128];
 	void *ret_list = NULL;
-	char *select_title = "";
+	char *select_title = "Select Plugin Configuration";
 	uint32_t cluster_flags = slurmdb_setup_cluster_flags();
 
 	if (cluster_flags & CLUSTER_FLAG_BGL)
@@ -111,6 +112,8 @@ void slurm_print_ctl_conf ( FILE* out,
 		select_title = "\nBluegene/P configuration\n";
 	else if (cluster_flags & CLUSTER_FLAG_BGQ)
 		select_title = "\nBluegene/Q configuration\n";
+	else if (cluster_flags & CLUSTER_FLAG_CRAY)
+		select_title = "\nCray configuration\n";
 
 	if ( slurm_ctl_conf_ptr == NULL )
 		return ;
@@ -127,8 +130,15 @@ void slurm_print_ctl_conf ( FILE* out,
 		list_destroy((List)ret_list);
 	}
 
+	slurm_print_key_pairs(out, slurm_ctl_conf_ptr->acct_gather_conf,
+			      "\nAccount Gather\n");
+
+	slurm_print_key_pairs(out, slurm_ctl_conf_ptr->ext_sensors_conf,
+			      "\nExternal Sensors\n");
+
 	slurm_print_key_pairs(out, slurm_ctl_conf_ptr->select_conf_key_pairs,
 			      select_title);
+
 }
 
 extern void *slurm_ctl_conf_2_key_pairs (slurm_ctl_conf_t* slurm_ctl_conf_ptr)
@@ -936,8 +946,8 @@ extern void *slurm_ctl_conf_2_key_pairs (slurm_ctl_conf_t* slurm_ctl_conf_ptr)
 		key_pair = xmalloc(sizeof(config_key_pair_t));
 		key_pair->name = xstrdup("SelectTypeParameters");
 		key_pair->value = xstrdup(
-			sched_param_type_string(slurm_ctl_conf_ptr->
-						select_type_param));
+			select_type_param_string(slurm_ctl_conf_ptr->
+						 select_type_param));
 		list_append(ret_list, key_pair);
 	}
 
@@ -1002,6 +1012,11 @@ extern void *slurm_ctl_conf_2_key_pairs (slurm_ctl_conf_t* slurm_ctl_conf_ptr)
 	key_pair = xmalloc(sizeof(config_key_pair_t));
 	key_pair->name = xstrdup("SlurmdPidFile");
 	key_pair->value = xstrdup(slurm_ctl_conf_ptr->slurmd_pidfile);
+	list_append(ret_list, key_pair);
+
+	key_pair = xmalloc(sizeof(config_key_pair_t));
+	key_pair->name = xstrdup("SlurmdPlugstack");
+	key_pair->value = xstrdup(slurm_ctl_conf_ptr->slurmd_plugstack);
 	list_append(ret_list, key_pair);
 
 #ifndef MULTIPLE_SLURMD
@@ -1384,7 +1399,7 @@ extern void slurm_print_key_pairs(FILE* out, void *key_pairs, char *title)
 	ListIterator iter = NULL;
 	config_key_pair_t *key_pair;
 
-	if (!config_list)
+	if (!config_list || !list_count(config_list))
 		return;
 
 	fprintf(out, "%s", title);

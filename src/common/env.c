@@ -343,12 +343,6 @@ int setup_env(env_t *env, bool preserve_env)
 	if (env == NULL)
 		return SLURM_ERROR;
 
-	if (env->task_pid
-	  && setenvf(&env->env, "SLURM_TASK_PID", "%d", (int)env->task_pid)) {
-		error("Unable to set SLURM_TASK_PID environment variable");
-		 rc = SLURM_FAILURE;
-	}
-
 	if (!preserve_env && env->ntasks) {
 		if (setenvf(&env->env, "SLURM_NTASKS", "%d", env->ntasks)) {
 			error("Unable to set SLURM_NTASKS "
@@ -623,7 +617,7 @@ int setup_env(env_t *env, bool preserve_env)
 		char *str;
 
 		if (env->cpu_freq & CPU_FREQ_RANGE_FLAG) {
-			switch (env->cpu_freq) 
+			switch (env->cpu_freq)
 			{
 			case CPU_FREQ_LOW :
 				str="low";
@@ -677,29 +671,44 @@ int setup_env(env_t *env, bool preserve_env)
 			error("Unable to set SLURM_JOB_ID environment");
 			rc = SLURM_FAILURE;
 		}
-		/* and for backwards compatability... */
+		/* and for backwards compatibility... */
 		if (setenvf(&env->env, "SLURM_JOBID", "%d", env->jobid)) {
 			error("Unable to set SLURM_JOBID environment");
 			rc = SLURM_FAILURE;
 		}
 	}
 
-	if (env->nodeid >= 0
-	    && setenvf(&env->env, "SLURM_NODEID", "%d", env->nodeid)) {
-		error("Unable to set SLURM_NODEID environment");
-		rc = SLURM_FAILURE;
-	}
+	if (!(cluster_flags & CLUSTER_FLAG_BG)
+	    && !(cluster_flags & CLUSTER_FLAG_CRAYXT)) {
+		/* These aren't relavant to a system not using Slurm
+		   as the launcher.  Since there isn't a flag for that
+		   we check for the flags we do have.
+		*/
+		if (env->task_pid
+		    && setenvf(&env->env, "SLURM_TASK_PID", "%d",
+			       (int)env->task_pid)) {
+			error("Unable to set SLURM_TASK_PID environment "
+			      "variable");
+			rc = SLURM_FAILURE;
+		}
+		if (env->nodeid >= 0
+		    && setenvf(&env->env, "SLURM_NODEID", "%d", env->nodeid)) {
+			error("Unable to set SLURM_NODEID environment");
+			rc = SLURM_FAILURE;
+		}
 
-	if (env->procid >= 0
-	    && setenvf(&env->env, "SLURM_PROCID", "%d", env->procid)) {
-		error("Unable to set SLURM_PROCID environment");
-		rc = SLURM_FAILURE;
-	}
+		if (env->procid >= 0
+		    && setenvf(&env->env, "SLURM_PROCID", "%d", env->procid)) {
+			error("Unable to set SLURM_PROCID environment");
+			rc = SLURM_FAILURE;
+		}
 
-	if (env->localid >= 0
-	    && setenvf(&env->env, "SLURM_LOCALID", "%d", env->localid)) {
-		error("Unable to set SLURM_LOCALID environment");
-		rc = SLURM_FAILURE;
+		if (env->localid >= 0
+		    && setenvf(&env->env, "SLURM_LOCALID", "%d",
+			       env->localid)) {
+			error("Unable to set SLURM_LOCALID environment");
+			rc = SLURM_FAILURE;
+		}
 	}
 
 	if (env->stepid >= 0) {
@@ -717,6 +726,12 @@ int setup_env(env_t *env, bool preserve_env)
 	if (!preserve_env && env->nhosts
 	    && setenvf(&env->env, "SLURM_NNODES", "%d", env->nhosts)) {
 		error("Unable to set SLURM_NNODES environment var");
+		rc = SLURM_FAILURE;
+	}
+
+	if (env->nhosts
+	    && setenvf(&env->env, "SLURM_JOB_NUM_NODES", "%d", env->nhosts)) {
+		error("Unable to set SLURM_JOB_NUM_NODES environment var");
 		rc = SLURM_FAILURE;
 	}
 
@@ -1805,7 +1820,7 @@ char **env_array_user_default(const char *username, int timeout, int mode)
 	struct stat buf;
 
 	if (geteuid() != (uid_t)0) {
-		fatal("WARNING: you must be root to use --get-user-env");
+		error("SlurmdUser must be root to use --get-user-env");
 		return NULL;
 	}
 

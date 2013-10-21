@@ -617,7 +617,7 @@ static void _get_priority_factors(time_t start_time, struct job_record *job_ptr)
 	}
 
 	if (weight_js) {
-		uint32_t cpu_cnt = 0;
+		uint32_t cpu_cnt = 0, min_nodes = 1;
 		/* On the initial run of this we don't have total_cpus
 		   so go off the requesting.  After the first shot
 		   total_cpus should be filled in.
@@ -629,12 +629,14 @@ static void _get_priority_factors(time_t start_time, struct job_record *job_ptr)
 			cpu_cnt = job_ptr->details->max_cpus;
 		else if (job_ptr->details && job_ptr->details->min_cpus)
 			cpu_cnt = job_ptr->details->min_cpus;
+		if (job_ptr->details)
+			min_nodes = job_ptr->details->min_nodes;
 
 		if (flags & PRIORITY_FLAGS_SIZE_RELATIVE) {
 			uint32_t time_limit = 1;
 			/* Job size in CPUs (based upon average CPUs/Node */
 			job_ptr->prio_factors->priority_js =
-				(double)job_ptr->details->min_nodes *
+				(double)min_nodes *
 				(double)cluster_cpus /
 				(double)node_record_count;
 			if (cpu_cnt > job_ptr->prio_factors->priority_js) {
@@ -656,8 +658,7 @@ static void _get_priority_factors(time_t start_time, struct job_record *job_ptr)
 			}
 		} else if (favor_small) {
 			job_ptr->prio_factors->priority_js =
-				(double)(node_record_count
-					 - job_ptr->details->min_nodes)
+				(double)(node_record_count - min_nodes)
 				/ (double)node_record_count;
 			if (cpu_cnt) {
 				job_ptr->prio_factors->priority_js +=
@@ -667,8 +668,7 @@ static void _get_priority_factors(time_t start_time, struct job_record *job_ptr)
 			}
 		} else {	/* favor large */
 			job_ptr->prio_factors->priority_js =
-				(double)job_ptr->details->min_nodes
-				/ (double)node_record_count;
+				(double)min_nodes / (double)node_record_count;
 			if (cpu_cnt) {
 				job_ptr->prio_factors->priority_js +=
 					(double)cpu_cnt / (double)cluster_cpus;
@@ -691,7 +691,10 @@ static void _get_priority_factors(time_t start_time, struct job_record *job_ptr)
 			qos_ptr->usage->norm_priority;
 	}
 
-	job_ptr->prio_factors->nice = job_ptr->details->nice;
+	if (job_ptr->details)
+		job_ptr->prio_factors->nice = job_ptr->details->nice;
+	else
+		job_ptr->prio_factors->nice = NICE_OFFSET;
 }
 
 static uint32_t _get_priority_internal(time_t start_time,
@@ -1649,13 +1652,107 @@ extern void priority_p_set_assoc_usage(slurmdb_association_rec_t *assoc)
 			     assoc->usage->parent_assoc_ptr->acct,
 			     assoc->usage->usage_efctv);
 		}
+	} else if (assoc->shares_raw == SLURMDB_FS_USE_PARENT) {
+		slurmdb_association_rec_t *parent_assoc =
+			assoc->usage->parent_assoc_ptr;
+
+		assoc->usage->usage_efctv =
+			parent_assoc->usage->usage_efctv;
+		if (priority_debug) {
+			info("Effective usage for %s %s off %s %Lf",
+			     child, child_str,
+			     parent_assoc->acct,
+			     parent_assoc->usage->usage_efctv);
+		}
+	} else if (flags & PRIORITY_FLAGS_DEPTH_OBLIVIOUS) {
+		long double ratio_p, ratio_l, k, f, ratio_s;
+		slurmdb_association_rec_t *parent_assoc = NULL;
+		ListIterator sib_itr = NULL;
+		slurmdb_association_rec_t *sibling = NULL;
+
+		/* We want priority_fs = pow(2.0, -R); where
+		   R = ratio_p * ratio_l^k
+		*/
+
+		/* ratio_p is R for our parent */
+
+		/* ratio_l is our usage ratio r divided by ratio_s,
+		 * the usage ratio of our siblings (including
+		 * ourselves). In the standard case where everything
+		 * is consumed at the leaf accounts ratio_s=ratio_p
+		 */
+
+		/* k is a factor which tends towards 0 when ratio_p
+		   diverges from 1 and ratio_l would bring back R
+		   towards 1
+		*/
+
+		/* Effective usage is now computed to be R*shares_norm
+		   so that the general formula of
+		   priority_fs = pow(2.0, -(usage_efctv / shares_norm))
+		   gives what we want: priority_fs = pow(2.0, -R);
+		*/
+
+		f = 5.0; /* FIXME: This could be a tunable parameter
+			    (higher f means more impact when parent consumption
+			    is inadequate) */
+		parent_assoc =  assoc->usage->parent_assoc_ptr;
+
+		if (assoc->usage->shares_norm &&
+		    parent_assoc->usage->shares_norm &&
+		    parent_assoc->usage->usage_efctv &&
+		    assoc->usage->usage_norm) {
+			ratio_p = (parent_assoc->usage->usage_efctv /
+			      parent_assoc->usage->shares_norm);
+
+			ratio_s = 0;
+			sib_itr = list_iterator_create(
+				parent_assoc->usage->children_list);
+			while ((sibling = list_next(sib_itr))) {
+				if(sibling->shares_raw != SLURMDB_FS_USE_PARENT)
+					ratio_s += sibling->usage->usage_norm;
+			}
+			list_iterator_destroy(sib_itr);
+			ratio_s /= parent_assoc->usage->shares_norm;
+
+			ratio_l = (assoc->usage->usage_norm /
+			      assoc->usage->shares_norm) / ratio_s;
+
+			if (!ratio_p || !ratio_l
+			    || logl(ratio_p) * logl(ratio_l) >= 0) {
+				k = 1;
+			} else {
+				k = 1 / (1 + powl(f * logl(ratio_p), 2));
+			}
+
+			assoc->usage->usage_efctv =
+				ratio_p * powl(ratio_l, k) *
+				assoc->usage->shares_norm;
+
+			if (priority_debug) {
+				info("Effective usage for %s %s off %s "
+				     "(%Lf * %Lf ^ %Lf) * %f  = %Lf",
+				     child, child_str,
+				     assoc->usage->parent_assoc_ptr->acct,
+				     ratio_p, ratio_l, k,
+				     assoc->usage->shares_norm,
+				     assoc->usage->usage_efctv);
+			}
+		} else {
+			assoc->usage->usage_efctv = assoc->usage->usage_norm;
+			if (priority_debug) {
+				info("Effective usage for %s %s off %s %Lf",
+				     child, child_str,
+				     assoc->usage->parent_assoc_ptr->acct,
+				     assoc->usage->usage_efctv);
+			}
+		}
 	} else {
 		assoc->usage->usage_efctv = assoc->usage->usage_norm +
 			((assoc->usage->parent_assoc_ptr->usage->usage_efctv -
 			  assoc->usage->usage_norm) *
-			 (assoc->shares_raw == SLURMDB_FS_USE_PARENT ?
-			  0 : (assoc->shares_raw /
-			       (long double)assoc->usage->level_shares)));
+			 (assoc->shares_raw /
+			  (long double)assoc->usage->level_shares));
 		if (priority_debug) {
 			info("Effective usage for %s %s off %s "
 			     "%Lf + ((%Lf - %Lf) * %d / %d) = %Lf",
@@ -1664,8 +1761,7 @@ extern void priority_p_set_assoc_usage(slurmdb_association_rec_t *assoc)
 			     assoc->usage->usage_norm,
 			     assoc->usage->parent_assoc_ptr->usage->usage_efctv,
 			     assoc->usage->usage_norm,
-			     (assoc->shares_raw == SLURMDB_FS_USE_PARENT ?
-			      0 : assoc->shares_raw),
+			     assoc->shares_raw,
 			     assoc->usage->level_shares,
 			     assoc->usage->usage_efctv);
 		}

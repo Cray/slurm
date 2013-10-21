@@ -1721,12 +1721,12 @@ static int _init_conn(slurmdbd_conn_t *slurmdbd_conn,
 		goto end_it;
 	}
 	if ((init_msg->version < SLURMDBD_VERSION_MIN) ||
-	    (init_msg->version > SLURMDBD_VERSION)) {
+	    (init_msg->version > SLURM_PROTOCOL_VERSION)) {
 		comment = "Incompatible RPC version";
 		error("Incompatible RPC version received "
 		      "(%u not between %d and %d)",
 		      init_msg->version,
-		      SLURMDBD_VERSION_MIN, SLURMDBD_VERSION);
+		      SLURMDBD_VERSION_MIN, SLURM_PROTOCOL_VERSION);
 		rc = SLURM_PROTOCOL_VERSION_ERROR;
 		goto end_it;
 	}
@@ -2365,9 +2365,15 @@ is_same_user:
 
 	if ((user_rec->admin_level != SLURMDB_ADMIN_NOTSET)
 	    && (*uid != slurmdbd_conf->slurm_user_id && *uid != 0)
-	    && (admin_level < user_rec->admin_level)) {
-		comment = "You have to be the same or higher admin level to change another persons";
-		user_rec->admin_level = SLURMDB_ADMIN_NOTSET;
+	    && (admin_level < SLURMDB_ADMIN_SUPER_USER)) {
+		comment = "You must be a super user to modify a users admin level";
+		error("CONN:%u %s", slurmdbd_conn->newsockfd, comment);
+		*out_buffer = make_dbd_rc_msg(slurmdbd_conn->
+					      rpc_version,
+					      ESLURM_ACCESS_DENIED,
+					      comment,
+					      DBD_MODIFY_USERS);
+		return ESLURM_ACCESS_DENIED;
 	}
 
 	if (!(list_msg.my_list = acct_storage_g_modify_users(

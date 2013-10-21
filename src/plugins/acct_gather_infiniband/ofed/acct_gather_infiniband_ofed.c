@@ -244,9 +244,9 @@ static int _read_ofed_values(void)
 	ofed_sens.total_xmtdata += ofed_sens.xmtdata;
 	ofed_sens.rcvdata = (recv_val - last_update_rcvdata) * 4;
 	ofed_sens.total_rcvdata += ofed_sens.rcvdata;
-	ofed_sens.xmtpkts += send_pkts - last_update_xmtpkts;
+	ofed_sens.xmtpkts = send_pkts - last_update_xmtpkts;
 	ofed_sens.total_xmtpkts += ofed_sens.xmtpkts;
-	ofed_sens.rcvpkts += recv_pkts - last_update_rcvpkts;
+	ofed_sens.rcvpkts = recv_pkts - last_update_rcvpkts;
 	ofed_sens.total_rcvpkts += ofed_sens.rcvpkts;
 
 	last_update_xmtdata = send_val;
@@ -377,6 +377,20 @@ extern void acct_gather_infiniband_p_conf_options(s_p_options_t **full_options,
 		{NULL} };
 
 	transfer_s_p_options(full_options, options, full_options_cnt);
+
+	return;
+}
+
+extern void acct_gather_infiniband_p_conf_values(List *data)
+{
+	config_key_pair_t *key_pair;
+
+	xassert(*data);
+
+	key_pair = xmalloc(sizeof(config_key_pair_t));
+	key_pair->name = xstrdup("InfinibandOFEDPort");
+	key_pair->value = xstrdup_printf("%u", ofed_conf.port);
+	list_append(*data, key_pair);
 
 	return;
 }
