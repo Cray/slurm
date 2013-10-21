@@ -1,10 +1,8 @@
 /*****************************************************************************\
- *  job_submit.c - driver for job_submit plugin
+ *  slurmd_plugstack.c - driver for slurmd plugstack plugin
  *****************************************************************************
- *  Copyright (C) 2010 Lawrence Livermore National Security.
- *  Produced at Lawrence Livermore National Laboratory (cf, DISCLAIMER).
- *  Written by Morris Jette <jette1@llnl.gov>
- *  CODE-OCEC-09-009. All rights reserved.
+ *  Copyright (C) 2013 Intel Inc.
+ *  Written by Ralph H Castain <ralph.h.castain@intel.com>
  *
  *  This file is part of SLURM, a resource management program.
  *  For details, see <http://slurm.schedmd.com/>.
@@ -71,43 +69,38 @@
 #include "src/common/slurm_protocol_api.h"
 #include "src/common/xmalloc.h"
 #include "src/common/xstring.h"
-#include "src/slurmctld/slurmctld.h"
-#include "src/slurmctld/job_submit.h"
+#include "src/slurmd/slurmd/slurmd_plugstack.h"
 
-typedef struct slurm_submit_ops {
-	int		(*submit)	( struct job_descriptor *job_desc,
-					  uint32_t submit_uid,
-					  char **err_msg );
-	int		(*modify)	( struct job_descriptor *job_desc,
-					  struct job_record *job_ptr,
-					  uint32_t submit_uid );
-} slurm_submit_ops_t;
+slurm_nonstop_ops_t nonstop_ops = { NULL, NULL, NULL };
+
+typedef struct slurmd_plugstack_ops {
+	/* NO FUNCTIONS */
+} slurmd_plugstack_ops_t;
 
 /*
- * Must be synchronized with slurm_submit_ops_t above.
+ * Must be synchronized with slurmd_plugstack_t above.
  */
 static const char *syms[] = {
-	"job_submit",
-	"job_modify"
+	/* NO FUNCTIONS */
 };
 
 static int g_context_cnt = -1;
-static slurm_submit_ops_t *ops = NULL;
+static slurmd_plugstack_ops_t *ops = NULL;
 static plugin_context_t **g_context = NULL;
-static char *submit_plugin_list = NULL;
+static char *slurmd_plugstack_list = NULL;
 static pthread_mutex_t g_context_lock = PTHREAD_MUTEX_INITIALIZER;
 static bool init_run = false;
 
 /*
- * Initialize the job submit plugin.
+ * Initialize the slurmd plugstack plugin.
  *
  * Returns a SLURM errno.
  */
-extern int job_submit_plugin_init(void)
+extern int slurmd_plugstack_init(void)
 {
 	int rc = SLURM_SUCCESS;
 	char *last = NULL, *names;
-	char *plugin_type = "job_submit";
+	char *plugin_type = "slurmd_plugstack";
 	char *type;
 
 	if (init_run && (g_context_cnt >= 0))
@@ -117,20 +110,21 @@ extern int job_submit_plugin_init(void)
 	if (g_context_cnt >= 0)
 		goto fini;
 
-	submit_plugin_list = slurm_get_job_submit_plugins();
+	slurmd_plugstack_list = slurm_get_slurmd_plugstack();
 	g_context_cnt = 0;
-	if ((submit_plugin_list == NULL) || (submit_plugin_list[0] == '\0'))
+	if ((slurmd_plugstack_list == NULL) ||
+	    (slurmd_plugstack_list[0] == '\0'))
 		goto fini;
 
-	names = submit_plugin_list;
+	names = slurmd_plugstack_list;
 	while ((type = strtok_r(names, ",", &last))) {
-		xrealloc(ops,
-			 (sizeof(slurm_submit_ops_t) * (g_context_cnt + 1)));
+		xrealloc(ops, (sizeof(slurmd_plugstack_ops_t) *
+			      (g_context_cnt + 1)));
 		xrealloc(g_context,
 			 (sizeof(plugin_context_t *) * (g_context_cnt + 1)));
-		if (strncmp(type, "job_submit/", 11) == 0)
-			type += 11; /* backward compatibility */
-		type = xstrdup_printf("job_submit/%s", type);
+		if (strncmp(type, "slurmd/", 10) == 0)
+			type += 10; /* backward compatibility */
+		type = xstrdup_printf("slurmd/%s", type);
 		g_context[g_context_cnt] = plugin_context_create(
 			plugin_type, type, (void **)&ops[g_context_cnt],
 			syms, sizeof(syms));
@@ -152,17 +146,17 @@ fini:
 	slurm_mutex_unlock(&g_context_lock);
 
 	if (rc != SLURM_SUCCESS)
-		job_submit_plugin_fini();
+		slurmd_plugstack_fini();
 
 	return rc;
 }
 
 /*
- * Terminate the job submit plugin. Free memory.
+ * Terminate the slurmd plugstack plugin. Free memory.
  *
  * Returns a SLURM errno.
  */
-extern int job_submit_plugin_fini(void)
+extern int slurmd_plugstack_fini(void)
 {
 	int i, j, rc = SLURM_SUCCESS;
 
@@ -180,96 +174,9 @@ extern int job_submit_plugin_fini(void)
 	}
 	xfree(ops);
 	xfree(g_context);
-	xfree(submit_plugin_list);
+	xfree(slurmd_plugstack_list);
 	g_context_cnt = -1;
 
 fini:	slurm_mutex_unlock(&g_context_lock);
-	return rc;
-}
-
-/*
- **************************************************************************
- *                          P L U G I N   C A L L S                       *
- **************************************************************************
- */
-
-/*
- * Perform reconfig, re-read any configuration files
- */
-extern int job_submit_plugin_reconfig(void)
-{
-	int rc = SLURM_SUCCESS;
-	char *plugin_names = slurm_get_job_submit_plugins();
-	bool plugin_change;
-
-	if (!plugin_names && !submit_plugin_list)
-		return rc;
-
-	slurm_mutex_lock(&g_context_lock);
-	if (plugin_names && submit_plugin_list &&
-	    strcmp(plugin_names, submit_plugin_list))
-		plugin_change = true;
-	else
-		plugin_change = false;
-	slurm_mutex_unlock(&g_context_lock);
-
-	if (plugin_change) {
-		info("JobSubmitPlugins changed to %s", plugin_names);
-		rc = job_submit_plugin_fini();
-		if (rc == SLURM_SUCCESS)
-			rc = job_submit_plugin_init();
-	}
-	xfree(plugin_names);
-
-	return rc;
-}
-
-/*
- * Execute the job_submit() function in each job submit plugin.
- * If any plugin function returns anything other than SLURM_SUCCESS
- * then stop and forward it's return value.
- * IN job_desc - Job request specification
- * IN submit_uid - User issuing job submit request
- * OUT err_msg - Custom error message to the user, caller to xfree results
- */
-extern int job_submit_plugin_submit(struct job_descriptor *job_desc,
-				    uint32_t submit_uid, char **err_msg)
-{
-	DEF_TIMERS;
-	int i, rc;
-
-	START_TIMER;
-	rc = job_submit_plugin_init();
-	slurm_mutex_lock(&g_context_lock);
-	for (i=0; ((i < g_context_cnt) && (rc == SLURM_SUCCESS)); i++)
-		rc = (*(ops[i].submit))(job_desc, submit_uid, err_msg);
-	slurm_mutex_unlock(&g_context_lock);
-	END_TIMER;
-	debug("job_submit_plugin_submit: %s", TIME_STR);
-
-	return rc;
-}
-
-/*
- * Execute the job_modify() function in each job submit plugin.
- * If any plugin function returns anything other than SLURM_SUCCESS
- * then stop and forward it's return value.
- */
-extern int job_submit_plugin_modify(struct job_descriptor *job_desc,
-				    struct job_record *job_ptr,
-				    uint32_t submit_uid)
-{
-	DEF_TIMERS;
-	int i, rc;
-
-	START_TIMER;
-	rc = job_submit_plugin_init();
-	slurm_mutex_lock(&g_context_lock);
-	for (i=0; ((i < g_context_cnt) && (rc == SLURM_SUCCESS)); i++)
-		rc = (*(ops[i].modify))(job_desc, job_ptr, submit_uid);
-	slurm_mutex_unlock(&g_context_lock);
-	END_TIMER;
-	debug("job_submit_plugin_modify: %s", TIME_STR);
-
 	return rc;
 }

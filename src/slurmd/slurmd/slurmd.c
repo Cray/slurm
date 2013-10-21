@@ -6,6 +6,7 @@
  *  Copyright (C) 2008-2010 Lawrence Livermore National Security.
  *  Portions Copyright (C) 2008 Vijay Ramasubramanian.
  *  Portions Copyright (C) 2010-2013 SchedMD LLC.
+ *  Copyright (C) 2013      Intel, Inc.
  *  Produced at Lawrence Livermore National Laboratory (cf, DISCLAIMER).
  *  Written by Mark Grondona <mgrondona@llnl.gov>.
  *  CODE-OCEC-09-009. All rights reserved.
@@ -101,6 +102,7 @@
 #include "src/slurmd/slurmd/slurmd.h"
 #include "src/slurmd/slurmd/req.h"
 #include "src/slurmd/slurmd/get_mach_stat.h"
+#include "src/slurmd/slurmd/slurmd_plugstack.h"
 #include "src/slurmd/common/job_container_plugin.h"
 #include "src/slurmd/common/proctrack.h"
 
@@ -323,6 +325,12 @@ main (int argc, char *argv[])
 	_install_fork_handlers();
 	list_install_fork_handlers();
 	slurm_conf_install_fork_handlers();
+
+	/*
+	 * Initialize any plugins
+	 */
+	if (slurmd_plugstack_init())
+		fatal("failed to initialize slurmd_plugstack");
 
 	_spawn_registration_engine();
 	_msg_engine();
@@ -626,13 +634,13 @@ _fill_registration_msg(slurm_node_registration_status_msg_t *msg)
 
 	if (first_msg) {
 		first_msg = false;
-		info("Procs=%u Boards=%u Sockets=%u Cores=%u Threads=%u "
+		info("CPUs=%u Boards=%u Sockets=%u Cores=%u Threads=%u "
 		     "Memory=%u TmpDisk=%u Uptime=%u",
 		     msg->cpus, msg->boards, msg->sockets, msg->cores,
 		     msg->threads, msg->real_memory, msg->tmp_disk,
 		     msg->up_time);
 	} else {
-		debug3("Procs=%u Boards=%u Sockets=%u Cores=%u Threads=%u "
+		debug3("CPUs=%u Boards=%u Sockets=%u Cores=%u Threads=%u "
 		       "Memory=%u TmpDisk=%u Uptime=%u",
 		       msg->cpus, msg->boards, msg->sockets, msg->cores,
 		       msg->threads, msg->real_memory, msg->tmp_disk,
@@ -848,7 +856,7 @@ _read_config(void)
 		if (cf->fast_schedule) {
 			info("Node configuration differs from hardware: "
 			     "CPUs=%u:%u(hw) Boards=%u:%u(hw) "
-			     "Sockets=%u:%u(hw) CoresPerSocket=%u:%u(hw) "
+			     "SocketsPerBoard=%u:%u(hw) CoresPerSocket=%u:%u(hw) "
 			     "ThreadsPerCore=%u:%u(hw)",
 			     conf->cpus,    conf->actual_cpus,
 			     conf->boards,  conf->actual_boards,
@@ -863,7 +871,7 @@ _read_config(void)
 			      "the bitmaps the slurmctld must create before "
 			      "the slurmd registers.\n"
 			      "   CPUs=%u:%u(hw) Boards=%u:%u(hw) "
-			      "Sockets=%u:%u(hw) CoresPerSocket=%u:%u(hw) "
+			      "SocketsPerBoard=%u:%u(hw) CoresPerSocket=%u:%u(hw) "
 			      "ThreadsPerCore=%u:%u(hw)",
 			      conf->cpus,    conf->actual_cpus,
 			      conf->boards,  conf->actual_boards,
@@ -1183,7 +1191,7 @@ _print_config(void)
 	            &conf->actual_threads,
 	            &conf->block_map_size,
 	            &conf->block_map, &conf->block_map_inv);
-	printf("CPUs=%u Boards=%u Sockets=%u CoresPerSocket=%u "
+	printf("CPUs=%u Boards=%u SocketsPerBoard=%u CoresPerSocket=%u "
 	       "ThreadsPerCore=%u ",
 	       conf->actual_cpus, conf->actual_boards, conf->actual_sockets,
 	       conf->actual_cores, conf->actual_threads);
@@ -1581,13 +1589,13 @@ _slurmd_fini(void)
 	node_fini2();
 	gres_plugin_fini();
 	slurm_topo_fini();
-	acct_gather_energy_fini();
 	slurmd_req(NULL);	/* purge memory allocated by slurmd_req() */
 	fini_setproctitle();
 	slurm_select_fini();
 	spank_slurmd_exit();
 	cpu_freq_fini();
 	job_container_fini();
+	acct_gather_conf_destroy();
 
 	return SLURM_SUCCESS;
 }
