@@ -1,8 +1,8 @@
 /*****************************************************************************\
  *  switch_cray.c - Library for managing a switch on a Cray system.
  *****************************************************************************
- *  Copyright (C) 2013 SchedMD LLC
- *  Written by Danny Auble <da@schedmd.com>
+ *  Copyright (C) 2013 Cray
+ *  Written by Jason Sollom <jasons@cray.com>
  *  CODE-OCEC-09-009. All rights reserved.
  *
  *  This file is part of SLURM, a resource management program.
@@ -33,7 +33,7 @@
  *  You should have received a copy of the GNU General Public License along
  *  with SLURM; if not, write to the Free Software Foundation, Inc.,
  *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA.
- \*****************************************************************************/
+\*****************************************************************************/
 
 #if     HAVE_CONFIG_H
 #include "config.h"
@@ -66,8 +66,7 @@
 #include "alpscomm_sn.h"
 #include "src/common/gres.h"
 
-#define ALPS_DIR "/var/opt/cray/alps/spool/"
-#define LEGACY_SPOOL_DIR "/var/spool/"
+#define LEGACY_SPOOL_DIR "/var/spool/alps/"
 
 /*
  * These variables are required by the generic plugin interface.  If they
@@ -183,7 +182,7 @@ static void _print_jobinfo(slurm_cray_jobinfo_t *job) {
  * are called.  Put global initialization here.
  */
 int init(void) {
-	verbose("%s loaded, really, really loaded.", plugin_name);
+	verbose("%s loaded.", plugin_name);
 	return SLURM_SUCCESS;
 }
 
@@ -286,8 +285,7 @@ int switch_p_build_jobinfo(switch_jobinfo_t *switch_job,
 					__LINE__, __FUNCTION__, errMsg);
 			free(errMsg);
 		} else {
-			error(
-					"(%s: %d: %s) alpsc_lease_cookies failed: No error message "
+			error("(%s: %d: %s) alpsc_lease_cookies failed: No error message "
 					"present.",
 					THIS_FILE, __LINE__, __FUNCTION__);
 		}
@@ -301,6 +299,18 @@ int switch_p_build_jobinfo(switch_jobinfo_t *switch_job,
 	}
 
 	xfree(nodes);
+
+	/*
+	 * Cookie ID safety check: The cookie_ids should be positive numbers.
+	 */
+	for (i=0; i<num_cookies; i++) {
+		if (cookie_ids[i] < 0) {
+			error("(%s: %d: %s) alpsc_lease_cookies returned a cookie ID number"
+					" %d with a negative value: %d", THIS_FILE, __LINE__,
+					__FUNCTION__, i, cookie_ids[i]);
+			return SLURM_ERROR;
+		}
+	}
 
 	/*
 	 * xmalloc the space for the cookies and cookie_ids, so it can be freed
@@ -457,20 +467,6 @@ int switch_p_pack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer,
 	pack32(job->magic, buffer);
 	pack32(job->num_cookies, buffer);
 	packstr_array(job->cookies, job->num_cookies, buffer);
-
-	/*
-	 *  Range Checking on cookie_ids
-	 *  We're using a signed integer to store the cookies and a function that
-	 *  packs unsigned uint32_t's, so I'm that the cookie_ids
-	 *  are not negative so that they don't underflow the uint32_t.
-	 */
-	for (i = 0; i < job->num_cookies; i++) {
-		if (job->cookie_ids[i] < 0) {
-			error("(%s: %d: %s) cookie_ids is negative.", THIS_FILE, __LINE__,
-					__FUNCTION__);
-			return SLURM_ERROR;
-		}
-	}
 	pack32_array(job->cookie_ids, job->num_cookies, buffer);
 	pack32(job->port, buffer);
 	pack_slurm_step_layout(job->step_layout, buffer, SLURM_PROTOCOL_VERSION);
@@ -499,21 +495,21 @@ int switch_p_unpack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer,
 	xassert(buffer);
 	rc = unpack32(&job->magic, buffer);
 	if (rc != SLURM_SUCCESS) {
-		error("(%s: %d: %s) unpack32 failed. Return code: %d", THIS_FILE,
+		error("(%s: %d: %s) unpack32 of magic failed. Return code: %d", THIS_FILE,
 				__LINE__, __FUNCTION__, rc);
 		return SLURM_ERROR;
 	}
 	xassert(job->magic == CRAY_JOBINFO_MAGIC);
 	rc = unpack32(&(job->num_cookies), buffer);
 	if (rc != SLURM_SUCCESS) {
-		error("(%s: %d: %s) unpack32 failed. Return code: %d", THIS_FILE,
-				__LINE__, __FUNCTION__, rc);
+		error("(%s: %d: %s) unpack32 of num_cookies failed. Return code: %d",
+				THIS_FILE, __LINE__, __FUNCTION__, rc);
 		return SLURM_ERROR;
 	}
 	rc = unpackstr_array(&(job->cookies), &num_cookies, buffer);
 	if (rc != SLURM_SUCCESS) {
-		error("(%s: %d: %s) unpackstr_array failed. Return code: %d", THIS_FILE,
-				__LINE__, __FUNCTION__, rc);
+		error("(%s: %d: %s) unpackstr_array cookies failed. Return code: %d",
+				THIS_FILE, __LINE__, __FUNCTION__, rc);
 		return SLURM_ERROR;
 	}
 	if (num_cookies != job->num_cookies) {
@@ -524,8 +520,8 @@ int switch_p_unpack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer,
 	}
 	rc = unpack32_array(&(job->cookie_ids), &num_cookies, buffer);
 	if (rc != SLURM_SUCCESS) {
-		error("(%s: %d: %s) unpack32_array failed. Return code: %d", THIS_FILE,
-				__LINE__, __FUNCTION__, rc);
+		error("(%s: %d: %s) unpack32_array cookie IDs failed. Return code: %d",
+				THIS_FILE, __LINE__, __FUNCTION__, rc);
 		return SLURM_ERROR;
 	}
 	if (num_cookies != job->num_cookies) {
@@ -537,16 +533,16 @@ int switch_p_unpack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer,
 
 	rc = unpack32(&job->port, buffer);
 	if (rc != SLURM_SUCCESS) {
-		error("(%s: %d: %s) unpack32 failed. Return code: %d", THIS_FILE,
-				__LINE__, __FUNCTION__, rc);
+		error("(%s: %d: %s) unpack32 PMI port failed. Return code: %d",
+				THIS_FILE, __LINE__, __FUNCTION__, rc);
 		return SLURM_ERROR;
 	}
 
 	rc = unpack_slurm_step_layout(&(job->step_layout), buffer,
 			SLURM_PROTOCOL_VERSION);
 	if (rc != SLURM_SUCCESS) {
-		error("(%s: %d: %s) unpack32 failed. Return code: %d", THIS_FILE,
-				__LINE__, __FUNCTION__, rc);
+		error("(%s: %d: %s) unpack32 step_layout failed. Return code: %d",
+				THIS_FILE, __LINE__, __FUNCTION__, rc);
 		return SLURM_ERROR;
 	}
 
@@ -643,8 +639,8 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 		return SLURM_ERROR;
 	}
 	if (errMsg) {
-		info("(%s: %d: %s) alpsc_configure_nic: %s", THIS_FILE, __LINE__,
-				__FUNCTION__, errMsg);
+		info("(%s: %d: %s) alpsc_attach_cncu_container: %s", THIS_FILE,
+				__LINE__, __FUNCTION__, errMsg);
 		free(errMsg);
 	}
 
@@ -653,26 +649,26 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 	 * Make its owner be the user who launched the application and under which
 	 * the application will run.
 	 */
-	rc = asprintf(&apid_dir, "/var/spool/alps/%" PRIu64, sw_job->apid);
+	rc = asprintf(&apid_dir, LEGACY_SPOOL_DIR "%" PRIu64, sw_job->apid);
 	if (rc == -1) {
 		error("(%s: %d: %s) asprintf failed", THIS_FILE, __LINE__,
 				__FUNCTION__);
 		return SLURM_ERROR;
 	}
 
-	rc = mkdir(apid_dir, 700);
+	rc = mkdir(apid_dir, 0700);
 	if (rc) {
 		free(apid_dir);
-		error("(%s: %d: %s) mkdir failed to make directory %s: %s", THIS_FILE, __LINE__,
-				__FUNCTION__, apid_dir, strerror(errno));
+		error("(%s: %d: %s) mkdir failed to make directory %s: %m", THIS_FILE, __LINE__,
+				__FUNCTION__, apid_dir);
 		return SLURM_ERROR;
 	}
 
 	rc = chown(apid_dir, job->uid, job->gid);
 	if (rc) {
 		free(apid_dir);
-		error("(%s: %d: %s) chown failed: %s", THIS_FILE, __LINE__,
-				__FUNCTION__, strerror(errno));
+		error("(%s: %d: %s) chown failed: %m", THIS_FILE, __LINE__,
+				__FUNCTION__);
 		return SLURM_ERROR;
 	}
 
@@ -713,8 +709,8 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 		 */
 		f = fopen("/proc/meminfo", "r");
 		if (f == NULL ) {
-			error("(%s: %d: %s) Failed to open /proc/meminfo: %s", THIS_FILE,
-					__LINE__, __FUNCTION__, strerror(errno));
+			error("(%s: %d: %s) Failed to open /proc/meminfo: %m", THIS_FILE,
+					__LINE__, __FUNCTION__);
 			return SLURM_ERROR;
 		}
 
@@ -729,7 +725,7 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 			}
 		}
 		free(lin);
-		fclose(f);
+		 TEMP_FAILURE_RETRY(fclose(f));
 
 		if (total_mem == 0) {
 			error("(%s: %d: %s) Scanning /proc/meminfo results in MemTotal=0",
@@ -836,10 +832,8 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 						__LINE__, __FUNCTION__, errMsg);
 				free(errMsg);
 			} else {
-				error(
-						"(%s: %d: %s) alpsc_configure_nic failed: No error "
-						"message "
-								"present.", THIS_FILE, __LINE__, __FUNCTION__);
+				error("(%s: %d: %s) alpsc_configure_nic failed: No error "
+						"message present.", THIS_FILE, __LINE__, __FUNCTION__);
 			}
 			return SLURM_ERROR;
 		}
@@ -1140,9 +1134,9 @@ int switch_p_job_fini(switch_jobinfo_t *jobinfo) {
 	char *path_name = NULL;
 
 	/*
-	 * Remove the APID directory /var/spool/alps/<APID>
+	 * Remove the APID directory LEGACY_SPOOL_DIR/<APID>
 	 */
-	rc = asprintf(&path_name, "/var/spool/alps/%" PRIu64, job->apid);
+	rc = asprintf(&path_name, LEGACY_SPOOL_DIR "%" PRIu64, job->apid);
 	if (rc == -1) {
 		error("(%s: %d: %s) asprintf failed", THIS_FILE, __LINE__,
 				__FUNCTION__);
@@ -1155,9 +1149,9 @@ int switch_p_job_fini(switch_jobinfo_t *jobinfo) {
 
 	/*
 	 * Remove the ALPS placement file.
-	 * /var/spool/alps/places<APID>
+	 * LEGACY_SPOOL_DIR/places<APID>
 	 */
-	rc = asprintf(&path_name, "/var/spool/alps/places%" PRIu64, job->apid);
+	rc = asprintf(&path_name, LEGACY_SPOOL_DIR "places%" PRIu64, job->apid);
 	if (rc == -1) {
 		error("(%s: %d: %s) asprintf failed", THIS_FILE, __LINE__,
 				__FUNCTION__);
@@ -1166,8 +1160,8 @@ int switch_p_job_fini(switch_jobinfo_t *jobinfo) {
 
 	rc = remove(path_name);
 	if (rc) {
-		error("(%s: %d: %s) remove %s failed: %s", THIS_FILE, __LINE__,
-				__FUNCTION__, path_name, strerror(errno));
+		error("(%s: %d: %s) remove %s failed: %m", THIS_FILE, __LINE__,
+				__FUNCTION__, path_name);
 		return SLURM_ERROR;
 	}
 	free(path_name);
@@ -1688,7 +1682,7 @@ static int _get_cpu_total(void) {
 
 	if (f == NULL ) {
 		error("(%s: %d: %s) Failed to open file /sys/devices/system/cpu/online:"
-				" %s\n", THIS_FILE, __LINE__, __FUNCTION__, strerror(errno));
+				" %m\n", THIS_FILE, __LINE__, __FUNCTION__);
 		return -1;
 	}
 
@@ -1702,8 +1696,8 @@ static int _get_cpu_total(void) {
 				if (token1) {
 					number1 = strtol(token1, &endptr, 10);
 					if ((number1 == LONG_MIN)|| (number1 == LONG_MAX)){
-					error("(%s: %d: %s) Error: %s", THIS_FILE, __LINE__,
-							__FUNCTION__, strerror(errno));
+					error("(%s: %d: %s) Error: %m", THIS_FILE, __LINE__,
+							__FUNCTION__);
 					free(lin);
 					TEMP_FAILURE_RETRY(fclose(f));
 					return -1;
@@ -1719,8 +1713,8 @@ static int _get_cpu_total(void) {
 					if (token2) {
 						number2 = strtol(token2, &endptr, 10);
 						if ((number2 == LONG_MIN)|| (number2 == LONG_MAX)){
-						error("(%s: %d: %s) Error: %s", THIS_FILE,
-								__LINE__, __FUNCTION__, strerror(errno));
+						error("(%s: %d: %s) Error: %m", THIS_FILE,
+								__LINE__, __FUNCTION__);
 						free(lin);
 						TEMP_FAILURE_RETRY(fclose(f));
 						return -1;
@@ -1750,9 +1744,9 @@ static int _get_cpu_total(void) {
 #define MAX_PORT	30000
 #define ATTEMPTS	2
 
-static uint32_t *port_resv = NULL;
-static int port_cnt = -1;
-static uint32_t last_alloc_port;
+static int port_cnt = MAX_PORT - MIN_PORT + 1;
+static uint32_t port_resv[MAX_PORT - MIN_PORT + 1];
+static uint32_t last_alloc_port = MAX_PORT - MIN_PORT;
 
 /*
  * Function: init_port
@@ -1763,19 +1757,14 @@ static uint32_t last_alloc_port;
  *  last_alloc_port is the last allocated port, and it is using the table's
  *  index, not the real port number.
  *
+ *  Note: That the ports used will range from MIN_PORT up to and including
+ *  MAX_PORT.
+ *
  * Returns
  *  0 on success and -1 on failure.
- *
- * TODO: Once we have the SchedMD code that actually calls
- * switch_p_slurmctld_init, I should take out the safety checks that
- * re-initialize the port reservation table.
  */
 
 static int _init_port() {
-
-	extern uint32_t *port_resv;
-	extern int port_cnt;
-	extern uint32_t last_alloc_port;
 
 	int i;
 	if (MAX_PORT < MIN_PORT) {
@@ -1784,11 +1773,7 @@ static int _init_port() {
 		return -1;
 	}
 
-	port_cnt = MAX_PORT - MIN_PORT;
-	last_alloc_port = port_cnt;
-	port_resv = xmalloc(port_cnt * sizeof(uint32_t));
-
-	for (i = 0; i < port_cnt; i++) {
+	for (i = 0; i <= port_cnt; i++) {
 		port_resv[i] = 0;
 	}
 	return 0;
@@ -1852,7 +1837,7 @@ static int _assign_port(uint32_t *real_port) {
 	 * number of times
 	 */
 	while (port_resv[port] == 1) {
-		tmp = port++ % port_cnt;
+		tmp = ++port % port_cnt;
 		port = tmp;
 		attempts++;
 		if ((attempts / port_cnt) >= ATTEMPTS) {
@@ -1893,27 +1878,13 @@ static int _release_port(uint32_t real_port) {
 		return -1;
 	}
 
-	port = real_port - MIN_PORT;
-
 	if (port_resv == NULL ) {
-		info("(%s: %d: %s) Reserved PMI Port Table not initialized", THIS_FILE,
-				__LINE__, __FUNCTION__);
-		rc = _init_port();
-		if (rc) {
-			error("(%s: %d: %s) Initializing PMI reserve port table failed",
-					THIS_FILE, __LINE__, __FUNCTION__);
-			return -1;
-		}
-
-		/*
-		 * This is the code that I think should be here, but until we resolve
-		 * when and if switch_p_slurmctld_init is called, the above is a
-		 * safe-guard.
 		 error("(%s: %d: %s) Reserved PMI Port Table not initialized",
 		 THIS_FILE, __LINE__, __FUNCTION__);
 		 return -1;
-		 */
 	}
+
+	port = real_port - MIN_PORT;
 
 	if (port_resv[port]) {
 		port_resv[port] = 0;
@@ -1960,7 +1931,7 @@ static int _get_numa_nodes(char *path, int *cnt, int32_t **numa_array) {
 
 	f = fopen(buffer, "r");
 	if (f == NULL ) {
-		error("Failed to open file %s: %s\n", buffer, strerror(errno));
+		error("Failed to open file %s: %m\n", buffer);
 		return -1;
 	}
 
@@ -2052,7 +2023,7 @@ static int _get_cpu_masks(char *path, cpu_set_t **cpuMasks) {
 
 	f = fopen(buffer, "r");
 	if (f == NULL ) {
-		error("Failed to open file %s: %s\n", buffer, strerror(errno));
+		error("Failed to open file %s: %m\n", buffer);
 		return -1;
 	}
 
