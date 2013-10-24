@@ -446,7 +446,6 @@ void switch_p_free_jobinfo(switch_jobinfo_t *switch_job) {
  */
 int switch_p_pack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer,
 		uint16_t protocol_version) {
-	int i;
 
 	slurm_cray_jobinfo_t *job = (slurm_cray_jobinfo_t *) switch_job;
 
@@ -1868,7 +1867,6 @@ static int _assign_port(uint32_t *real_port) {
  */
 static int _release_port(uint32_t real_port) {
 
-	int rc;
 	uint32_t port;
 
 	if ((real_port < MIN_PORT) || (real_port >= MAX_PORT)) {
