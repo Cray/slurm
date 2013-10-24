@@ -104,7 +104,7 @@ const uint32_t plugin_version   = 100;
  */
 extern int init (void)
 {
-	verbose("%s loaded, really, really loaded.", plugin_name);
+	verbose("%s loaded.", plugin_name);
 	return SLURM_SUCCESS;
 }
 

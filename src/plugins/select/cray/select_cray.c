@@ -826,6 +826,15 @@ extern int select_p_state_restore(char *dir_name)
 
 extern int select_p_job_init(List job_list)
 {
+	static bool run_already = false;
+
+	/* Execute only on initial startup. We don't support bgblock
+	 * creation on demand today, so there is no need to re-sync data. */
+	if (run_already)
+		return other_job_init(job_list);
+
+	run_already = true;
+
 	if (!(slurmctld_conf.select_type_param & CR_NHC_NO)
 	    && job_list && list_count(job_list)) {
 		ListIterator itr = list_iterator_create(job_list);
@@ -839,7 +848,7 @@ extern int select_p_job_init(List job_list)
 				job_ptr->select_jobinfo->data;
 
 			if (!(slurmctld_conf.select_type_param & CR_NHC_STEP_NO)
-			    && !jobinfo->cleaning && job_ptr->step_list
+			    && job_ptr->step_list
 			    && list_count(job_ptr->step_list)) {
 				ListIterator itr_step = list_iterator_create(
 					job_ptr->step_list);
@@ -848,15 +857,15 @@ extern int select_p_job_init(List job_list)
 					jobinfo =
 						step_ptr->select_jobinfo->data;
 
-					if (!jobinfo->cleaning)
-						continue;
-					_spawn_cleanup_thread(step_ptr,
-							      _step_fini);
+					if (jobinfo && jobinfo->cleaning)
+						_spawn_cleanup_thread(
+							step_ptr, _step_fini);
 				}
 				list_iterator_destroy(itr_step);
-				continue;
 			}
-			_spawn_cleanup_thread(job_ptr, _job_fini);
+			jobinfo = job_ptr->select_jobinfo->data;
+			if (jobinfo && jobinfo->cleaning)
+				_spawn_cleanup_thread(job_ptr, _job_fini);
 		}
 		list_iterator_destroy(itr);
 	}
@@ -1211,7 +1220,7 @@ extern int select_p_select_jobinfo_get(select_jobinfo_t *jobinfo,
 	select_jobinfo_t **select_jobinfo = (select_jobinfo_t **) data;
 
 	if (jobinfo == NULL) {
-		error("select/cray jobinfo_get: jobinfo not set");
+		debug("select/cray jobinfo_get: jobinfo not set");
 		return SLURM_ERROR;
 	}
 	if (jobinfo->magic != JOBINFO_MAGIC) {

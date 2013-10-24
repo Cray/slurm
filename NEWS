@@ -10,6 +10,15 @@ documents those changes that are of interest to users and admins.
  -- BGQ - Added RebootQOSList option to bluegene.conf to allow an implicate
     reboot of a block if only jobs in the list are running on it when cnodes
     go into a failure state.
+ -- Correct task count of pending job steps.
+ -- Improve limit enforcement for jobs, set RLIMIT_RSS, RLIMIT_AS and/or
+    RLIMIT_DATA to enforce memory limit.
+ -- Pending job steps will have step_id of INFINITE rather than NO_VAL and
+    will be reported as "TBD" by scontrol and squeue commands.
+ -- Add logic so PMI_Abort or PMI2_Abort can propagate an exit code.
+ -- Added SlurmdPlugstack configuration parameter.
+ -- Added PriorityFlag DEPTH_OBLIVIOUS to have the depth of an association
+    not effect it's priorty.
 
 * Changes in Slurm 13.12.0pre3
 ==============================
@@ -113,9 +122,32 @@ documents those changes that are of interest to users and admins.
  -- Corrected commit f9a3c7e4e8ec.
  -- Honor ntasks-per-node option with exclusive node allocations.
  -- sched/backfill - Prevent invalid memory reference if bf_continue option is
-    configured and slurm is reconfigured during one of the sleep cycles.
+    configured and slurm is reconfigured during one of the sleep cycles or if
+    there are any changes to the partition configuration or if the normal
+    scheduler runs and starts a job that the backfill scheduler is actively
+    working on.
  -- Update man pages information about acct-freq and JobAcctGatherFrequency
     to reflect only the latest supported format.
+ -- Minor document update to include note about PrivateData=Usage for the
+    slurm.conf when using the DBD.
+ -- Expand information reported with DebugFlags=backfill.
+ -- Initiate jobs pending to run in a reservation as soon as the reservation
+    becomes active.
+ -- Purged expired reservation even if it has pending jobs.
+ -- Corrections to calculation of a pending job's expected start time.
+ -- Remove some vestigial logic treating job priority of 1 as a special case.
+ -- Memory freeing up to avoid minor memory leaks at close of daemons
+ -- Updated documentation to give correct units being displayed.
+ -- Report AccountingStorageBackupHost with "scontrol show config".
+ -- init scripts ignore quotes around Pid file name specifications.
+ -- Fixed typo about command case in quickstart.html.
+ -- task/cgroup - handle new cpuset files, similar to commit c4223940.
+ -- Replace the tempname() function call with mkstemp().
+ -- Fix for --cpu_bind=map_cpu/mask_cpu/map_ldom/mask_ldom plus
+    --mem_bind=map_mem/mask_mem options, broken in 2.6.2.
+ -- Restore default behavior of allocating cores to jobs on a cyclic basis
+    across the sockets unless SelectTypeParameters=CR_CORE_DEFAULT_DIST_BLOCK
+    or user specifies other distribution options.
 
 * Changes in Slurm 2.6.3
 ========================

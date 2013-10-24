@@ -2,6 +2,7 @@
 /*
  *  (C) 2007 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
+ *  Copyright (C) 2013      Intel, Inc.
  */
 
 #include "pmi2_util.h"
@@ -381,10 +382,11 @@ int PMI2_Abort(int flag, const char msg[])
 	if (msg)
 		PMI2U_printf("aborting job:\n%s", msg);
 
-    /* ignoring return code, because we're exiting anyway */
-    PMIi_WriteSimpleCommandStr(PMI2_fd, NULL, ABORT_CMD, ISWORLD_KEY, flag ? TRUE_VAL : FALSE_VAL, MSG_KEY, ((msg == NULL) ? "(null)": msg), NULL);
+    PMIi_WriteSimpleCommandStr(PMI2_fd, NULL, ABORT_CMD, ISWORLD_KEY,
+                               flag ? TRUE_VAL : FALSE_VAL,
+                               MSG_KEY, ((msg == NULL) ? "": msg), NULL);
 
-    exit(PMII_EXIT_CODE);
+    exit(flag);
     return PMI2_SUCCESS;
 }
 
@@ -1486,7 +1488,7 @@ int PMIi_WriteSimpleCommand( int fd, PMI2_Command *resp, const char cmd[], PMI2_
     /* leave space for length field */
     memset(c, ' ', PMII_COMMANDLEN_SIZE);
     c += PMII_COMMANDLEN_SIZE;
-    remaining_len -= PMII_COMMANDLEN_SIZE;
+
 
     PMI2U_ERR_CHKANDJUMP(strlen(cmd) > PMI2_MAX_VALLEN, pmi2_errno, PMI2_ERR_OTHER, "**cmd_too_long");
 
@@ -1634,7 +1636,10 @@ int PMIi_WriteSimpleCommandStr(int fd, PMI2_Command *resp, const char cmd[], ...
         pairs_p[i] = &pairs[i];
         pairs[i].key = key;
         pairs[i].value = val;
-        pairs[i].valueLen = strlen(val);
+        if (val == NULL)
+	        pairs[i].valueLen = 0;
+        else
+	        pairs[i].valueLen = strlen(val);
         pairs[i].isCopy = 0/*FALSE*/;
         ++i;
     }

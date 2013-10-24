@@ -4,6 +4,7 @@
  *****************************************************************************
  *  Copyright (C) 2002-2007 The Regents of the University of California.
  *  Copyright (C) 2008-2009 Lawrence Livermore National Security.
+ *  Copyright (C) 2013      Intel, Inc.
  *  Produced at Lawrence Livermore National Laboratory (cf, DISCLAIMER).
  *  Written by Mark Grondona <mgrondona@llnl.gov>.
  *  CODE-OCEC-09-009. All rights reserved.
@@ -255,13 +256,31 @@ mgr_launch_tasks_setup(launch_tasks_request_msg_t *msg, slurm_addr_t *cli,
  */
 static uint32_t _get_exit_code(stepd_step_rec_t *job)
 {
-	int i;
+	uint32_t i;
 	uint32_t step_rc = NO_VAL;
 
 	for (i = 0; i < job->node_tasks; i++) {
-		/* If signalled we only need to check one and then
-		 * break out of the loop */
+		/* if this task was killed by cmd, ignore its
+		 * return status as it only reflects the fact
+		 * that we killed it
+		 */
+		if (job->task[i]->killed_by_cmd) {
+			debug("get_exit_code task %u killed by cmd", i);
+			continue;
+		}
+		/* if this task called PMI_Abort or PMI2_Abort,
+		 * then we let it define the exit status
+		 */
+		if (job->task[i]->aborted) {
+			step_rc = job->task[i]->estatus;
+			debug("get_exit_code task %u called abort", i);
+			break;
+		}
+		/* If signalled we need to cycle thru all the
+		 * tasks in case one of them called abort
+		 */
 		if (WIFSIGNALED(job->task[i]->estatus)) {
+			error("get_exit_code task %u died by signal", i);
 			step_rc = job->task[i]->estatus;
 			break;
 		}
@@ -621,7 +640,7 @@ _send_exit_msg(stepd_step_rec_t *job, uint32_t *tid, int n, int status)
 	ListIterator    i       = NULL;
 	srun_info_t    *srun    = NULL;
 
-	debug3("sending task exit msg for %d tasks", n);
+	debug3("sending task exit msg for %d tasks status %d", n, status);
 
 	msg.task_id_list	= tid;
 	msg.num_tasks		= n;
@@ -1642,10 +1661,10 @@ _log_task_exit(unsigned long taskid, unsigned long pid, int status)
 	 *   that code, but it is better than dropping a potentially useful
 	 *   exit status.
 	 */
-	if (WIFEXITED(status))
+	if (WIFEXITED(status)) {
 		verbose("task %lu (%lu) exited with exit code %d.",
 			taskid, pid, WEXITSTATUS(status));
-	else if (WIFSIGNALED(status))
+	} else if (WIFSIGNALED(status)) {
 		/* WCOREDUMP isn't available on AIX */
 		verbose("task %lu (%lu) exited. Killed by signal %d%s.",
 			taskid, pid, WTERMSIG(status),
@@ -1655,9 +1674,10 @@ _log_task_exit(unsigned long taskid, unsigned long pid, int status)
 			""
 #endif
 			);
-	else
+	} else {
 		verbose("task %lu (%lu) exited with status 0x%04x.",
 			taskid, pid, status);
+	}
 }
 
 /*
@@ -1725,7 +1745,6 @@ _wait_for_any_task(stepd_step_rec_t *job, bool waitflag)
 		if ((t = job_task_info_by_pid(job, pid))) {
 			completed++;
 			_log_task_exit(t->gtid, pid, status);
-
 			t->exited  = true;
 			t->estatus = status;
 			job->envtp->env = job->env;
@@ -2087,7 +2106,8 @@ _send_complete_batch_script_msg(stepd_step_rec_t *job, int err, int status)
 	req_msg.msg_type= REQUEST_COMPLETE_BATCH_SCRIPT;
 	req_msg.data	= &req;
 
-	info("sending REQUEST_COMPLETE_BATCH_SCRIPT, error:%u", err);
+	info("sending REQUEST_COMPLETE_BATCH_SCRIPT, error:%u status %d",
+	     err, status);
 
 	/* Note: these log messages don't go to slurmd.log from here */
 	for (i = 0; i <= MAX_RETRY; i++) {
@@ -2428,6 +2448,17 @@ _run_script_as_user(const char *name, const char *path, stepd_step_rec_t *job,
 		struct priv_state sprivs;
 		char *argv[2];
 
+		/* container_g_add_pid needs to be called in the
+		   forked process part of the fork to avoid a race
+		   condition where if this process makes a file or
+		   detacts itself from a child before we add the pid
+		   to the container in the parent of the fork.
+		*/
+		if ((job->jobid != 0) &&	/* Ignore system processes */
+		    (container_g_add_pid(job->jobid, getpid(), job->uid)
+		     != SLURM_SUCCESS))
+			error("container_g_add_pid(%u): %m", job->jobid);
+
 		argv[0] = (char *)xstrdup(path);
 		argv[1] = NULL;
 
@@ -2460,10 +2491,6 @@ _run_script_as_user(const char *name, const char *path, stepd_step_rec_t *job,
 		error("execve(): %m");
 		exit(127);
 	}
-
-	if ((job->jobid != 0) &&	/* Ignore system processes */
-	    (container_g_add_pid(job->jobid, cpid, job->uid) != SLURM_SUCCESS))
-		error("container_g_add_pid: %m");
 
 	if (exec_wait_signal_child (ei) < 0)
 		error ("run_script_as_user: Failed to wakeup %s", name);

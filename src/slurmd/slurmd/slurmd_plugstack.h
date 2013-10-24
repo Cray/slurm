@@ -1,10 +1,8 @@
 /*****************************************************************************\
- *  timers.c - Timer functions
+ *  slurmd_plugstack.h - driver for slurmctld plugstack plugin
  *****************************************************************************
- *  Copyright (C) 2002-2006 The Regents of the University of California.
- *  Produced at Lawrence Livermore National Laboratory (cf, DISCLAIMER).
- *  Written by Morris Jette <jette@llnl.gov>
- *  CODE-OCEC-09-009. All rights reserved.
+ *  Copyright (C) 2013 Intel Inc
+ *  Written by Ralph H Castain <ralph.h.castain@intel.com>
  *
  *  This file is part of SLURM, a resource management program.
  *  For details, see <http://slurm.schedmd.com/>.
@@ -36,40 +34,34 @@
  *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA.
 \*****************************************************************************/
 
-#include <stdio.h>
-#include <sys/time.h>
-#include "src/common/log.h"
+#ifndef _SLURMD_PLUGSTACK_H
+#define _SLURMD_PLUGSTACK_H
+
+#include "slurm/slurm.h"
+#include "src/slurmctld/slurmctld.h"
+
+/*****************************************************************************\
+ *  Plugin slurmctld/nonstop callback functions
+\*****************************************************************************/
+typedef struct slurm_nonstop_ops {
+	void		(*job_begin)	( struct job_record *job_ptr );
+	void		(*job_fini)	( struct job_record *job_ptr );
+	void		(*node_fail)	( struct job_record *job_ptr,
+					  struct node_record *node_ptr);
+} slurm_nonstop_ops_t;
+extern slurm_nonstop_ops_t nonstop_ops;
+/*
+ * Initialize the slurmd plugstack plugin.
+ *
+ * Returns a SLURM errno.
+ */
+extern int slurmd_plugstack_init(void);
 
 /*
- * slurm_diff_tv_str - build a string showing the time difference between two
- *		       times
- * IN tv1 - start of event
- * IN tv2 - end of event
- * OUT tv_str - place to put delta time in format "usec=%ld"
- * IN len_tv_str - size of tv_str in bytes
- * IN from - where the function was called form
+ * Terminate the slurmd plugstack plugin. Free memory.
+ *
+ * Returns a SLURM errno.
  */
-extern void slurm_diff_tv_str(struct timeval *tv1, struct timeval *tv2,
-			      char *tv_str, int len_tv_str, char *from,
-			      long limit, long *delta_t)
-{
-	char p[64] = "";
-	struct tm tm;
+extern int slurmd_plugstack_fini(void);
 
-	(*delta_t)  = (tv2->tv_sec  - tv1->tv_sec) * 1000000;
-	(*delta_t) +=  tv2->tv_usec - tv1->tv_usec;
-	snprintf(tv_str, len_tv_str, "usec=%ld", *delta_t);
-	if (from) {
-		if (!limit)
-			limit = 1000000;
-		if (*delta_t > limit) {
-			if (!localtime_r(&tv1->tv_sec, &tm))
-				fprintf(stderr, "localtime_r() failed\n");
-			if (strftime(p, sizeof(p), "%T", &tm) == 0)
-				fprintf(stderr, "strftime() returned 0\n");
-			verbose("Warning: Note very large processing "
-				"time from %s: %s began=%s.%3.3d",
-				from, tv_str, p, (int)(tv1->tv_usec / 1000));
-		}
-	}
-}
+#endif /* !_SLURMD_PLUGSTACK_H */

@@ -93,12 +93,6 @@ AC_DEFUN([X_AC_CRAY],
       CPPFLAGS="$CRAY_CPPFLAGS $CRAY_SWITCH_CPPFLAGS $saved_CPPFLAGS"
       LIBS="$CRAY_LDFLAGS $CRAY_SWITCH_LDFLAGS $saved_LIBS"
 
-# FIXME: alpscomm_cn.h appeared to not work correctly here.
-# Missing #include <netinet/in.h>.  Cray needs to add it for things to
-# work correctly.
-# #include <alpscomm_cn.h>
-# alpsc_flush_lustre((char **)0);
-
       AC_LINK_IFELSE(
         [AC_LANG_PROGRAM(
 	   [[#include <job.h>
