@@ -495,15 +495,20 @@ static void _initialize_event(alpsc_ev_app_t *event,
  */
 static void _copy_event(alpsc_ev_app_t *dest, alpsc_ev_app_t *src)
 {
-	dest->apid = src->apid;
-	dest->uid = src->uid;
-	dest->app_name = xstrdup(src->app_name);
-	dest->batch_id = xstrdup(src->batch_id);
-	dest->state = src->state;
-	dest->nodes = xmalloc(src->num_nodes * sizeof(int32_t));
-	memcpy(dest->nodes, src->nodes, src->num_nodes * sizeof(int32_t));
-	dest->num_nodes = src->num_nodes;
-	return;
+        dest->apid = src->apid;
+        dest->uid = src->uid;
+        dest->app_name = xstrdup(src->app_name);
+        dest->batch_id = xstrdup(src->batch_id);
+        dest->state = src->state;
+        if (src->num_nodes > 0 && src->nodes != NULL) {
+                dest->nodes = xmalloc(src->num_nodes * sizeof(int32_t));
+                memcpy(dest->nodes, src->nodes, src->num_nodes * sizeof(int32_t));
+                dest->num_nodes = src->num_nodes;
+        } else {
+                dest->nodes = NULL;
+                dest->num_nodes = 0;
+        }
+        return;
 }
 
 /*

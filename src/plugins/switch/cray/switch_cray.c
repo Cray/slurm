@@ -881,6 +881,11 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 				__FUNCTION__);
 		return SLURM_ERROR;
 	}
+	if (cnt == 0) {
+		error("(%s: %d: %s) list_str_to_array returned a node count of zero.",
+				THIS_FILE, __LINE__, __FUNCTION__);
+		return SLURM_ERROR;
+	}
 	if (sw_job->step_layout->node_cnt != cnt) {
 		error("(%s: %d: %s) list_str_to_array returned count %"
 		PRIu32 "does not match expected count %d", THIS_FILE, __LINE__,
@@ -943,8 +948,8 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 	 * have to be filled in when support for them is added.
 	 * Currently, it's all zeros.
 	 */
-	alpsc_peInfo.nodeCpuArray = calloc(sizeof(int),
-			sw_job->step_layout->node_cnt);
+	alpsc_peInfo.nodeCpuArray = calloc(sw_job->step_layout->node_cnt,
+			sizeof(int));
 	if (sw_job->step_layout->node_cnt && (alpsc_peInfo.nodeCpuArray == NULL )) {
 		free(alpsc_peInfo.peCmdMapArray);
 		error("(%s: %d: %s) failed to calloc nodeCpuArray.", THIS_FILE,
@@ -2007,7 +2012,7 @@ static int _get_numa_nodes(char *path, int *cnt, int32_t **numa_array) {
  */
 static int _get_cpu_masks(char *path, cpu_set_t **cpuMasks) {
 	struct bitmask *bm;
-	int i, index, rc, cnt;
+	int i, rc, cnt;
 	char buffer[PATH_MAX];
 	FILE *f = NULL;
 	char *lin = NULL;
@@ -2068,7 +2073,6 @@ static int _get_cpu_masks(char *path, cpu_set_t **cpuMasks) {
 		return -1;
 	}
 
-	index = 0;
 	for (i = 0; i < bm->size; i++) {
 		if (*(bm->maskp) & ((long unsigned) 1 << i)) {
 			if (debug_flags & DEBUG_FLAG_SWITCH) {
