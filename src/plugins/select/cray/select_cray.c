@@ -555,6 +555,7 @@ static void _update_app(struct job_record *job_ptr, struct step_record *step_ptr
 	uint64_t apid;
 	int32_t i;
 	alpsc_ev_app_t app;
+	int found;
 
 	// If aeld thread isn't running, do nothing
 	if (aeld_running == 0) {
@@ -582,9 +583,12 @@ static void _update_app(struct job_record *job_ptr, struct step_record *step_ptr
 		break;
 	case ALPSC_EV_END:
 		// Search for the app matching this apid
+		found = 0;
 		apid = SLURM_ID_HASH(job_ptr->job_id, step_ptr->step_id);
 		for (i = 0; i < app_list_size; i++) {
 			if (app_list[i].apid == apid) {
+				found = 1;
+				
 				// Free allocated info
 				_free_event(&app_list[i]);
 
@@ -600,7 +604,7 @@ static void _update_app(struct job_record *job_ptr, struct step_record *step_ptr
 		}
 		
 		// Not found
-		if (i >= app_list_size) {
+		if (!found) {
 			debug("Application %"PRIu64" not found in app list", apid);
 		}
 		break;
