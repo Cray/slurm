@@ -495,15 +495,20 @@ static void _initialize_event(alpsc_ev_app_t *event,
  */
 static void _copy_event(alpsc_ev_app_t *dest, alpsc_ev_app_t *src)
 {
-	dest->apid = src->apid;
-	dest->uid = src->uid;
-	dest->app_name = xstrdup(src->app_name);
-	dest->batch_id = xstrdup(src->batch_id);
-	dest->state = src->state;
-	dest->nodes = xmalloc(src->num_nodes * sizeof(int32_t));
-	memcpy(dest->nodes, src->nodes, src->num_nodes * sizeof(int32_t));
-	dest->num_nodes = src->num_nodes;
-	return;
+        dest->apid = src->apid;
+        dest->uid = src->uid;
+        dest->app_name = xstrdup(src->app_name);
+        dest->batch_id = xstrdup(src->batch_id);
+        dest->state = src->state;
+        if (src->num_nodes > 0 && src->nodes != NULL) {
+                dest->nodes = xmalloc(src->num_nodes * sizeof(int32_t));
+                memcpy(dest->nodes, src->nodes, src->num_nodes * sizeof(int32_t));
+                dest->num_nodes = src->num_nodes;
+        } else {
+                dest->nodes = NULL;
+                dest->num_nodes = 0;
+        }
+        return;
 }
 
 /*
@@ -550,6 +555,7 @@ static void _update_app(struct job_record *job_ptr, struct step_record *step_ptr
 	uint64_t apid;
 	int32_t i;
 	alpsc_ev_app_t app;
+	int found;
 
 	// If aeld thread isn't running, do nothing
 	if (aeld_running == 0) {
@@ -577,9 +583,12 @@ static void _update_app(struct job_record *job_ptr, struct step_record *step_ptr
 		break;
 	case ALPSC_EV_END:
 		// Search for the app matching this apid
+		found = 0;
 		apid = SLURM_ID_HASH(job_ptr->job_id, step_ptr->step_id);
 		for (i = 0; i < app_list_size; i++) {
 			if (app_list[i].apid == apid) {
+				found = 1;
+				
 				// Free allocated info
 				_free_event(&app_list[i]);
 
@@ -595,7 +604,7 @@ static void _update_app(struct job_record *job_ptr, struct step_record *step_ptr
 		}
 		
 		// Not found
-		if (i >= app_list_size) {
+		if (!found) {
 			debug("Application %"PRIu64" not found in app list", apid);
 		}
 		break;

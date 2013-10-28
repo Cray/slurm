@@ -19,6 +19,7 @@ documents those changes that are of interest to users and admins.
  -- Added SlurmdPlugstack configuration parameter.
  -- Added PriorityFlag DEPTH_OBLIVIOUS to have the depth of an association
     not effect it's priorty.
+ -- Multi-thread the sinfo command (one thread per partition).
 
 * Changes in Slurm 13.12.0pre3
 ==============================
@@ -148,6 +149,20 @@ documents those changes that are of interest to users and admins.
  -- Restore default behavior of allocating cores to jobs on a cyclic basis
     across the sockets unless SelectTypeParameters=CR_CORE_DEFAULT_DIST_BLOCK
     or user specifies other distribution options.
+ -- Enforce JobRequeue configuration parameter on node failure. Previously
+    always requeued the job.
+ -- acct_gather_energy/ipmi - Add delay before retry on read error.
+ -- select/cons_res with GRES and multiple threads per core, fix possible
+    infinite loop.
+ -- proctrack/cgroup - Add cgroup create retry logic in case one step is
+    starting at the same time as another step is ending and the logic to create
+    and delete cgroups overlaps.
+ -- Improve setting of job wait "Reason" field.
+ -- Correct sbatch documentation and job_submit/pbs plugin "%j" is job ID,
+    not "%J" (which is job_id.step_id).
+ -- Improvements to sinfo performance, especially for large numbers of
+    partitions.
+ -- SlurmdDebug - Permit changes to slurmd debug level with "scontrol reconfig"
 
 * Changes in Slurm 2.6.3
 ========================

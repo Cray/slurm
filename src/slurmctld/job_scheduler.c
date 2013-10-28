@@ -214,9 +214,9 @@ static bool _job_runnable_test2(struct job_record *job_ptr, bool check_min_time)
 	int reason;
 
 	reason = job_limits_check(&job_ptr, check_min_time);
-	if ((reason != WAIT_NO_REASON) &&
-	    (reason != job_ptr->state_reason) &&
-	    (part_policy_job_runnable_state(job_ptr))) {
+	if ((reason != job_ptr->state_reason) &&
+	    ((reason != WAIT_NO_REASON) ||
+	     (!part_policy_job_runnable_state(job_ptr)))) {
 		job_ptr->state_reason = reason;
 		xfree(job_ptr->state_desc);
 	}
@@ -1458,9 +1458,11 @@ extern int test_job_dependency(struct job_record *job_ptr)
 			} else
 				depends = true;
 		} else if (dep_ptr->depend_type == SLURM_DEPEND_AFTER_NOT_OK) {
-			if (!IS_JOB_FINISHED(dep_ptr->job_ptr))
+			if (dep_ptr->job_ptr->job_state & JOB_SPECIAL_EXIT) {
+				clear_dep = true;
+			} else if (!IS_JOB_FINISHED(dep_ptr->job_ptr)) {
 				depends = true;
-			else if (!IS_JOB_COMPLETE(dep_ptr->job_ptr)) {
+			} else if (!IS_JOB_COMPLETE(dep_ptr->job_ptr)) {
 				clear_dep = true;
 			} else {
 				failure = true;

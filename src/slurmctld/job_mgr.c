@@ -2214,7 +2214,8 @@ extern int kill_job_by_front_end_name(char *node_name)
 		} else if (IS_JOB_RUNNING(job_ptr) || suspended) {
 			job_count++;
 			if (job_ptr->batch_flag && job_ptr->details &&
-				   (job_ptr->details->requeue > 0)) {
+			    slurmctld_conf.job_requeue &&
+			    (job_ptr->details->requeue > 0)) {
 				char requeue_msg[128];
 
 				srun_node_fail(job_ptr->job_id, node_name);
@@ -2449,6 +2450,7 @@ extern int kill_running_job_by_node_name(char *node_name)
 				excise_node_from_job(job_ptr, node_ptr);
 				job_post_resize_acctg(job_ptr);
 			} else if (job_ptr->batch_flag && job_ptr->details &&
+				   slurmctld_conf.job_requeue &&
 				   (job_ptr->details->requeue > 0)) {
 				char requeue_msg[128];
 
@@ -9117,7 +9119,8 @@ static void _purge_missing_jobs(int node_inx, time_t now)
 		    (job_ptr->start_time       < startup_time)	&&
 		    (node_inx == bit_ffs(job_ptr->node_bitmap))) {
 			bool requeue = false;
-			if (job_ptr->start_time < node_ptr->boot_time)
+			if (slurmctld_conf.job_requeue &&
+			    (job_ptr->start_time < node_ptr->boot_time))
 				requeue = true;
 			info("Batch JobId=%u missing from node 0",
 			     job_ptr->job_id);
@@ -11297,7 +11300,6 @@ extern void build_cg_bitmap(struct job_record *job_ptr)
 		job_ptr->node_bitmap_cg = bit_copy(job_ptr->node_bitmap);
 		if (bit_set_count(job_ptr->node_bitmap_cg) == 0)
 			job_ptr->job_state &= (~JOB_COMPLETING);
-		info("%s: JOB_COMPLETING cleaned state 0x%x", __func__, job_ptr->job_state);
 	} else {
 		error("build_cg_bitmap: node_bitmap is NULL");
 		job_ptr->node_bitmap_cg = bit_alloc(node_record_count);

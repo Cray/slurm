@@ -67,6 +67,7 @@
 #include "src/common/gres.h"
 
 #define LEGACY_SPOOL_DIR "/var/spool/alps/"
+static uint32_t debug_flags = 0;
 
 /*
  * These variables are required by the generic plugin interface.  If they
@@ -183,6 +184,7 @@ static void _print_jobinfo(slurm_cray_jobinfo_t *job) {
  */
 int init(void) {
 	verbose("%s loaded.", plugin_name);
+	debug_flags = slurm_get_debug_flags();
 	return SLURM_SUCCESS;
 }
 
@@ -457,7 +459,7 @@ int switch_p_pack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer,
 	xassert(job->magic == CRAY_JOBINFO_MAGIC);
 	xassert(buffer);
 
-	if (slurm_get_debug_flags() & DEBUG_FLAG_SWITCH) {
+	if (debug_flags & DEBUG_FLAG_SWITCH) {
 		info("(%s: %d: %s) switch_jobinfo_t contents", THIS_FILE, __LINE__,
 				__FUNCTION__);
 		_print_jobinfo(job);
@@ -545,7 +547,7 @@ int switch_p_unpack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer,
 		return SLURM_ERROR;
 	}
 
-	if (slurm_get_debug_flags() & DEBUG_FLAG_SWITCH) {
+	if (debug_flags & DEBUG_FLAG_SWITCH) {
 		info("(%s:%d: %s) switch_jobinfo_t contents:", THIS_FILE, __LINE__,
 				__FUNCTION__);
 		_print_jobinfo(job);
@@ -613,7 +615,7 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 	char *buff;
 	int cleng = 0;
 
-	if (slurm_get_debug_flags() & DEBUG_FLAG_SWITCH) {
+	if (debug_flags & DEBUG_FLAG_SWITCH) {
 		info("(%s:%d: %s) Job ID (in JOB): %" PRIu32
 				"Job ID (in Switch jobinfo): %" PRIu32,
 							THIS_FILE, __LINE__, __FUNCTION__, job->jobid,
@@ -802,7 +804,7 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 			mem_scaling = 1;
 		}
 
-		if (slurm_get_debug_flags() & DEBUG_FLAG_SWITCH) {
+		if (debug_flags & DEBUG_FLAG_SWITCH) {
 			info("(%s:%d: %s) --Network Scaling Start--", THIS_FILE, __LINE__,
 					__FUNCTION__);
 			info("(%s:%d: %s) --CPU Scaling: %d--", THIS_FILE, __LINE__,
@@ -879,6 +881,11 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 				__FUNCTION__);
 		return SLURM_ERROR;
 	}
+	if (cnt == 0) {
+		error("(%s: %d: %s) list_str_to_array returned a node count of zero.",
+				THIS_FILE, __LINE__, __FUNCTION__);
+		return SLURM_ERROR;
+	}
 	if (sw_job->step_layout->node_cnt != cnt) {
 		error("(%s: %d: %s) list_str_to_array returned count %"
 		PRIu32 "does not match expected count %d", THIS_FILE, __LINE__,
@@ -892,7 +899,7 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 		for (j = 0; j < sw_job->step_layout->tasks[i]; j++) {
 			task = sw_job->step_layout->tids[i][j];
 			task_to_nodes_map[task] = nodes[i];
-			if (slurm_get_debug_flags() & DEBUG_FLAG_SWITCH) {
+			if (debug_flags & DEBUG_FLAG_SWITCH) {
 				info("(%s:%d: %s) peNidArray:\tTask: %d\tNode: %d", THIS_FILE,
 						__LINE__, __FUNCTION__, task, nodes[i]);
 			}
@@ -941,8 +948,8 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 	 * have to be filled in when support for them is added.
 	 * Currently, it's all zeros.
 	 */
-	alpsc_peInfo.nodeCpuArray = calloc(sizeof(int),
-			sw_job->step_layout->node_cnt);
+	alpsc_peInfo.nodeCpuArray = calloc(sw_job->step_layout->node_cnt,
+			sizeof(int));
 	if (sw_job->step_layout->node_cnt && (alpsc_peInfo.nodeCpuArray == NULL )) {
 		free(alpsc_peInfo.peCmdMapArray);
 		error("(%s: %d: %s) failed to calloc nodeCpuArray.", THIS_FILE,
@@ -971,7 +978,7 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 			&alpsc_peInfo, controlNid, controlSoc, numBranches,
 			&alpsc_branchInfo);
 
-	if (slurm_get_debug_flags() & DEBUG_FLAG_SWITCH) {
+	if (debug_flags & DEBUG_FLAG_SWITCH) {
 		_print_alpsc_peInfo(alpsc_peInfo);
 	}
 
@@ -1364,7 +1371,7 @@ extern int switch_p_job_step_complete(switch_jobinfo_t *jobinfo,
 		return SLURM_ERROR;
 	}
 
-	if (slurm_get_debug_flags() & DEBUG_FLAG_SWITCH) {
+	if (debug_flags & DEBUG_FLAG_SWITCH) {
 		info("(%s:%d: %s) switch_p_job_step_complete", THIS_FILE, __LINE__,
 				__FUNCTION__);
 	}
@@ -1959,7 +1966,7 @@ static int _get_numa_nodes(char *path, int *cnt, int32_t **numa_array) {
 		return -1;
 	}
 
-	if (slurm_get_debug_flags() & DEBUG_FLAG_SWITCH) {
+	if (debug_flags & DEBUG_FLAG_SWITCH) {
 		info("Btimask size: %lu\nSizeof(*(bm->maskp)):%zd\n"
 				"Bitmask %#lx\nBitmask weight(number of bits set): %u\n",
 				bm->size, sizeof(*(bm->maskp)), *(bm->maskp), *cnt);
@@ -1976,7 +1983,7 @@ static int _get_numa_nodes(char *path, int *cnt, int32_t **numa_array) {
 	index = 0;
 	for (i = 0; i < bm->size; i++) {
 		if (*(bm->maskp) & ((long unsigned) 1 << i)) {
-			if (slurm_get_debug_flags() & DEBUG_FLAG_SWITCH) {
+			if (debug_flags & DEBUG_FLAG_SWITCH) {
 				info("(%s: %d: %s)NUMA Node %d is present.\n", THIS_FILE,
 						__LINE__, __FUNCTION__, i);
 			}
@@ -2005,7 +2012,7 @@ static int _get_numa_nodes(char *path, int *cnt, int32_t **numa_array) {
  */
 static int _get_cpu_masks(char *path, cpu_set_t **cpuMasks) {
 	struct bitmask *bm;
-	int i, index, rc, cnt;
+	int i, rc, cnt;
 	char buffer[PATH_MAX];
 	FILE *f = NULL;
 	char *lin = NULL;
@@ -2051,7 +2058,7 @@ static int _get_cpu_masks(char *path, cpu_set_t **cpuMasks) {
 		return -1;
 	}
 
-	if (slurm_get_debug_flags() & DEBUG_FLAG_SWITCH) {
+	if (debug_flags & DEBUG_FLAG_SWITCH) {
 		info("Btimask size: %lu\nSizeof(*(bm->maskp)):%zd\n"
 				"Bitmask %#lx\nBitmask weight(number of bits set): %u\n",
 				bm->size, sizeof(*(bm->maskp)), *(bm->maskp), cnt);
@@ -2066,10 +2073,9 @@ static int _get_cpu_masks(char *path, cpu_set_t **cpuMasks) {
 		return -1;
 	}
 
-	index = 0;
 	for (i = 0; i < bm->size; i++) {
 		if (*(bm->maskp) & ((long unsigned) 1 << i)) {
-			if (slurm_get_debug_flags() & DEBUG_FLAG_SWITCH) {
+			if (debug_flags & DEBUG_FLAG_SWITCH) {
 				info("(%s: %d: %s)CPU %d is present.\n", THIS_FILE, __LINE__,
 						__FUNCTION__, i);
 			}
