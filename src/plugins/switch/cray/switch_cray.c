@@ -229,6 +229,13 @@ int switch_p_alloc_jobinfo(switch_jobinfo_t **switch_job, uint32_t job_id,
 	new->apid = SLURM_ID_HASH(job_id, step_id);
 	new->step_layout = NULL;
 	*switch_job = (switch_jobinfo_t *) new;
+
+	if (debug_flags & DEBUG_FLAG_SWITCH) {
+		info("(%s: %d: %s) switch_jobinfo_t contents", THIS_FILE, __LINE__,
+				__FUNCTION__);
+		_print_jobinfo(job);
+	}
+
 	return SLURM_SUCCESS;
 }
 
