@@ -480,6 +480,7 @@ static void _initialize_event(alpsc_ev_app_t *event,
 			} else {
 				debug("%s: couldn't parse node %s, skipping", __func__, node);
 			}
+			free(node);
 		}
 		
 		hostlist_iterator_destroy(hlit);
