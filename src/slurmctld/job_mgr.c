@@ -1991,11 +1991,43 @@ void _add_job_hash(struct job_record *job_ptr)
 }
 
 /*
+ * find_job_array_rec - return a pointer to the job record with the given
+ *	array_job_id/array_task_id
+ * IN job_id - requested job's id
+ * IN array_task_id - requested job's task id (NO_VAL if none specified)
+ * RET pointer to the job's record, NULL on error
+ */
+extern struct job_record *find_job_array_rec(uint32_t array_job_id,
+					     uint16_t array_task_id)
+{
+	ListIterator job_iterator;
+	struct job_record *job_ptr, *match_job_ptr = NULL;
+
+	if (array_task_id == (uint16_t) NO_VAL)
+		return find_job_record(array_job_id);
+
+	job_iterator = list_iterator_create(job_list);
+	while ((job_ptr = (struct job_record *) list_next(job_iterator))) {
+		if (job_ptr->array_job_id != array_job_id)
+			continue;
+
+		if (array_task_id == (uint16_t) INFINITE) {
+			match_job_ptr = job_ptr;
+			if (!IS_JOB_FINISHED(job_ptr))
+				break;
+		} else if (job_ptr->array_task_id == array_task_id) {
+			match_job_ptr = job_ptr;
+			break;
+		}
+	}
+	list_iterator_destroy(job_iterator);
+	return match_job_ptr;
+}
+
+/*
  * find_job_record - return a pointer to the job record with the given job_id
  * IN job_id - requested job's id
  * RET pointer to the job's record, NULL on error
- * global: job_list - global job list pointer
- *	job_hash - hash table into job records
  */
 struct job_record *find_job_record(uint32_t job_id)
 {
@@ -5905,6 +5937,11 @@ static int _list_find_job_old(void *job_entry, void *key)
 	if (!(IS_JOB_FINISHED(job_ptr)))
 		return 0;	/* Job still active */
 
+	if (job_ptr->step_list && list_count(job_ptr->step_list)) {
+		debug("Job %u still has %d active steps",
+		      job_ptr->job_id, list_count(job_ptr->step_list));
+		return 0; /* steps are still active */
+	}
 	select_g_select_jobinfo_get(job_ptr->select_jobinfo,
 				    SELECT_JOBDATA_CLEANING,
 				    &cleaning);
