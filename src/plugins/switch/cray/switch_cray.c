@@ -233,7 +233,7 @@ int switch_p_alloc_jobinfo(switch_jobinfo_t **switch_job, uint32_t job_id,
 	if (debug_flags & DEBUG_FLAG_SWITCH) {
 		info("(%s: %d: %s) switch_jobinfo_t contents", THIS_FILE, __LINE__,
 				__FUNCTION__);
-		_print_jobinfo(job);
+		_print_jobinfo(new);
 	}
 
 	return SLURM_SUCCESS;
