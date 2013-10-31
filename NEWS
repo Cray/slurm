@@ -20,6 +20,8 @@ documents those changes that are of interest to users and admins.
  -- Added PriorityFlag DEPTH_OBLIVIOUS to have the depth of an association
     not effect it's priorty.
  -- Multi-thread the sinfo command (one thread per partition).
+ -- Added sgather tool to gather files from a job's compute nodes into a
+    central location. 
 
 * Changes in Slurm 13.12.0pre3
 ==============================
@@ -173,6 +175,8 @@ documents those changes that are of interest to users and admins.
  -- Add support for new options in sbatch qsub wrapper:
     -W block=true	(wait for job completion)
     Clear PBS_NODEFILE environment variable
+ -- Fixed the MaxSubmitJobsPerUser limit in QOS which limited submissions
+    a job too early.
 
 * Changes in Slurm 2.6.3
 ========================

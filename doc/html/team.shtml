@@ -89,6 +89,7 @@ Lead Slurm developers are:
 <li>Klaus Joas (University Karlsruhe, Germany)</li>
 <li>Greg Johnson (Los Alamos National Laboratory)</li>
 <li>Magnus Jonsson (Ume&aring; University, Sweden)</li>
+<li>Matthias Jurenz (ZIH, TU Dresden, Germany)</li>
 <br>
 <li>Jason King (Lawrence Livermore National Laboratory)</li>
 <li>Yury Kiryanov (Intel)</li>
@@ -120,6 +121,7 @@ Lead Slurm developers are:
 <li>Gennaro Oliva (Institute of High Performance Computing and Networking, Italy)</li>
 <li>Alan Orth (International Livestock Research Institute, Kenya)</li>
 <br>
+<li>Juan Pancorbo (Leibniz-Rechenzentrum, Germany)</li>
 <li>Chrysovalantis Paschoulas (Juelich Supercomputing Centre, Germany)</li>
 <li>R&eacute;mi Palancher</li>
 <li>Alejandro Lucero Palau (Barcelona Supercomputing Center, Spain)</li>
@@ -176,6 +178,6 @@ Lead Slurm developers are:
 <!-- INDIVIDUALS, PLEASE KEEP IN ALPHABETICAL ORDER -->
 </ul>
 
-<p style="text-align:center;">Last modified 22 October 2013</p>
+<p style="text-align:center;">Last modified 30 October 2013</p>
 
 <!--#include virtual="footer.txt"-->
