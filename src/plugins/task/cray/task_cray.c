@@ -49,6 +49,8 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <sys/param.h>
+#include <errno.h>
+#include <numa.h>
 
 #include "slurm/slurm_errno.h"
 #include "src/common/slurm_xlator.h"
@@ -97,6 +99,9 @@
 const char plugin_name[]        = "task CRAY plugin";
 const char plugin_type[]        = "task/cray";
 const uint32_t plugin_version   = 100;
+
+static int _get_numa_nodes(char *path, int *cnt, int **numa_array);
+static int _get_cpu_masks(char *path, cpu_set_t **cpuMasks);
 
 /*
  * init() is called when the plugin is loaded, before any other functions
@@ -350,12 +355,15 @@ extern int task_p_post_term (stepd_step_rec_t *job, stepd_step_task_info_t *task
 
 /*
  * task_p_post_step() is called after termination of the step
- * (all the task)
+ * (all the tasks)
  */
 extern int task_p_post_step (stepd_step_rec_t *job)
 {
 	char llifile[LLI_STATUS_FILE_BUF_SIZE];
-	int rv;
+	int rc, cnt;
+	char *errMsg = NULL;
+	int32_t *numa_nodes;
+	cpu_set_t *cpuMasks;
 
 	// Get the lli file name 
 	snprintf(llifile, sizeof(llifile), LLI_STATUS_FILE, 
@@ -363,12 +371,265 @@ extern int task_p_post_step (stepd_step_rec_t *job)
 
 	// Unlink the file
 	errno = 0; 
-	rv = unlink(llifile);
-	if (rv == -1 && errno != ENOENT) {
+	rc = unlink(llifile);
+	if (rc == -1 && errno != ENOENT) {
 		error("%s: unlink(%s) failed: %m", __func__, llifile);
-	} else if (rv == 0) {
+	} else if (rc == 0) {
 		info("Unlinked %s", llifile);
 	}
 
+	/*
+	 * Compact Memory
+	 *
+	 * Determine which NUMA nodes an application is using.  It will be used to
+	 * compact the memory.
+	 *
+	 * You'll find the NUMA node information in the following location.
+	 * /dev/cpuset/slurm/uid_<uid>/job_<jobID>/step_<stepID>/mems
+	 *
+	 * Do the same for the CPU Masks.
+	 *
+	 * You'll find the NUMA node information in the following location.
+	 * /dev/cpuset/slurm/uid_<uid>/job_<jobID>/step_<stepID>/cpus
+	 */
+
+	rc = snprintf(path, sizeof(path), "/dev/cpuset/slurm/uid_%d/job_%" PRIu32
+			"/step_%" PRIu32, job->uid, job->jobid, job->stepid);
+	if (rc < 0) {
+		error("(%s: %d: %s) snprintf failed. Return code: %d", THIS_FILE,
+				__LINE__, __FUNCTION__, rc);
+		return SLURM_ERROR;
+	}
+
+	rc = _get_numa_nodes(path, &cnt, &numa_nodes);
+	if (rc < 0) {
+		error("(%s: %d: %s) get_numa_nodes failed. Return code: %d", THIS_FILE,
+				__LINE__, __FUNCTION__, rc);
+		return SLURM_ERROR;
+	}
+
+	rc = _get_cpu_masks(path, &cpuMasks);
+	if (rc < 0) {
+		error("(%s: %d: %s) get_cpu_masks failed. Return code: %d", THIS_FILE,
+				__LINE__, __FUNCTION__, rc);
+		return SLURM_ERROR;
+	}
+
+	/*
+	 * Compact Memory
+	 * The last argument which is a path to the cpuset directory has to be NULL
+	 * because the CPUSET directory has already been cleaned up.
+	 */
+
+	rc = alpsc_compact_mem(&errMsg, cnt, numa_nodes, cpuMasks, NULL);
+
+	xfree(numa_nodes);
+	CPU_FREE(cpuMasks);
+
+	if (rc != 1) {
+		if (errMsg) {
+			error("(%s: %d: %s) alpsc_compact_mem failed: %s", THIS_FILE,
+					__LINE__, __FUNCTION__, errMsg);
+			free(errMsg);
+		} else {
+			error(
+					"(%s: %d: %s) alpsc_compact_mem failed: No error message present.",
+					THIS_FILE, __LINE__, __FUNCTION__);
+		}
+		return SLURM_ERROR;
+	}
+	if (errMsg) {
+		info("(%s: %d: %s) alpsc_compact_mem: %s", THIS_FILE, __LINE__,
+				__FUNCTION__, errMsg);
+		free(errMsg);
+	}
+
 	return SLURM_SUCCESS;
+}
+
+/*
+ * Function: get_numa_nodes
+ * Description:
+ *  Returns a count of the NUMA nodes that the application is running on.
+ *
+ *  Returns an array of NUMA nodes that the application is running on.
+ *
+ *
+ *  IN char* path -- The path to the directory containing the files containing
+ *                   information about NUMA nodes.
+ *
+ *  OUT *cnt -- The number of NUMA nodes in the array
+ *  OUT **numa_array -- An integer array containing the NUMA nodes.
+ *                      This array must be xfreed by the caller.
+ *
+ * RETURN
+ *  0 on success and -1 on failure.
+ */
+static int _get_numa_nodes(char *path, int *cnt, int32_t **numa_array) {
+	struct bitmask *bm;
+	int i, index, rc = 0;
+	int lsz;
+	size_t sz;
+	char buffer[PATH_MAX];
+	FILE *f = NULL;
+	char *lin = NULL;
+
+	rc = snprintf(buffer, sizeof(buffer), "%s/%s", path, "mems");
+	if (rc < 0) {
+		error("(%s: %d: %s) snprintf failed. Return code: %d", THIS_FILE,
+				__LINE__, __FUNCTION__, rc);
+	}
+
+	f = fopen(buffer, "r");
+	if (f == NULL ) {
+		error("Failed to open file %s: %m\n", buffer);
+		return -1;
+	}
+
+	lsz = getline(&lin, &sz, f);
+	if (lsz > 0) {
+		if (lin[strlen(lin) - 1] == '\n') {
+			lin[strlen(lin) - 1] = '\0';
+		}
+		bm = numa_parse_nodestring(lin);
+		if (bm == NULL ) {
+			error("(%s: %d: %s) Error numa_parse_nodestring: Invalid node "
+					"string: %s", THIS_FILE, __LINE__, __FUNCTION__, lin);
+			free(lin);
+			return SLURM_ERROR;
+		}
+	} else {
+		error("(%s: %d: %s) Reading %s failed.", THIS_FILE, __LINE__,
+				__FUNCTION__, buffer);
+		return SLURM_ERROR;
+	}
+	free(lin);
+
+	*cnt = numa_bitmask_weight(bm);
+	if (*cnt == 0) {
+		error("(%s: %d: %s)Error no NUMA Nodes found.", THIS_FILE, __LINE__,
+				__FUNCTION__);
+		return -1;
+	}
+
+	if (debug_flags & DEBUG_FLAG_SWITCH) {
+		info("Btimask size: %lu\nSizeof(*(bm->maskp)):%zd\n"
+				"Bitmask %#lx\nBitmask weight(number of bits set): %u\n",
+				bm->size, sizeof(*(bm->maskp)), *(bm->maskp), *cnt);
+
+	}
+
+	*numa_array = xmalloc(*cnt * sizeof(int32_t));
+	if (*numa_array == NULL ) {
+		error("(%s: %d: %s)Error out of memory.\n", THIS_FILE, __LINE__,
+				__FUNCTION__);
+		return -1;
+	}
+
+	index = 0;
+	for (i = 0; i < bm->size; i++) {
+		if (*(bm->maskp) & ((long unsigned) 1 << i)) {
+			if (debug_flags & DEBUG_FLAG_SWITCH) {
+				info("(%s: %d: %s)NUMA Node %d is present.\n", THIS_FILE,
+						__LINE__, __FUNCTION__, i);
+			}
+			(*numa_array)[index++] = i;
+		}
+	}
+
+	numa_free_nodemask(bm);
+
+	return 0;
+}
+
+/*
+ * Function: get_cpu_masks
+ * Description:
+ *
+ *  Returns a cpu_set_t containing the masks of the CPUs within the NUMA nodes
+ *  that are in use by the application.
+ *
+ *  IN char* path -- The path to the directory containing the files containing
+ *                   information about NUMA nodes.
+ *  OUT cpu_set_t **cpuMasks -- Pointer to the CPUS used by the application.
+ *                              Must be freed via CPU_FREE() by the caller.
+ * RETURN
+ *  0 on success and -1 on failure.
+ */
+static int _get_cpu_masks(char *path, cpu_set_t **cpuMasks) {
+	struct bitmask *bm;
+	int i, rc, cnt;
+	char buffer[PATH_MAX];
+	FILE *f = NULL;
+	char *lin = NULL;
+	int lsz;
+	size_t sz;
+
+	rc = snprintf(buffer, sizeof(buffer), "%s/%s", path, "cpus");
+	if (rc < 0) {
+		error("(%s: %d: %s) snprintf failed. Return code: %d", THIS_FILE,
+				__LINE__, __FUNCTION__, rc);
+		return -1;
+	}
+
+	f = fopen(buffer, "r");
+	if (f == NULL ) {
+		error("Failed to open file %s: %m\n", buffer);
+		return -1;
+	}
+
+	lsz = getline(&lin, &sz, f);
+	if (lsz > 0) {
+		if (lin[strlen(lin) - 1] == '\n') {
+			lin[strlen(lin) - 1] = '\0';
+		}
+		bm = numa_parse_cpustring(lin);
+		if (bm == NULL ) {
+			error("(%s: %d: %s)Error numa_parse_nodestring", THIS_FILE,
+					__LINE__, __FUNCTION__);
+			free(lin);
+			return -1;
+		}
+	} else {
+		error("(%s: %d: %s) Reading %s failed.", THIS_FILE, __LINE__,
+				__FUNCTION__, buffer);
+		return -1;
+	}
+	free(lin);
+
+	cnt = numa_bitmask_weight(bm);
+	if (cnt == 0) {
+		error("(%s: %d: %s)Error no CPUs found.", THIS_FILE, __LINE__,
+				__FUNCTION__);
+		return -1;
+	}
+
+	if (debug_flags & DEBUG_FLAG_SWITCH) {
+		info("Btimask size: %lu\nSizeof(*(bm->maskp)):%zd\n"
+				"Bitmask %#lx\nBitmask weight(number of bits set): %u\n",
+				bm->size, sizeof(*(bm->maskp)), *(bm->maskp), cnt);
+
+	}
+
+	*cpuMasks = CPU_ALLOC(cnt);
+
+	if (*cpuMasks == NULL ) {
+		error("(%s: %d: %s)Error out of memory.\n", THIS_FILE, __LINE__,
+				__FUNCTION__);
+		return -1;
+	}
+
+	for (i = 0; i < bm->size; i++) {
+		if (*(bm->maskp) & ((long unsigned) 1 << i)) {
+			if (debug_flags & DEBUG_FLAG_SWITCH) {
+				info("(%s: %d: %s)CPU %d is present.\n", THIS_FILE, __LINE__,
+						__FUNCTION__, i);
+			}
+			CPU_SET(i, *cpuMasks);
+		}
+	}
+
+	numa_free_cpumask(bm);
+
+	return 0;
 }
