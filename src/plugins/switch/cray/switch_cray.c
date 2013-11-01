@@ -129,9 +129,6 @@ static int _init_port();
 static int _assign_port(uint32_t *ret_port);
 static int _release_port(uint32_t real_port);
 
-// TODO: Remove once bug fix is in.
-unsigned int numa_bitmask_weight(const struct bitmask *bmp);
-
 static void _print_alpsc_peInfo(alpsc_peInfo_t alps_info) {
 	int i;
 	info(
@@ -634,7 +631,7 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 	int total_cpus = 0;
 	uint32_t total_mem = 0, app_mem = 0;
 	int *pTags = NULL;
-	char *errMsg = NULL, *apid_dir = NULL, path[PATH_MAX];
+	char *errMsg = NULL, *apid_dir = NULL;
 	alpsc_peInfo_t alpsc_peInfo;
 	FILE *f = NULL;
 	size_t sz = 0;
@@ -1218,10 +1215,9 @@ int switch_p_job_fini(switch_jobinfo_t *jobinfo) {
 }
 
 int switch_p_job_postfini(stepd_step_rec_t *job) {
-	int rc, cnt;
+	int rc;
 	char *errMsg = NULL;
 	uid_t pgid = job->jmgr_pid;
-	slurm_cray_jobinfo_t *sw_job = (slurm_cray_jobinfo_t *) job->switch_job;
 
 	if (NULL == job) {
 		error("(%s: %d: %s) job was NULL", THIS_FILE, __LINE__, __FUNCTION__);
