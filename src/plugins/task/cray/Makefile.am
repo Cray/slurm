@@ -6,6 +6,8 @@ PLUGIN_FLAGS = -module -avoid-version --export-dynamic
 
 AM_CPPFLAGS = -I$(top_srcdir) -I$(top_srcdir)/src/common $(CRAY_CPPFLAGS)
 
+AM_CFLAGS = -lnuma
+
 pkglib_LTLIBRARIES = task_cray.la
 
 # Null task plugin.
