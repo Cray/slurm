@@ -51,6 +51,7 @@
 #include <sys/param.h>
 #include <errno.h>
 #include <numa.h>
+#include "limits.h"
 
 #include "slurm/slurm_errno.h"
 #include "src/common/slurm_xlator.h"
@@ -68,6 +69,7 @@
 
 // Offset within status file to write to, different for each task
 #define LLI_STATUS_OFFS_ENV "ALPS_LLI_STATUS_OFFSET"
+static uint32_t debug_flags = 0;
 
 /*
  * These variables are required by the generic plugin interface.  If they
@@ -113,6 +115,7 @@ static int _get_cpu_masks(char *path, cpu_set_t **cpuMasks);
 extern int init (void)
 {
 	verbose("%s loaded.", plugin_name);
+	debug_flags = slurm_get_debug_flags();
 	return SLURM_SUCCESS;
 }
 
@@ -364,7 +367,7 @@ extern int task_p_post_step (stepd_step_rec_t *job)
 {
 	char llifile[LLI_STATUS_FILE_BUF_SIZE];
 	int rc, cnt;
-	char *errMsg = NULL;
+	char *errMsg = NULL, path[PATH_MAX];
 	int32_t *numa_nodes;
 	cpu_set_t *cpuMasks;
 
@@ -515,7 +518,7 @@ static int _get_numa_nodes(char *path, int *cnt, int32_t **numa_array) {
 		return -1;
 	}
 
-	if (debug_flags & DEBUG_FLAG_SWITCH) {
+	if (debug_flags & DEBUG_FLAG_TASK) {
 		info("Btimask size: %lu\nSizeof(*(bm->maskp)):%zd\n"
 				"Bitmask %#lx\nBitmask weight(number of bits set): %u\n",
 				bm->size, sizeof(*(bm->maskp)), *(bm->maskp), *cnt);
@@ -532,7 +535,7 @@ static int _get_numa_nodes(char *path, int *cnt, int32_t **numa_array) {
 	index = 0;
 	for (i = 0; i < bm->size; i++) {
 		if (*(bm->maskp) & ((long unsigned) 1 << i)) {
-			if (debug_flags & DEBUG_FLAG_SWITCH) {
+			if (debug_flags & DEBUG_FLAG_TASK) {
 				info("(%s: %d: %s)NUMA Node %d is present.\n", THIS_FILE,
 						__LINE__, __FUNCTION__, i);
 			}
@@ -607,7 +610,7 @@ static int _get_cpu_masks(char *path, cpu_set_t **cpuMasks) {
 		return -1;
 	}
 
-	if (debug_flags & DEBUG_FLAG_SWITCH) {
+	if (debug_flags & DEBUG_FLAG_TASK) {
 		info("Btimask size: %lu\nSizeof(*(bm->maskp)):%zd\n"
 				"Bitmask %#lx\nBitmask weight(number of bits set): %u\n",
 				bm->size, sizeof(*(bm->maskp)), *(bm->maskp), cnt);
@@ -624,7 +627,7 @@ static int _get_cpu_masks(char *path, cpu_set_t **cpuMasks) {
 
 	for (i = 0; i < bm->size; i++) {
 		if (*(bm->maskp) & ((long unsigned) 1 << i)) {
-			if (debug_flags & DEBUG_FLAG_SWITCH) {
+			if (debug_flags & DEBUG_FLAG_TASK) {
 				info("(%s: %d: %s)CPU %d is present.\n", THIS_FILE, __LINE__,
 						__FUNCTION__, i);
 			}
