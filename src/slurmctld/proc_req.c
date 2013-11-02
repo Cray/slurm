@@ -561,6 +561,7 @@ void _fill_ctld_conf(slurm_ctl_conf_t * conf_ptr)
 
 	conf_ptr->fast_schedule       = conf->fast_schedule;
 	conf_ptr->first_job_id        = conf->first_job_id;
+	conf_ptr->fs_dampening_factor = conf->fs_dampening_factor;
 
 	conf_ptr->gres_plugins        = xstrdup(conf->gres_plugins);
 	conf_ptr->group_info          = conf->group_info;
@@ -2487,7 +2488,7 @@ static void _slurm_rpc_reconfigure_controller(slurm_msg_t * msg)
 		info("_slurm_rpc_reconfigure_controller: completed %s",
 		     TIME_STR);
 		slurm_send_rc_msg(msg, SLURM_SUCCESS);
-		priority_g_reconfig();          /* notify priority plugin too */
+		priority_g_reconfig(false);	/* notify priority plugin too */
 		schedule(0);			/* has its own locks */
 		save_all_state();
 	}
@@ -4264,7 +4265,7 @@ inline static void  _slurm_rpc_set_debug_flags(slurm_msg_t *msg)
 	log_set_debug_flags();
 	gs_reconfig();
 	gres_plugin_reconfig(NULL);
-	priority_g_reconfig();
+	priority_g_reconfig(false);
 	select_g_reconfigure();
 	(void) slurm_sched_g_reconfig();
 	(void) switch_g_reconfig();

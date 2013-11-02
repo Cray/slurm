@@ -2309,6 +2309,7 @@ step_create(job_step_create_request_msg_t *step_specs,
 	select_g_select_jobinfo_set(select_jobinfo, SELECT_JOBDATA_STEP_START, 
 			step_ptr);
 #endif
+	select_g_step_start(step_ptr);
 	jobacct_storage_g_step_start(acct_db_conn, step_ptr);
 	return SLURM_SUCCESS;
 }

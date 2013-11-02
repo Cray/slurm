@@ -21,7 +21,9 @@ documents those changes that are of interest to users and admins.
     not effect it's priorty.
  -- Multi-thread the sinfo command (one thread per partition).
  -- Added sgather tool to gather files from a job's compute nodes into a
-    central location. 
+    central location.
+ -- Added configuration parameter FairShareDampeningFactor to offer a greater
+    priority range based upon utilization.
 
 * Changes in Slurm 13.12.0pre3
 ==============================
@@ -177,6 +179,8 @@ documents those changes that are of interest to users and admins.
     Clear PBS_NODEFILE environment variable
  -- Fixed the MaxSubmitJobsPerUser limit in QOS which limited submissions
     a job too early.
+ -- sched/wiki, sched/wiki2 - Fix to work with change logic introduced in
+    version 2.6.3 preventing Maui/Moab from starting jobs.
 
 * Changes in Slurm 2.6.3
 ========================
@@ -318,6 +322,8 @@ documents those changes that are of interest to users and admins.
  -- Fix issue with potentially referencing past an array in parse_time()
  -- CRAY - fix issue with accelerators on a cray when parsing BASIL 1.3 XML.
  -- Fix issue with a 2.5 slurmstepd locking up when talking to a 2.6 slurmd.
+ -- Add argument to priority plugin's priority_p_reconfig function to note
+    when the association and QOS used_cpu_run_secs field has been reset.
 
 * Changes in Slurm 2.6.0
 ========================
