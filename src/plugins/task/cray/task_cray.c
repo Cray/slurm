@@ -56,6 +56,7 @@
 #include "slurm/slurm_errno.h"
 #include "src/common/slurm_xlator.h"
 #include "src/slurmd/slurmstepd/slurmstepd_job.h"
+#include "alpscomm_cn.h"
 
 // Filename to write status information to
 // This file consists of job->node_tasks + 1 bytes. Each byte will
