@@ -12,5 +12,6 @@ pkglib_LTLIBRARIES = task_cray.la
 
 # Null task plugin.
 task_cray_la_SOURCES = task_cray.c
-task_cray_la_LDFLAGS = $(SO_LDFLAGS) $(PLUGIN_FLAGS)
+task_cray_la_CPPFLAGS = $(CRAY_TASK_CPPFLAGS) $(AM_CPPFLAGS)
+task_cray_la_LDFLAGS = $(SO_LDFLAGS) $(PLUGIN_FLAGS) $(CRAY_LDFLAGS) $(CRAY_TASK_LDFLAGS)
 task_cray_la_LIBADD = $(CRAY_LDFLAGS)
