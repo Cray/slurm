@@ -103,7 +103,7 @@ const char plugin_name[]        = "task CRAY plugin";
 const char plugin_type[]        = "task/cray";
 const uint32_t plugin_version   = 100;
 
-// TODO: Remove this prototype once bug fix is in.
+// TODO: Remove this prototype once the prototype appears in numa.h.
 unsigned int numa_bitmask_weight(const struct bitmask *bmp);
 
 static int _get_numa_nodes(char *path, int *cnt, int **numa_array);
