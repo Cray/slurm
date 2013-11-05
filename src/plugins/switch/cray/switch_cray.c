@@ -53,20 +53,19 @@
 #include <fcntl.h>
 #include "limits.h"
 #include <linux/limits.h>
-#include <numa.h>
 #include <sched.h>
 #include <math.h>
 
 #include "slurm/slurm.h"
 #include "slurm/slurm_errno.h"
 #include "src/common/slurm_xlator.h"
-#include "src/plugins/switch/cray/switch_cray.h"
 #include "src/common/pack.h"
 #include "alpscomm_cn.h"
 #include "alpscomm_sn.h"
 #include "src/common/gres.h"
 
 #define LEGACY_SPOOL_DIR "/var/spool/alps/"
+#define CRAY_JOBINFO_MAGIC	0xCAFECAFE
 static uint32_t debug_flags = 0;
 
 /*
@@ -100,8 +99,35 @@ const char plugin_name[] = "switch CRAY plugin";
 const char plugin_type[] = "switch/cray";
 const uint32_t plugin_version = 100;
 
-// TODO: Remove once bug fix is in.
-unsigned int numa_bitmask_weight(const struct bitmask *bmp);
+/* opaque data structures - no peeking! */
+typedef struct slurm_cray_jobinfo {
+	uint32_t magic;
+	uint32_t num_cookies;	/* The number of cookies sent to configure the HSN */
+	/* Double pointer to an array of cookie strings.
+	 * cookie values here as NULL-terminated strings.
+	 * There are num_cookies elements in the array.
+	 * The caller is responsible for free()ing
+	 * the array contents and the array itself.  */
+	char     **cookies;
+	/* The array itself must be free()d when this struct is destroyed. */
+	uint32_t *cookie_ids;
+	uint32_t port;/* Port for PMI Communications */
+	uint32_t       jobid;  /* Current SLURM job id */
+	uint32_t       stepid; /* Current step id */
+	/* Cray Application ID -- A unique combination of the job id and step id*/
+	uint64_t apid;
+	slurm_step_layout_t *step_layout;
+} slurm_cray_jobinfo_t;
+
+static void _print_jobinfo(slurm_cray_jobinfo_t *job);
+static int _get_first_pe(uint32_t nodeid, uint32_t task_count,
+		uint32_t **host_to_task_map, int32_t *first_pe);
+static int _list_str_to_array(char *list, int *cnt, int32_t **numbers);
+static void _recursiveRmdir(const char *dirnm);
+static int _get_cpu_total(void);
+static int _init_port();
+static int _assign_port(uint32_t *ret_port);
+static int _release_port(uint32_t real_port);
 
 static void _print_alpsc_peInfo(alpsc_peInfo_t alps_info) {
 	int i;
@@ -689,6 +715,7 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 	 */
 
 	// alpsc_set_PAGG_apid()
+
 	/*
 	 * Configure the network
 	 *
@@ -1072,7 +1099,7 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 
 	/*
 	 * Query the generic resources to see if the GPU should be allocated
-	 * TO DO: Determine whether the proxy should be enabled or disabled by
+	 * TODO: Determine whether the proxy should be enabled or disabled by
 	 * reading the user's environment variable.
 	 */
 
@@ -1188,10 +1215,8 @@ int switch_p_job_fini(switch_jobinfo_t *jobinfo) {
 }
 
 int switch_p_job_postfini(stepd_step_rec_t *job) {
-	int rc, cnt;
-	int32_t *numa_nodes;
-	char *errMsg = NULL, path[PATH_MAX];
-	cpu_set_t *cpuMasks;
+	int rc;
+	char *errMsg = NULL;
 	uid_t pgid = job->jmgr_pid;
 
 	if (NULL == job) {
@@ -1246,60 +1271,6 @@ int switch_p_job_postfini(stepd_step_rec_t *job) {
 				THIS_FILE, __LINE__, __FUNCTION__, rc);
 	}
 	// do_drop_caches();
-
-	/*
-	 * Compact Memory
-	 * Determine which NUMA nodes an application is using.  Then, use that to
-	 * compact the memory.
-	 *
-	 * You'll find the NUMA node information in the following location.
-	 * /dev/cpuset/slurm/uid_<uid>/job_<jobID>/step_<stepID>/cpuset.mems
-	 */
-
-	rc = snprintf(path, sizeof(path), "/dev/cpuset/slurm/uid_%d/job_%" PRIu32
-	"/step_%" PRIu32, job->uid, job->jobid, job->stepid);
-	if (rc < 0) {
-		error("(%s: %d: %s) snprintf failed. Return code: %d", THIS_FILE,
-				__LINE__, __FUNCTION__, rc);
-		return SLURM_ERROR;
-	}
-
-	rc = _get_numa_nodes(path, &cnt, &numa_nodes);
-	if (rc < 0) {
-		error("(%s: %d: %s) get_numa_nodes failed. Return code: %d", THIS_FILE,
-				__LINE__, __FUNCTION__, rc);
-		return SLURM_ERROR;
-	}
-
-	rc = _get_cpu_masks(path, &cpuMasks);
-	if (rc < 0) {
-		error("(%s: %d: %s) get_cpu_masks failed. Return code: %d", THIS_FILE,
-				__LINE__, __FUNCTION__, rc);
-		return SLURM_ERROR;
-	}
-
-	rc = alpsc_compact_mem(&errMsg, cnt, numa_nodes, cpuMasks, path);
-
-	xfree(numa_nodes);
-	CPU_FREE(cpuMasks);
-
-	if (rc != 1) {
-		if (errMsg) {
-			error("(%s: %d: %s) alpsc_compact_mem failed: %s", THIS_FILE,
-					__LINE__, __FUNCTION__, errMsg);
-			free(errMsg);
-		} else {
-			error(
-					"(%s: %d: %s) alpsc_compact_mem failed: No error message present.",
-					THIS_FILE, __LINE__, __FUNCTION__);
-		}
-		return SLURM_ERROR;
-	}
-	if (errMsg) {
-		info("(%s: %d: %s) alpsc_compact_mem: %s", THIS_FILE, __LINE__,
-				__FUNCTION__, errMsg);
-		free(errMsg);
-	}
 
 	return SLURM_SUCCESS;
 }
@@ -1905,192 +1876,5 @@ static int _release_port(uint32_t real_port) {
 				"reserved. ", THIS_FILE, __LINE__, __FUNCTION__, real_port);
 		return -1;
 	}
-	return 0;
-}
-
-/*
- * Function: get_numa_nodes
- * Description:
- *  Returns a count of the NUMA nodes that the application is running on.
- *
- *  Returns an array of NUMA nodes that the application is running on.
- *
- *
- *  IN char* path -- The path to the directory containing the files containing
- *                   information about NUMA nodes.
- *
- *  OUT *cnt -- The number of NUMA nodes in the array
- *  OUT **numa_array -- An integer array containing the NUMA nodes.
- *                      This array must be xfreed by the caller.
- *
- * RETURN
- *  0 on success and -1 on failure.
- */
-static int _get_numa_nodes(char *path, int *cnt, int32_t **numa_array) {
-	struct bitmask *bm;
-	int i, index, rc = 0;
-	int lsz;
-	size_t sz;
-	char buffer[PATH_MAX];
-	FILE *f = NULL;
-	char *lin = NULL;
-
-	rc = snprintf(buffer, sizeof(buffer), "%s/%s", path, "cpuset.mems");
-	if (rc < 0) {
-		error("(%s: %d: %s) snprintf failed. Return code: %d", THIS_FILE,
-				__LINE__, __FUNCTION__, rc);
-	}
-
-	f = fopen(buffer, "r");
-	if (f == NULL ) {
-		error("Failed to open file %s: %m\n", buffer);
-		return -1;
-	}
-
-	lsz = getline(&lin, &sz, f);
-	if (lsz > 0) {
-		if (lin[strlen(lin) - 1] == '\n') {
-			lin[strlen(lin) - 1] = '\0';
-		}
-		bm = numa_parse_nodestring(lin);
-		if (bm == NULL ) {
-			error("(%s: %d: %s) Error numa_parse_nodestring: Invalid node "
-					"string: %s", THIS_FILE, __LINE__, __FUNCTION__, lin);
-			free(lin);
-			return SLURM_ERROR;
-		}
-	} else {
-		error("(%s: %d: %s) Reading %s failed.", THIS_FILE, __LINE__,
-				__FUNCTION__, buffer);
-		return SLURM_ERROR;
-	}
-	free(lin);
-
-	*cnt = numa_bitmask_weight(bm);
-	if (*cnt == 0) {
-		error("(%s: %d: %s)Error no NUMA Nodes found.", THIS_FILE, __LINE__,
-				__FUNCTION__);
-		return -1;
-	}
-
-	if (debug_flags & DEBUG_FLAG_SWITCH) {
-		info("Btimask size: %lu\nSizeof(*(bm->maskp)):%zd\n"
-				"Bitmask %#lx\nBitmask weight(number of bits set): %u\n",
-				bm->size, sizeof(*(bm->maskp)), *(bm->maskp), *cnt);
-
-	}
-
-	*numa_array = xmalloc(*cnt * sizeof(int32_t));
-	if (*numa_array == NULL ) {
-		error("(%s: %d: %s)Error out of memory.\n", THIS_FILE, __LINE__,
-				__FUNCTION__);
-		return -1;
-	}
-
-	index = 0;
-	for (i = 0; i < bm->size; i++) {
-		if (*(bm->maskp) & ((long unsigned) 1 << i)) {
-			if (debug_flags & DEBUG_FLAG_SWITCH) {
-				info("(%s: %d: %s)NUMA Node %d is present.\n", THIS_FILE,
-						__LINE__, __FUNCTION__, i);
-			}
-			(*numa_array)[index++] = i;
-		}
-	}
-
-	numa_free_nodemask(bm);
-
-	return 0;
-}
-
-/*
- * Function: get_cpu_masks
- * Description:
- *
- *  Returns a cpu_set_t containing the masks of the CPUs within the NUMA nodes
- *  that are in use by the application.
- *
- *  IN char* path -- The path to the directory containing the files containing
- *                   information about NUMA nodes.
- *  OUT cpu_set_t **cpuMasks -- Pointer to the CPUS used by the application.
- *                              Must be freed via CPU_FREE() by the caller.
- * RETURN
- *  0 on success and -1 on failure.
- */
-static int _get_cpu_masks(char *path, cpu_set_t **cpuMasks) {
-	struct bitmask *bm;
-	int i, rc, cnt;
-	char buffer[PATH_MAX];
-	FILE *f = NULL;
-	char *lin = NULL;
-	int lsz;
-	size_t sz;
-
-	rc = snprintf(buffer, sizeof(buffer), "%s/%s", path, "cpuset.cpus");
-	if (rc < 0) {
-		error("(%s: %d: %s) snprintf failed. Return code: %d", THIS_FILE,
-				__LINE__, __FUNCTION__, rc);
-		return -1;
-	}
-
-	f = fopen(buffer, "r");
-	if (f == NULL ) {
-		error("Failed to open file %s: %m\n", buffer);
-		return -1;
-	}
-
-	lsz = getline(&lin, &sz, f);
-	if (lsz > 0) {
-		if (lin[strlen(lin) - 1] == '\n') {
-			lin[strlen(lin) - 1] = '\0';
-		}
-		bm = numa_parse_cpustring(lin);
-		if (bm == NULL ) {
-			error("(%s: %d: %s)Error numa_parse_nodestring", THIS_FILE,
-					__LINE__, __FUNCTION__);
-			free(lin);
-			return -1;
-		}
-	} else {
-		error("(%s: %d: %s) Reading %s failed.", THIS_FILE, __LINE__,
-				__FUNCTION__, buffer);
-		return -1;
-	}
-	free(lin);
-
-	cnt = numa_bitmask_weight(bm);
-	if (cnt == 0) {
-		error("(%s: %d: %s)Error no CPUs found.", THIS_FILE, __LINE__,
-				__FUNCTION__);
-		return -1;
-	}
-
-	if (debug_flags & DEBUG_FLAG_SWITCH) {
-		info("Btimask size: %lu\nSizeof(*(bm->maskp)):%zd\n"
-				"Bitmask %#lx\nBitmask weight(number of bits set): %u\n",
-				bm->size, sizeof(*(bm->maskp)), *(bm->maskp), cnt);
-
-	}
-
-	*cpuMasks = CPU_ALLOC(cnt);
-
-	if (*cpuMasks == NULL ) {
-		error("(%s: %d: %s)Error out of memory.\n", THIS_FILE, __LINE__,
-				__FUNCTION__);
-		return -1;
-	}
-
-	for (i = 0; i < bm->size; i++) {
-		if (*(bm->maskp) & ((long unsigned) 1 << i)) {
-			if (debug_flags & DEBUG_FLAG_SWITCH) {
-				info("(%s: %d: %s)CPU %d is present.\n", THIS_FILE, __LINE__,
-						__FUNCTION__, i);
-			}
-			CPU_SET(i, *cpuMasks);
-		}
-	}
-
-	numa_free_cpumask(bm);
-
 	return 0;
 }
