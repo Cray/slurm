@@ -65,7 +65,14 @@
 #include "src/common/gres.h"
 
 #define LEGACY_SPOOL_DIR "/var/spool/alps/"
+/*
+ * CRAY_JOBINFO_MAGIC: The switch_jobinfo was not NULL.  The packed data
+ *                     is good and can be safely unpacked.
+ * CRAY_NULL_JOBINFO_MAGIC: The switch_jobinfo was NULL.  No data was packed.
+ *                          Do not attempt to unpack any data.
+ */
 #define CRAY_JOBINFO_MAGIC	0xCAFECAFE
+#define CRAY_NULL_JOBINFO_MAGIC	0xDEAFDEAF
 static uint32_t debug_flags = 0;
 
 /*
@@ -146,7 +153,7 @@ static void _print_jobinfo(slurm_cray_jobinfo_t *job) {
 	int i, j, rc, cnt;
 	int32_t *nodes;
 
-	if (NULL == job) {
+	if (!job || (job->magic == CRAY_NULL_JOBINFO_MAGIC)) {
 		error("(%s: %d: %s) job pointer was NULL", THIS_FILE, __LINE__,
 				__FUNCTION__);
 		return;
@@ -277,10 +284,10 @@ int switch_p_build_jobinfo(switch_jobinfo_t *switch_job,
 	uint32_t *s_cookie_ids = NULL;
 	slurm_cray_jobinfo_t *job = (slurm_cray_jobinfo_t *) switch_job;
 
-	if (NULL == switch_job) {
-		error("(%s: %d: %s) switch_job was NULL", THIS_FILE, __LINE__,
+	if (!job || (job->magic == CRAY_NULL_JOBINFO_MAGIC)) {
+		debug2("(%s: %d: %s) switch_job was NULL", THIS_FILE, __LINE__,
 				__FUNCTION__);
-		return SLURM_ERROR;
+		return SLURM_SUCCESS;
 	}
 
 	xassert(job->magic == CRAY_JOBINFO_MAGIC);
@@ -398,10 +405,10 @@ switch_jobinfo_t *switch_p_copy_jobinfo(switch_jobinfo_t *switch_job) {
 	slurm_cray_jobinfo_t *new;
 	size_t sz;
 
-	if (NULL == switch_job) {
-		error("(%s: %d: %s) switch_job was NULL", THIS_FILE, __LINE__,
+	if (!old || (old->magic == CRAY_NULL_JOBINFO_MAGIC)) {
+		debug2("(%s: %d: %s) switch_job was NULL", THIS_FILE, __LINE__,
 				__FUNCTION__);
-		return NULL ;
+		return NULL;
 	}
 	xassert(((slurm_cray_jobinfo_t *)switch_job)->magic == CRAY_JOBINFO_MAGIC);
 
@@ -435,8 +442,12 @@ switch_jobinfo_t *switch_p_copy_jobinfo(switch_jobinfo_t *switch_job) {
 void switch_p_free_jobinfo(switch_jobinfo_t *switch_job) {
 	slurm_cray_jobinfo_t *job = (slurm_cray_jobinfo_t *) switch_job;
 	int i;
-	if (!job)
+
+	if (!job || (job->magic == CRAY_NULL_JOBINFO_MAGIC)) {
+		debug2("(%s: %d: %s) switch_job was NULL", THIS_FILE, __LINE__,
+				__FUNCTION__);
 		return;
+	}
 
 	if (job->magic != CRAY_JOBINFO_MAGIC) {
 		error("job is not a switch/cray slurm_cray_jobinfo_t");
@@ -484,13 +495,18 @@ int switch_p_pack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer,
 
 	slurm_cray_jobinfo_t *job = (slurm_cray_jobinfo_t *) switch_job;
 
-	if (NULL == switch_job) {
-		error("(%s: %d: %s) switch_job was NULL", THIS_FILE, __LINE__,
-				__FUNCTION__);
-		return SLURM_ERROR;
-	}
-	xassert(job->magic == CRAY_JOBINFO_MAGIC);
 	xassert(buffer);
+
+	/*
+	 * There is nothing to pack, so pack in magic telling unpack not to
+	 * attempt to unpack anything.
+	 */
+	if (!job || (job->magic == CRAY_NULL_JOBINFO_MAGIC)) {
+		pack32(CRAY_NULL_JOBINFO_MAGIC, buffer);
+		return 0;
+	}
+
+	xassert(job->magic == CRAY_JOBINFO_MAGIC);
 
 	if (debug_flags & DEBUG_FLAG_SWITCH) {
 		info("(%s: %d: %s) switch_jobinfo_t contents", THIS_FILE, __LINE__,
@@ -519,9 +535,9 @@ int switch_p_unpack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer,
 	uint32_t num_cookies;
 
 	if (NULL == switch_job) {
-		error("(%s: %d: %s) switch_job was NULL", THIS_FILE, __LINE__,
+		debug2("(%s: %d: %s) switch_job was NULL", THIS_FILE, __LINE__,
 				__FUNCTION__);
-		return SLURM_ERROR;
+		return SLURM_SUCCESS;
 	}
 
 	slurm_cray_jobinfo_t *job = (slurm_cray_jobinfo_t *) switch_job;
@@ -533,6 +549,13 @@ int switch_p_unpack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer,
 				__LINE__, __FUNCTION__, rc);
 		return SLURM_ERROR;
 	}
+
+	if (job->magic == CRAY_NULL_JOBINFO_MAGIC) {
+			debug2("(%s: %d: %s) Nothing to unpack.",
+					THIS_FILE, __LINE__, __FUNCTION__);
+			return SLURM_SUCCESS;
+	}
+
 	xassert(job->magic == CRAY_JOBINFO_MAGIC);
 	rc = unpack32(&(job->num_cookies), buffer);
 	if (rc != SLURM_SUCCESS) {
@@ -619,12 +642,14 @@ int switch_p_job_preinit(switch_jobinfo_t *jobinfo) {
 }
 
 extern int switch_p_job_init(stepd_step_rec_t *job) {
-	if (NULL == job) {
-		error("(%s: %d: %s) job was NULL", THIS_FILE, __LINE__, __FUNCTION__);
-		return SLURM_ERROR;
-	}
 
 	slurm_cray_jobinfo_t *sw_job = (slurm_cray_jobinfo_t *) job->switch_job;
+	if (!sw_job || (sw_job->magic == CRAY_NULL_JOBINFO_MAGIC)) {
+		debug2("(%s: %d: %s) job->switch_job was NULL", THIS_FILE, __LINE__,
+				__FUNCTION__);
+		return SLURM_SUCCESS;
+	}
+
 	xassert(sw_job->magic == CRAY_JOBINFO_MAGIC);
 	int rc, numPTags, cmdIndex, num_app_cpus, i, j, cnt;
 	int mem_scaling, cpu_scaling;
@@ -1162,13 +1187,14 @@ extern int switch_p_job_resume(void *suspend_info, int max_wait) {
 
 int switch_p_job_fini(switch_jobinfo_t *jobinfo) {
 
-	if (NULL == jobinfo) {
-		error("(%s: %d: %s) jobinfo was NULL", THIS_FILE, __LINE__,
+	slurm_cray_jobinfo_t *job = (slurm_cray_jobinfo_t *) jobinfo;
+
+	if (!job || (job->magic == CRAY_NULL_JOBINFO_MAGIC)) {
+		error("(%s: %d: %s) jobinfo pointer was NULL", THIS_FILE, __LINE__,
 				__FUNCTION__);
-		return SLURM_ERROR;
+		return SLURM_SUCCESS;
 	}
 
-	slurm_cray_jobinfo_t *job = (slurm_cray_jobinfo_t *) jobinfo;
 	xassert(job->magic == CRAY_JOBINFO_MAGIC);
 	int rc;
 	char *path_name = NULL;
@@ -1219,9 +1245,9 @@ int switch_p_job_postfini(stepd_step_rec_t *job) {
 	char *errMsg = NULL;
 	uid_t pgid = job->jmgr_pid;
 
-	if (NULL == job) {
-		error("(%s: %d: %s) job was NULL", THIS_FILE, __LINE__, __FUNCTION__);
-		return SLURM_ERROR;
+	if (NULL == job->switch_job) {
+		debug2("(%s: %d: %s) job->switch_job was NULL", THIS_FILE, __LINE__,
+				__FUNCTION__);
 	}
 
 	/*
@@ -1343,10 +1369,10 @@ extern int switch_p_job_step_complete(switch_jobinfo_t *jobinfo,
 	char *errMsg = NULL;
 	int rc = 0;
 
-	if (NULL == jobinfo) {
-		error("(%s: %d: %s) jobinfo was NULL", THIS_FILE, __LINE__,
+	if (!job || (job->magic == CRAY_NULL_JOBINFO_MAGIC)) {
+		debug2("(%s: %d: %s) switch_job was NULL", THIS_FILE, __LINE__,
 				__FUNCTION__);
-		return SLURM_ERROR;
+		return SLURM_SUCCESS;
 	}
 
 	if (debug_flags & DEBUG_FLAG_SWITCH) {
