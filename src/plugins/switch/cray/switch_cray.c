@@ -1,8 +1,8 @@
 /*****************************************************************************\
  *  switch_cray.c - Library for managing a switch on a Cray system.
  *****************************************************************************
- *  Copyright (C) 2013 Cray
- *  Written by Jason Sollom <jasons@cray.com>
+ *  Copyright (C) 2013 SchedMD LLC
+ *  Written by Danny Auble <da@schedmd.com>
  *  CODE-OCEC-09-009. All rights reserved.
  *
  *  This file is part of SLURM, a resource management program.
@@ -34,6 +34,10 @@
  *  with SLURM; if not, write to the Free Software Foundation, Inc.,
  *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA.
 \*****************************************************************************/
+
+ /*
+  * Copyright 2013 Cray Inc. All Rights Reserved.
+  */
 
 #if     HAVE_CONFIG_H
 #include "config.h"
