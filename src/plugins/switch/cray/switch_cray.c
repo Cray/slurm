@@ -59,6 +59,7 @@
 #include <linux/limits.h>
 #include <sched.h>
 #include <math.h>
+#include <job.h>
 
 #include "slurm/slurm.h"
 #include "slurm/slurm_errno.h"
@@ -1154,6 +1155,11 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 			free(errMsg);
 		}
 	}
+
+	/*
+	 * Set the Job's APID
+	 */
+	job_setapid(getpid(), sw_job->apid);
 
 	return SLURM_SUCCESS;
 }
