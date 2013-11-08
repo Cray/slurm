@@ -388,24 +388,39 @@ extern int task_p_post_step (stepd_step_rec_t *job)
 	/*
 	 * Compact Memory
 	 *
-	 * Determine which NUMA nodes an application is using.  It will be used to
-	 * compact the memory.
+	 * Determine which NUMA nodes and CPUS an application is using.  It will
+	 * be used to compact the memory.
 	 *
-	 * You'll find the NUMA node information in the following location.
-	 * /dev/cpuset/slurm/uid_<uid>/job_<jobID>/step_<stepID>/mems
+	 * You'll find the information in the following location.
+	 * For a normal job step:
+	 * /dev/cpuset/slurm/uid_<uid>/job_<jobID>/step_<stepID>/
 	 *
-	 * Do the same for the CPU Masks.
+	 * For a batch job step (only on the head node and only for batch jobs):
+	 * /dev/cpuset/slurm/uid_<uid>/job_<jobID>/step_batch/
 	 *
-	 * You'll find the NUMA node information in the following location.
-	 * /dev/cpuset/slurm/uid_<uid>/job_<jobID>/step_<stepID>/cpus
+	 * NUMA node: mems
+	 * CPU Masks: cpus
 	 */
 
-	rc = snprintf(path, sizeof(path), "/dev/cpuset/slurm/uid_%d/job_%" PRIu32
-			"/step_%" PRIu32, job->uid, job->jobid, job->stepid);
-	if (rc < 0) {
-		error("(%s: %d: %s) snprintf failed. Return code: %d", THIS_FILE,
-				__LINE__, __FUNCTION__, rc);
-		return SLURM_ERROR;
+
+	if ((job->stepid == NO_VAL) || (job->stepid == SLURM_BATCH_SCRIPT)) {
+		// Batch Job Step
+		rc = snprintf(path, sizeof(path), "/dev/cpuset/slurm/uid_%d/job_%" PRIu32
+				"/step_batch", job->uid, job->jobid);
+		if (rc < 0) {
+			error("(%s: %d: %s) snprintf failed. Return code: %d", THIS_FILE,
+					__LINE__, __FUNCTION__, rc);
+			return SLURM_ERROR;
+		}
+	} else {
+		// Normal Job Step
+		rc = snprintf(path, sizeof(path), "/dev/cpuset/slurm/uid_%d/job_%" PRIu32
+				"/step_%" PRIu32, job->uid, job->jobid, job->stepid);
+		if (rc < 0) {
+			error("(%s: %d: %s) snprintf failed. Return code: %d", THIS_FILE,
+					__LINE__, __FUNCTION__, rc);
+			return SLURM_ERROR;
+		}
 	}
 
 	rc = _get_numa_nodes(path, &cnt, &numa_nodes);
