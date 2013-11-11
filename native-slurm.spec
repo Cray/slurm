@@ -496,6 +496,7 @@ DESTDIR="$RPM_BUILD_ROOT" make install-contrib
    rm -f $RPM_BUILD_ROOT/%{_libdir}/libpmi*
    install -D -m644 contribs/cray/opt_modulefiles_slurm $RPM_BUILD_ROOT/opt/modulefiles/slurm/%{version}-%{release}
    echo -e '#%Module\nset ModulesVersion "%{version}-%{release}"' > $RPM_BUILD_ROOT/opt/modulefiles/slurm/.version 
+   mkdir -p $RPM_BUILD_ROOT/var/spool/slurm
 %else
    rm -f contribs/cray/opt_modulefiles_slurm
 %endif
@@ -772,8 +773,11 @@ rm -rf $RPM_BUILD_ROOT
 %dir %{_libdir}/slurm/src
 %if %{slurm_with cray} || %{slurm_with cray_alps}
 %dir /opt/modulefiles/slurm
+%dir /var/spool/slurm/
 /opt/modulefiles/slurm/.version
 /opt/modulefiles/slurm/%{version}-%{release}
+%config %{_sysconfdir}/slurm.conf.template
+%{_sbindir}/slurmconfgen.py
 %endif
 %config %{_sysconfdir}/slurm.conf.example
 %config %{_sysconfdir}/cgroup.conf.example

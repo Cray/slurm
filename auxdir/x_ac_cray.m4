@@ -14,7 +14,10 @@
 #    * libexpat, needed for XML-RPC calls to Cray's BASIL
 #      (Batch Application  Scheduler Interface Layer) interface.
 #*****************************************************************************
-
+#
+# Copyright 2013 Cray Inc. All Rights Reserved.
+#
+ 
 AC_DEFUN([X_AC_CRAY],
 [
   ac_have_native_cray="no"
