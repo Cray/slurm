@@ -1,6 +1,13 @@
 This file describes changes in recent versions of SLURM. It primarily
 documents those changes that are of interest to users and admins.
 
+* Changes in Slurm 13.12.0pre5
+==============================
+ -- Added squeue format option of "%X" (core specialization count).
+ -- Added core specialization web page (just a start for now).
+ -- Added the SLURM_ARRAY_JOB_ID and SLURM_ARRAY_TASK_ID
+    in epilogi slurmctld environment.
+
 * Changes in Slurm 13.12.0pre4
 ==============================
  -- Remove the ThreadID documentation from slurm.conf. This functionality has
@@ -24,6 +31,12 @@ documents those changes that are of interest to users and admins.
     central location.
  -- Added configuration parameter FairShareDampeningFactor to offer a greater
     priority range based upon utilization.
+ -- Change MaxArraySize and job's array_task_id from 16-bit to 32-bit field.
+ -- Added -S/--core-spec option to salloc, sbatch and srun commands to reserve
+    specialized cores for system use. Modify scontrol and sview to get/set
+    the new field
+    struct job_info / slurm_job_info_t: Added core_spec
+    struct job_descriptorjob_desc_msg_t: Added core_spec
 
 * Changes in Slurm 13.12.0pre3
 ==============================
@@ -121,6 +134,12 @@ documents those changes that are of interest to users and admins.
  -- Sched/backfill - Change default max_job_bf parameter from 50 to 100.
  -- Added -I|--item-extract option to sh5util to extract data item from series.
 
+* Changes in Slurm 2.6.5
+========================
+ -- Correction to hostlist parsing bug introduced in v2.6.4 for hostlists with
+    more than one numeric range in brackets (e.g. rack[0-3]_blade[0-63]").
+ -- Add notification if using proctrack/cgroup and task/cgroup when oom hits.
+
 * Changes in Slurm 2.6.4
 ========================
  -- Fixed sh5util to print its usage.
@@ -181,6 +200,7 @@ documents those changes that are of interest to users and admins.
     a job too early.
  -- sched/wiki, sched/wiki2 - Fix to work with change logic introduced in
     version 2.6.3 preventing Maui/Moab from starting jobs.
+ -- Updated the QOS limits documentation and man page.
 
 * Changes in Slurm 2.6.3
 ========================
