@@ -213,16 +213,14 @@ extern int task_p_pre_setuid (stepd_step_rec_t *job)
 extern int task_p_pre_launch (stepd_step_rec_t *job)
 {
 	int rc;
-	char buff[1024];
 
 	debug("task_p_pre_launch: %u.%u, task %d",
 	      job->jobid, job->stepid, job->envtp->procid);
-
 	/*
 	 * Send the rank to the application's PMI layer via an environment variable.
 	 */
-	snprintf(buff, sizeof(buff), "%d", job->envtp->procid);
-	rc = env_array_overwrite(&job->env,"ALPS_APP_PE", buff);
+	rc = env_array_overwrite_fmt(&job->env, "ALPS_APP_PE", 
+				     "%d", job->envtp->procid);
 	if (rc == 0) {
 		error("Failed to set env variable ALPS_APP_PE");
 		return SLURM_ERROR;
@@ -238,10 +236,10 @@ extern int task_p_pre_launch (stepd_step_rec_t *job)
 	}
 
 	// Notify the task which offset to use
-	snprintf(buff, sizeof(buff), "%d", job->envtp->localid + 1);
-	rc = env_array_overwrite(&job->env, LLI_STATUS_OFFS_ENV, buff);
+	rc = env_array_overwrite_fmt(&job->env, LLI_STATUS_OFFS_ENV, 
+				     "%d", job->envtp->localid + 1);
 	if (rc == 0) {
-		error("Failed to set env variable %s", LLI_STATUS_OFFS_ENV);
+		error("%s: Failed to set %s", __func__, LLI_STATUS_OFFS_ENV);
 		return SLURM_ERROR;
 	}
 
@@ -380,7 +378,7 @@ extern int task_p_post_step (stepd_step_rec_t *job)
 		SLURM_ID_HASH(job->jobid, job->stepid));
 
 	// Unlink the file
-	errno = 0; 
+	errno = 0;
 	rc = unlink(llifile);
 	if (rc == -1 && errno != ENOENT) {
 		error("%s: unlink(%s) failed: %m", __func__, llifile);
