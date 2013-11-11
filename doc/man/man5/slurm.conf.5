@@ -193,7 +193,7 @@ execution of the command "sudo modprobe msr".
 \fBAcctGatherInfinibandType\fR
 Identifies the plugin to be used for infiniband network traffic accounting.
 The plugin is activated only when profiling on hdf5 files is activated and
-the user asks for network data collection for jobs through --profile=Network
+the user asks for network data collection for jobs through \-\-profile=Network
 (or =All). The collection of network traffic data takes place on node level,
 hence only in case of exclusive job allocation the collected values will
 reflect the jobs real traffic. All network traffic data are logged on hdf5 files
@@ -777,7 +777,7 @@ The default value is unlimited (zero) and may not exceed 65533 seconds.
 The job accounting mechanism type.
 Acceptable values at present include "jobacct_gather/aix" (for AIX operating
 system), "jobacct_gather/linux" (for Linux operating system),
-"jobacct_gather/cgroup" (experimental) and "jobacct_gather/none"
+"jobacct_gather/cgroup" and "jobacct_gather/none"
 (no accounting data collected).
 The default value is "jobacct_gather/none".
 "jobacct_gather/cgroup" is an experimental plugin for the Linux operating system

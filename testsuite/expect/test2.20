@@ -1,16 +1,14 @@
 #!/usr/bin/expect
 ############################################################################
 # Purpose: Test of SLURM functionality
-#          qsub command tests
+#          Validate scontrol show hostnames.
 #
 # Output:  "TEST: #.#" followed by "SUCCESS" if test was successful, OR
 #          "FAILURE: ..." otherwise with an explanation of the failure, OR
 #          anything else indicates a failure mode that must be investigated.
 ############################################################################
-# Copyright (C) 2007 The Regents of the University of California.
-# Produced at Lawrence Livermore National Laboratory (cf, DISCLAIMER).
-# Written by Morris Jette <jette1@llnl.gov>
-# CODE-OCEC-09-009. All rights reserved.
+# Copyright (C) 2013 SchedMD LLC
+# Written by Morris Jette
 #
 # This file is part of SLURM, a resource management program.
 # For details, see <http://slurm.schedmd.com/>.
@@ -28,90 +26,86 @@
 #
 # You should have received a copy of the GNU General Public License along
 # with SLURM; if not, write to the Free Software Foundation, Inc.,
-# 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA.
 ############################################################################
 source ./globals
 
-set test_id     "20.1"
+set test_id     "2.20"
 set exit_code   0
-set file_err	"test$test_id.error"
-set file_in	"test$test_id.input"
-set file_out	"test$test_id.output"
 
 print_header $test_id
 
-if {[file executable $qsub] == 0} {
-	send_user "\nWARNING: $qsub not found\n"
-	exit 0
-}
-
-set job_id 0
-exec rm -f $file_out $file_err
-make_bash_script $file_in "$bin_echo HELLO; $bin_cat /dummy_file"
-spawn $qsub -l walltime=1:00 -e $file_err -o $file_out $file_in
+#
+# test single bracket hostnames
+#
+set matches 0
+spawn $scontrol show hostnames rack\[0-3\]
 expect {
-	-re "($number)" {
-		set job_id $expect_out(1,string)
+	-re "rack0" {
+		incr matches
+		exp_continue
+	}
+	-re "rack1" {
+		incr matches
+		exp_continue
+	}
+	-re "rack2" {
+		incr matches
+		exp_continue
+	}
+	-re "rack3" {
+		incr matches
 		exp_continue
 	}
 	timeout {
-		send_user "\nFAILURE: qsub not responding\n"
+		send_user "\nFAILURE: scontrol not responding\n"
 		set exit_code 1
 	}
 	eof {
 		wait
 	}
 }
-if {$job_id == 0} {
-	send_user "\nFAILURE: qsub failed to submit job\n"
-	exit 1
-}
-
-if {[wait_for_file $file_out] != 0} {
-	send_user "\nFAILURE: qsub output file not found\n"
-	catch {exec $qdel $job_id}
-	exit 1
-}
-set matches 0
-spawn $bin_cat $file_out
-expect {
-	-re "HELLO" {
-		incr matches
-		exp_continue
-	}
-	eof {
-		wait
-	}
-}
-if {$matches != 1} {
-	send_user "\nFAILURE: unexpected qsub output file contents\n"
+if {$matches != 4} {
+	send_user "\nFAILURE: show hostnames failure ($matches != 4)\n"
 	set exit_code 1
 }
 
-if {[wait_for_file $file_err] != 0} {
-	send_user "\nFAILURE: qsub error file not found\n"
-	catch {exec $qdel $job_id}
-	exit 1
-}
+#
+# test double bracket hostnames
+#
 set matches 0
-spawn $bin_cat $file_err
+spawn $scontrol show hostnames rack\[0-1\]_blade\[0-1\]
 expect {
-	-re "No such file" {
-		send_user "message from cat expected, no worries.\n"
+	-re "rack0_blade0" {
 		incr matches
 		exp_continue
+	}
+	-re "rack0_blade1" {
+		incr matches
+		exp_continue
+	}
+	-re "rack1_blade0" {
+		incr matches
+		exp_continue
+	}
+	-re "rack1_blade1" {
+		incr matches
+		exp_continue
+	}
+	timeout {
+		send_user "\nFAILURE: scontrol not responding\n"
+		set exit_code 1
 	}
 	eof {
 		wait
 	}
 }
-if {$matches != 1} {
-	send_user "\nFAILURE: unexpected qsub error file contents\n"
+if {$matches != 4} {
+	send_user "\nFAILURE: show hostnames failure ($matches != 4)\n"
 	set exit_code 1
 }
 
 if {$exit_code == 0} {
-	exec $bin_rm -f $file_in $file_out $file_err
 	send_user "\nSUCCESS\n"
 }
 exit $exit_code

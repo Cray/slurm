@@ -445,6 +445,8 @@ int setup_env(env_t *env, bool preserve_env)
 			xstrcat(str_bind_type, "sockets,");
 		} else if (env->cpu_bind_type & CPU_BIND_TO_LDOMS) {
 			xstrcat(str_bind_type, "ldoms,");
+		} else if (env->cpu_bind_type & CPU_BIND_TO_BOARDS) {
+			xstrcat(str_bind_type, "boards,");
 		}
 		if (env->cpu_bind_type & CPU_BIND_NONE) {
 			xstrcat(str_bind_type, "none");
@@ -1115,7 +1117,7 @@ env_array_for_batch_job(char ***dest, const batch_job_launch_msg_t *batch,
 		env_array_overwrite_fmt(dest, "SLURM_BG_NUM_NODES",
 					"%u", num_nodes);
 	}
-	if (batch->array_task_id != (uint16_t) NO_VAL) {
+	if (batch->array_task_id != NO_VAL) {
 		env_array_overwrite_fmt(dest, "SLURM_ARRAY_JOB_ID", "%u",
 					batch->array_job_id);
 		env_array_overwrite_fmt(dest, "SLURM_ARRAY_TASK_ID", "%u",

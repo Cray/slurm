@@ -426,6 +426,7 @@ struct job_details {
 	char *ckpt_dir;			/* directory to store checkpoint
 					 * images */
 	uint16_t contiguous;		/* set if requires contiguous nodes */
+	uint16_t core_spec;		/* specialized core count */
 	char *cpu_bind;			/* binding map for map/mask_cpu */
 	uint16_t cpu_bind_type;		/* see cpu_bind_type_t */
 	uint16_t cpus_per_task;		/* number of processors required for
@@ -498,7 +499,7 @@ struct job_record {
 	uint16_t alloc_resp_port;	/* RESPONSE_RESOURCE_ALLOCATION port */
 	uint32_t alloc_sid;		/* local sid making resource alloc */
 	uint32_t array_job_id;		/* job_id of a job array or 0 if N/A */
-	uint16_t array_task_id;		/* task_id of a job array */
+	uint32_t array_task_id;		/* task_id of a job array */
 	uint32_t assoc_id;              /* used for accounting plugins */
 	void    *assoc_ptr;		/* job's association record ptr, it is
 					 * void* because of interdependencies
@@ -662,7 +663,7 @@ struct job_record {
 						 * user/name at a time */
 #define SLURM_DEPEND_EXPAND		6	/* Expand running job */
 struct	depend_spec {
-	uint16_t	array_task_id;	/* INFINITE for all array tasks */
+	uint32_t	array_task_id;	/* INFINITE for all array tasks */
 	uint16_t	depend_type;	/* SLURM_DEPEND_* type */
 	uint32_t	job_id;		/* SLURM job_id */
 	struct job_record *job_ptr;	/* pointer to this job */
@@ -901,7 +902,7 @@ extern List feature_list_copy(List feature_list_src);
  * RET pointer to the job's record, NULL on error
  */
 extern struct job_record *find_job_array_rec(uint32_t array_job_id,
-					     uint16_t array_task_id);
+					     uint32_t array_task_id);
 
 /*
  * find_job_record - return a pointer to the job record with the given job_id

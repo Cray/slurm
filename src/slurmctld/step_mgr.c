@@ -3,7 +3,7 @@
  *****************************************************************************
  *  Copyright (C) 2002-2007 The Regents of the University of California.
  *  Copyright (C) 2008-2010 Lawrence Livermore National Security.
- *  Copyright (C) 2012 SchedMD LLC.
+ *  Copyright (C) 2012-2013 SchedMD LLC.
  *  Produced at Lawrence Livermore National Laboratory (cf, DISCLAIMER).
  *  Written by Morris Jette <jette1@llnl.gov>, et. al.
  *  CODE-OCEC-09-009. All rights reserved.
@@ -1170,7 +1170,7 @@ _pick_step_nodes (struct job_record  *job_ptr,
 
 	if (step_spec->node_list) {
 		bitstr_t *selected_nodes = NULL;
-		if (slurm_get_debug_flags() & DEBUG_FLAG_STEPS)
+		if (slurmctld_conf.debug_flags & DEBUG_FLAG_STEPS)
 			info("selected nodelist is %s", step_spec->node_list);
 
 		error_code = node_name2bitmap(step_spec->node_list, false,
@@ -1292,7 +1292,7 @@ _pick_step_nodes (struct job_record  *job_ptr,
 			if (step_p->state < JOB_RUNNING)
 				continue;
 			bit_or(nodes_idle, step_p->step_node_bitmap);
-			if (slurm_get_debug_flags() & DEBUG_FLAG_STEPS) {
+			if (slurmctld_conf.debug_flags & DEBUG_FLAG_STEPS) {
 				char *temp;
 				temp = bitmap2node_name(step_p->
 							step_node_bitmap);
@@ -1306,7 +1306,7 @@ _pick_step_nodes (struct job_record  *job_ptr,
 		bit_and(nodes_idle, nodes_avail);
 	}
 
-	if (slurm_get_debug_flags() & DEBUG_FLAG_STEPS) {
+	if (slurmctld_conf.debug_flags & DEBUG_FLAG_STEPS) {
 		char *temp1, *temp2, *temp3;
 		temp1 = bitmap2node_name(nodes_avail);
 		temp2 = bitmap2node_name(nodes_idle);
@@ -1358,7 +1358,7 @@ _pick_step_nodes (struct job_record  *job_ptr,
 
 		}
 		nodes_picked_cnt = bit_set_count(nodes_picked);
-		if (slurm_get_debug_flags() & DEBUG_FLAG_STEPS) {
+		if (slurmctld_conf.debug_flags & DEBUG_FLAG_STEPS) {
 			verbose("step picked %d of %u nodes",
 				nodes_picked_cnt, step_spec->min_nodes);
 		}
@@ -1757,9 +1757,9 @@ extern void step_alloc_lps(struct step_record *step_ptr)
 					 step_ptr->step_layout->
 					 tasks[step_node_inx]);
 		}
-		if (slurm_get_debug_flags() & DEBUG_FLAG_CPU_BIND)
+		if (slurmctld_conf.debug_flags & DEBUG_FLAG_CPU_BIND)
 			_dump_step_layout(step_ptr);
-		if (slurm_get_debug_flags() & DEBUG_FLAG_STEPS) {
+		if (slurmctld_conf.debug_flags & DEBUG_FLAG_STEPS) {
 			info("step alloc of %s procs: %u of %u",
 			     node_record_table_ptr[i_node].name,
 			     job_resrcs_ptr->cpus_used[job_node_inx],
@@ -1882,7 +1882,7 @@ static void _step_dealloc_lps(struct step_record *step_ptr)
 				job_resrcs_ptr->memory_used[job_node_inx] = 0;
 			}
 		}
-		if (slurm_get_debug_flags() & DEBUG_FLAG_STEPS) {
+		if (slurmctld_conf.debug_flags & DEBUG_FLAG_STEPS) {
 			info("step dealloc of %s procs: %u of %u",
 			     node_record_table_ptr[i_node].name,
 			     job_resrcs_ptr->cpus_used[job_node_inx],
@@ -2171,7 +2171,7 @@ step_create(job_step_create_request_msg_t *step_specs,
 		xfree(step_specs->node_list);
 		step_specs->node_list = xstrdup(step_node_list);
 	}
-	if (slurm_get_debug_flags() & DEBUG_FLAG_STEPS) {
+	if (slurmctld_conf.debug_flags & DEBUG_FLAG_STEPS) {
 		verbose("Picked nodes %s when accumulating from %s",
 			step_node_list, step_specs->node_list);
 	}
@@ -2496,9 +2496,43 @@ static void _pack_ctld_job_step_info(struct step_record *step_ptr, Buf buffer,
 	cpu_cnt = step_ptr->cpu_count;
 #endif
 
-	if (protocol_version >= SLURM_2_6_PROTOCOL_VERSION) {
+	if (protocol_version >= SLURM_13_12_PROTOCOL_VERSION) {
 		pack32(step_ptr->job_ptr->array_job_id, buffer);
-		pack16(step_ptr->job_ptr->array_task_id, buffer);
+		pack32(step_ptr->job_ptr->array_task_id, buffer);
+		pack32(step_ptr->job_ptr->job_id, buffer);
+		pack32(step_ptr->step_id, buffer);
+		pack16(step_ptr->ckpt_interval, buffer);
+		pack32(step_ptr->job_ptr->user_id, buffer);
+		pack32(cpu_cnt, buffer);
+		pack32(step_ptr->cpu_freq, buffer);
+		pack32(task_cnt, buffer);
+		pack32(step_ptr->time_limit, buffer);
+		pack16(step_ptr->state, buffer);
+
+		pack_time(step_ptr->start_time, buffer);
+		if (IS_JOB_SUSPENDED(step_ptr->job_ptr)) {
+			run_time = step_ptr->pre_sus_time;
+		} else {
+			begin_time = MAX(step_ptr->start_time,
+					 step_ptr->job_ptr->suspend_time);
+			run_time = step_ptr->pre_sus_time +
+				difftime(time(NULL), begin_time);
+		}
+		pack_time(run_time, buffer);
+
+		packstr(step_ptr->job_ptr->partition, buffer);
+		packstr(step_ptr->resv_ports, buffer);
+		packstr(node_list, buffer);
+		packstr(step_ptr->name, buffer);
+		packstr(step_ptr->network, buffer);
+		pack_bit_fmt(pack_bitstr, buffer);
+		packstr(step_ptr->ckpt_dir, buffer);
+		packstr(step_ptr->gres, buffer);
+		select_g_select_jobinfo_pack(step_ptr->select_jobinfo, buffer,
+					     protocol_version);
+	} else if (protocol_version >= SLURM_2_6_PROTOCOL_VERSION) {
+		pack32(step_ptr->job_ptr->array_job_id, buffer);
+		pack16((uint16_t) step_ptr->job_ptr->array_task_id, buffer);
 		pack32(step_ptr->job_ptr->job_id, buffer);
 		pack32(step_ptr->step_id, buffer);
 		pack16(step_ptr->ckpt_interval, buffer);
