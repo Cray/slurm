@@ -1059,6 +1059,12 @@ extern bitstr_t *select_p_step_pick_nodes(struct job_record *job_ptr,
 
 extern int select_p_step_start(struct step_record *step_ptr)
 {
+#ifdef HAVE_NATIVE_CRAY
+	if (aeld_running) {
+		_update_app(step_ptr->job_ptr, step_ptr, ALPSC_EV_START);
+	}
+#endif
+
 	return other_step_finish(step_ptr);
 }
 
@@ -1219,31 +1225,19 @@ extern int select_p_select_jobinfo_set(select_jobinfo_t *jobinfo,
 {
 	int rc = SLURM_SUCCESS;
 	uint16_t *uint16 = (uint16_t *) data;
-	struct step_record *step_ptr;
 
-	// STEP_START doesn't use jobinfo, skip checks
-	if (data_type != SELECT_JOBDATA_STEP_START) {	
-		if (jobinfo == NULL) {
-			error("select/cray jobinfo_set: jobinfo not set");
-			return SLURM_ERROR;
-		}
-		if (jobinfo->magic != JOBINFO_MAGIC) {
-			error("select/cray jobinfo_set: jobinfo magic bad");
-			return SLURM_ERROR;
-		}
+	if (jobinfo == NULL) {
+		error("select/cray jobinfo_set: jobinfo not set");
+		return SLURM_ERROR;
+	}
+	if (jobinfo->magic != JOBINFO_MAGIC) {
+		error("select/cray jobinfo_set: jobinfo magic bad");
+		return SLURM_ERROR;
 	}
 
 	switch (data_type) {
 	case SELECT_JOBDATA_CLEANING:
 		jobinfo->cleaning = *uint16;
-		break;
-	case SELECT_JOBDATA_STEP_START:
-#ifdef HAVE_NATIVE_CRAY
-		if (aeld_running) {
-			step_ptr = (struct step_record *)data;
-			_update_app(step_ptr->job_ptr, step_ptr, ALPSC_EV_START);
-		}
-#endif
 		break;
 	default:
 		rc = other_select_jobinfo_set(jobinfo, data_type, data);
