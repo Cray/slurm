@@ -395,7 +395,6 @@ enum select_jobdata_type {
 	SELECT_JOBDATA_CONFIRMED, /* data-> uint8_t ALPS reservation confirmed */
 	SELECT_JOBDATA_CLEANING, /* data-> uint16_t if the job is in
 				  * cleaning state or not. */
-	SELECT_JOBDATA_STEP_START, /* data-> step_record called when step starts */ 
 };
 
 enum select_nodedata_type {

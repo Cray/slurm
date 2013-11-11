@@ -2307,11 +2307,6 @@ step_create(job_step_create_request_msg_t *step_specs,
 	if (!with_slurmdbd && !job_ptr->db_index)
 		jobacct_storage_g_job_start(acct_db_conn, job_ptr);
 
-#ifdef HAVE_NATIVE_CRAY
-	// Indicate to select/cray that the step has started
-	select_g_select_jobinfo_set(select_jobinfo, SELECT_JOBDATA_STEP_START, 
-			step_ptr);
-#endif
 	select_g_step_start(step_ptr);
 
 	jobacct_storage_g_step_start(acct_db_conn, step_ptr);
