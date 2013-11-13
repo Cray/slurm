@@ -77,6 +77,13 @@
  */
 #define CRAY_JOBINFO_MAGIC	0xCAFECAFE
 #define CRAY_NULL_JOBINFO_MAGIC	0xDEAFDEAF
+#define MIN_PORT	20000
+#define MAX_PORT	30000
+#define ATTEMPTS	2
+
+static int port_cnt = MAX_PORT - MIN_PORT + 1;
+static uint32_t port_resv[MAX_PORT - MIN_PORT + 1];
+static uint32_t last_alloc_port = MAX_PORT - MIN_PORT;
 static uint32_t debug_flags = 0;
 
 /*
@@ -139,6 +146,7 @@ static int _get_cpu_total(void);
 static int _init_port();
 static int _assign_port(uint32_t *ret_port);
 static int _release_port(uint32_t real_port);
+static void _free_alpsc_peInfo(alpsc_peInfo_t alpsc_peInfo);
 
 static void _print_alpsc_peInfo(alpsc_peInfo_t alps_info) {
 	int i;
@@ -551,7 +559,7 @@ int switch_p_unpack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer,
 	if (rc != SLURM_SUCCESS) {
 		error("(%s: %d: %s) unpack32 of magic failed. Return code: %d", THIS_FILE,
 				__LINE__, __FUNCTION__, rc);
-		return SLURM_ERROR;
+		goto unpack_error;
 	}
 
 	if (job->magic == CRAY_NULL_JOBINFO_MAGIC) {
@@ -565,38 +573,38 @@ int switch_p_unpack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer,
 	if (rc != SLURM_SUCCESS) {
 		error("(%s: %d: %s) unpack32 of num_cookies failed. Return code: %d",
 				THIS_FILE, __LINE__, __FUNCTION__, rc);
-		return SLURM_ERROR;
+		goto unpack_error;
 	}
 	rc = unpackstr_array(&(job->cookies), &num_cookies, buffer);
 	if (rc != SLURM_SUCCESS) {
 		error("(%s: %d: %s) unpackstr_array cookies failed. Return code: %d",
 				THIS_FILE, __LINE__, __FUNCTION__, rc);
-		return SLURM_ERROR;
+		goto unpack_error;
 	}
 	if (num_cookies != job->num_cookies) {
 		error("(%s: %d: %s) Wrong number of cookies received.  Expected: %"
 		PRIu32 "Received: %" PRIu32, THIS_FILE, __LINE__, __FUNCTION__,
 				job->num_cookies, num_cookies);
-		return SLURM_ERROR;
+		goto unpack_error;
 	}
 	rc = unpack32_array(&(job->cookie_ids), &num_cookies, buffer);
 	if (rc != SLURM_SUCCESS) {
 		error("(%s: %d: %s) unpack32_array cookie IDs failed. Return code: %d",
 				THIS_FILE, __LINE__, __FUNCTION__, rc);
-		return SLURM_ERROR;
+		goto unpack_error;
 	}
 	if (num_cookies != job->num_cookies) {
 		error("(%s: %d: %s) Wrong number of cookie IDs received.  Expected: %"
 		PRIu32 "Received: %" PRIu32, THIS_FILE, __LINE__, __FUNCTION__,
 				job->num_cookies, num_cookies);
-		return SLURM_ERROR;
+		goto unpack_error;
 	}
 
 	rc = unpack32(&job->port, buffer);
 	if (rc != SLURM_SUCCESS) {
 		error("(%s: %d: %s) unpack32 PMI port failed. Return code: %d",
 				THIS_FILE, __LINE__, __FUNCTION__, rc);
-		return SLURM_ERROR;
+		goto unpack_error;
 	}
 
 	rc = unpack_slurm_step_layout(&(job->step_layout), buffer,
@@ -604,7 +612,7 @@ int switch_p_unpack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer,
 	if (rc != SLURM_SUCCESS) {
 		error("(%s: %d: %s) unpack32 step_layout failed. Return code: %d",
 				THIS_FILE, __LINE__, __FUNCTION__, rc);
-		return SLURM_ERROR;
+		goto unpack_error;
 	}
 
 	if (debug_flags & DEBUG_FLAG_SWITCH) {
@@ -614,6 +622,21 @@ int switch_p_unpack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer,
 	}
 
 	return SLURM_SUCCESS;
+
+unpack_error:
+	error("(%s:%d: %s) Unpacking error", THIS_FILE, __LINE__,
+				__FUNCTION__);
+	if (job->cookies) {
+		xfree(job->cookies);
+	}
+	if (job->cookie_ids) {
+		xfree(job->cookie_ids);
+	}
+	if (job->step_layout) {
+		slurm_step_layout_destroy(job->step_layout);
+	}
+	slurm_seterrno_ret(EUNPACK);
+	return SLURM_ERROR;
 }
 
 void switch_p_print_jobinfo(FILE *fp, switch_jobinfo_t *jobinfo) {
@@ -648,20 +671,13 @@ int switch_p_job_preinit(switch_jobinfo_t *jobinfo) {
 extern int switch_p_job_init(stepd_step_rec_t *job) {
 
 	slurm_cray_jobinfo_t *sw_job = (slurm_cray_jobinfo_t *) job->switch_job;
-	if (!sw_job || (sw_job->magic == CRAY_NULL_JOBINFO_MAGIC)) {
-		debug2("(%s: %d: %s) job->switch_job was NULL", THIS_FILE, __LINE__,
-				__FUNCTION__);
-		return SLURM_SUCCESS;
-	}
-
-	xassert(sw_job->magic == CRAY_JOBINFO_MAGIC);
 	int rc, numPTags, cmdIndex, num_app_cpus, i, j, cnt;
 	int mem_scaling, cpu_scaling;
 	int total_cpus = 0;
 	uint32_t total_mem = 0, app_mem = 0;
 	int *pTags = NULL;
 	char *errMsg = NULL, *apid_dir = NULL;
-	alpsc_peInfo_t alpsc_peInfo;
+	alpsc_peInfo_t alpsc_peInfo = {-1, -1, -1, -1, NULL, NULL, NULL};
 	FILE *f = NULL;
 	size_t sz = 0;
 	ssize_t lsz;
@@ -676,6 +692,14 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 	int gpu_cnt = 0;
 	char *buff;
 	int cleng = 0;
+
+	if (!sw_job || (sw_job->magic == CRAY_NULL_JOBINFO_MAGIC)) {
+		debug2("(%s: %d: %s) job->switch_job was NULL", THIS_FILE, __LINE__,
+				__FUNCTION__);
+		return SLURM_SUCCESS;
+	}
+
+	xassert(sw_job->magic == CRAY_JOBINFO_MAGIC);
 
 	if (debug_flags & DEBUG_FLAG_SWITCH) {
 		info("(%s:%d: %s) Job ID (in JOB): %" PRIu32
@@ -712,9 +736,9 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 	 * Make its owner be the user who launched the application and under which
 	 * the application will run.
 	 */
-	rc = asprintf(&apid_dir, LEGACY_SPOOL_DIR "%" PRIu64, sw_job->apid);
-	if (rc == -1) {
-		error("(%s: %d: %s) asprintf failed", THIS_FILE, __LINE__,
+	apid_dir = xstrdup_printf(LEGACY_SPOOL_DIR "%" PRIu64, sw_job->apid);
+	if (NULL == apid_dir) {
+		error("(%s: %d: %s) xstrdup_printf failed", THIS_FILE, __LINE__,
 				__FUNCTION__);
 		return SLURM_ERROR;
 	}
@@ -812,9 +836,9 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 			return SLURM_ERROR;
 		}
 
-		cpu_scaling = floor(
+		cpu_scaling =
 				(((double) num_app_cpus / (double) total_cpus) * (double) 100)
-						+ 0.5);
+						+ 0.5;
 		if (cpu_scaling > 100) {
 			error(
 					"(%s: %d: %s) Cpu scaling out of bounds: %d.  "
@@ -830,27 +854,24 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 		}
 
 		/*
-		 * Figure out the correct amount of application memory.
-		 * The MEM_PER_CPU flag means that job->step_mem is the amount of
-		 * memory per CPU, not total.  Therefore, scale it accordingly.
-		 */
-		if (job->step_mem & MEM_PER_CPU) {
-			app_mem = (job->step_mem * num_app_cpus);
-		} else {
-			app_mem = job->step_mem;
-		}
-
-		/*
 		 * Scale total_mem, which is in kilobytes, to megabytes because app_mem
 		 * is in megabytes.
 		 * Round to the nearest integer.
 		 * If the memory request is greater than 100 percent, then scale it to
 		 * 100%.
 		 * If the memory request is zero, then return an error.
+		 *
+		 * Note: Because this has caused some confusion in the past,
+		 * The MEM_PER_CPU flag is used to indicate that job->step_mem is the
+		 * amount of memory per CPU, not total.  However, this flag is read
+		 * and cleared in slurmd prior to passing this value to slurmstepd.
+		 * The value comes to slurmstepd already properly scaled.
+		 * Thus, this function does not need to check the MEM_PER_CPU flag.
+		 *
 		 */
-		mem_scaling = floor(
-				((((double) app_mem / ((double) total_mem / 1024))
-						* (double) 100)) + 0.5);
+		mem_scaling =
+				((((double) job->step_mem / ((double) total_mem / 1024))
+						* (double) 100)) + 0.5;
 
 		if (mem_scaling > 100) {
 			info(
@@ -1000,7 +1021,7 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 
 		error("(%s: %d: %s) MPMD Applications are not currently supported.",
 				THIS_FILE, __LINE__, __FUNCTION__);
-		return SLURM_ERROR;
+		goto error_free_alpsc_peInfo_t;
 	}
 
 	/*
@@ -1017,7 +1038,11 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 		free(alpsc_peInfo.peCmdMapArray);
 		error("(%s: %d: %s) failed to calloc nodeCpuArray.", THIS_FILE,
 				__LINE__, __FUNCTION__);
-		return SLURM_ERROR;
+		goto error_free_alpsc_peInfo_t;
+	}
+
+	if (debug_flags & DEBUG_FLAG_SWITCH) {
+		_print_alpsc_peInfo(alpsc_peInfo);
 	}
 
 	/*
@@ -1040,14 +1065,6 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 	rc = alpsc_write_placement_file(&errMsg, sw_job->apid, cmdIndex,
 			&alpsc_peInfo, controlNid, controlSoc, numBranches,
 			&alpsc_branchInfo);
-
-	if (debug_flags & DEBUG_FLAG_SWITCH) {
-		_print_alpsc_peInfo(alpsc_peInfo);
-	}
-
-	/* Clean up */
-	xfree(task_to_nodes_map);
-
 	if (rc != 1) {
 		if (errMsg) {
 			error("(%s: %d: %s) alpsc_write_placement_file failed: %s",
@@ -1057,7 +1074,7 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 			error("(%s: %d: %s) alpsc_write_placement_file failed: No error "
 					"message present.", THIS_FILE, __LINE__, __FUNCTION__);
 		}
-		return SLURM_ERROR;
+		goto error_free_alpsc_peInfo_t;
 	}
 	if (errMsg) {
 		info("(%s: %d: %s) alpsc_write_placement_file: %s", THIS_FILE, __LINE__,
@@ -1065,16 +1082,15 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 		free(errMsg);
 	}
 
+
+	/* Clean up alpsc_peInfo*/
+	_free_alpsc_peInfo(alpsc_peInfo);
+
 	/*
 	 * Write the CRAY_NUM_COOKIES and CRAY_COOKIES variables out, too.
 	 */
-	rc = asprintf(&buff, "%" PRIu32, sw_job->num_cookies);
-	if (-1 == rc) {
-		error("(%s: %d: %s) asprintf failed", THIS_FILE, __LINE__,
-				__FUNCTION__);
-		return SLURM_ERROR;
-	}
-	rc = env_array_overwrite(&job->env, "CRAY_NUM_COOKIES", buff);
+	rc = env_array_overwrite_fmt(&job->env, "CRAY_NUM_COOKIES", "%" PRIu32,
+			sw_job->num_cookies);
 	if (rc == 0) {
 		info("Failed to set env variable CRAY_NUM_COOKIES");
 		free(buff);
@@ -1088,21 +1104,16 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 	 * Create one string containing a comma separated list of cookies.
 	 */
 	for (i = 0; i < sw_job->num_cookies; i++) {
-		// Add one for a trailing comma or null byte.
-		cleng += strlen(sw_job->cookies[i]) + 1;
-	}
-	buff = (char *) xmalloc(cleng * sizeof(char));
-	buff[0] = '\0';
-	for (i = 0; i < sw_job->num_cookies; i++) {
 		if (i > 0) {
-			strcat(buff, ",");
-		}
-		strcat(buff, sw_job->cookies[i]);
+			xstrfmtcat(buff, ",%s", sw_job->cookies[i]);
+		} else
+			xstrcat(buff, sw_job->cookies[i]);
 	}
 
 	rc = env_array_overwrite(&job->env, "CRAY_COOKIES", buff);
 	if (rc == 0) {
-		info("Failed to set env variable CRAY_COOKIES");
+		info("Failed to set env variable CRAY_COOKIES = %s", buff);
+		xfree(buff);
 		return SLURM_ERROR;
 	}
 	xfree(buff);
@@ -1112,19 +1123,13 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 	 * Cray's PMI uses this is the port to communicate its control tree
 	 * information.
 	 */
-	rc = asprintf(&buff, "%" PRIu32, sw_job->port);
-	if (-1 == rc) {
-		error("(%s: %d: %s) asprintf failed", THIS_FILE, __LINE__,
-				__FUNCTION__);
-		return SLURM_ERROR;
-	}
-	rc = env_array_overwrite(&job->env, "PMI_CONTROL_PORT", buff);
+	rc = env_array_overwrite_fmt(&job->env, "PMI_CONTROL_PORT", "%" PRIu32,
+			sw_job->port);
 	if (rc == 0) {
 		info("Failed to set env variable PMI_CONTROL_PORT");
 		free(buff);
 		return SLURM_ERROR;
 	}
-	free(buff);
 
 	/*
 	 * Query the generic resources to see if the GPU should be allocated
@@ -1156,6 +1161,10 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 	}
 
 	return SLURM_SUCCESS;
+
+error_free_alpsc_peInfo_t:
+	_free_alpsc_peInfo(alpsc_peInfo);
+	return SLURM_ERROR;
 }
 
 extern int switch_p_job_suspend_test(switch_jobinfo_t *jobinfo) {
@@ -1206,9 +1215,9 @@ int switch_p_job_fini(switch_jobinfo_t *jobinfo) {
 	/*
 	 * Remove the APID directory LEGACY_SPOOL_DIR/<APID>
 	 */
-	rc = asprintf(&path_name, LEGACY_SPOOL_DIR "%" PRIu64, job->apid);
-	if (rc == -1) {
-		error("(%s: %d: %s) asprintf failed", THIS_FILE, __LINE__,
+	path_name = xstrdup_printf(LEGACY_SPOOL_DIR "%" PRIu64, job->apid);
+	if (NULL == path_name) {
+		error("(%s: %d: %s) xstrdup_printf failed", THIS_FILE, __LINE__,
 				__FUNCTION__);
 		return SLURM_ERROR;
 	}
@@ -1221,13 +1230,12 @@ int switch_p_job_fini(switch_jobinfo_t *jobinfo) {
 	 * Remove the ALPS placement file.
 	 * LEGACY_SPOOL_DIR/places<APID>
 	 */
-	rc = asprintf(&path_name, LEGACY_SPOOL_DIR "places%" PRIu64, job->apid);
-	if (rc == -1) {
-		error("(%s: %d: %s) asprintf failed", THIS_FILE, __LINE__,
+	path_name = xstrdup_printf(LEGACY_SPOOL_DIR "places%" PRIu64, job->apid);
+	if (NULL == path_name) {
+		error("(%s: %d: %s) xstrdup_printf failed", THIS_FILE, __LINE__,
 				__FUNCTION__);
 		return SLURM_ERROR;
 	}
-
 	rc = remove(path_name);
 	if (rc) {
 		error("(%s: %d: %s) remove %s failed: %m", THIS_FILE, __LINE__,
@@ -1442,12 +1450,12 @@ extern int switch_p_slurmctld_init(void) {
 	 *  Each job step will be allocated one port from amongst this set of
 	 *  reservations for use by Cray's PMI for control tree communications.
 	 */
-	rc = _init_port();
-	if (rc) {
-		error("(%s: %d: %s) Initializing PMI reserve port table failed",
-				THIS_FILE, __LINE__, __FUNCTION__);
+	if (MAX_PORT < MIN_PORT) {
+		error("(%s: %d: %s) MAX_PORT: %d < MIN_PORT: %d", THIS_FILE, __LINE__,
+				__FUNCTION__, MAX_PORT, MIN_PORT);
 		return SLURM_ERROR;
 	}
+	memset(port_resv, 0, (MAX_PORT - MIN_PORT + 1) * sizeof(port_resv[0]));
 
 	return SLURM_SUCCESS;
 }
@@ -1754,45 +1762,6 @@ static int _get_cpu_total(void) {
 	return total;
 }
 
-#define MIN_PORT	20000
-#define MAX_PORT	30000
-#define ATTEMPTS	2
-
-static int port_cnt = MAX_PORT - MIN_PORT + 1;
-static uint32_t port_resv[MAX_PORT - MIN_PORT + 1];
-static uint32_t last_alloc_port = MAX_PORT - MIN_PORT;
-
-/*
- * Function: init_port
- * Description:
- *  Mallocs space for and initializes the reserved ports table.
- *  0 in the table means free and 1 means reserved.
- *  port_cnt is the total number of ports in the table.
- *  last_alloc_port is the last allocated port, and it is using the table's
- *  index, not the real port number.
- *
- *  Note: That the ports used will range from MIN_PORT up to and including
- *  MAX_PORT.
- *
- * Returns
- *  0 on success and -1 on failure.
- */
-
-static int _init_port() {
-
-	int i;
-	if (MAX_PORT < MIN_PORT) {
-		error("(%s: %d: %s) MAX_PORT: %d < MIN_PORT: %d", THIS_FILE, __LINE__,
-				__FUNCTION__, MAX_PORT, MIN_PORT);
-		return -1;
-	}
-
-	for (i = 0; i <= port_cnt; i++) {
-		port_resv[i] = 0;
-	}
-	return 0;
-}
-
 /*
  * Function: assign_port
  * Description:
@@ -1818,25 +1787,6 @@ static int _assign_port(uint32_t *real_port) {
 		error("(%s: %d: %s) real_port address was NULL.", THIS_FILE, __LINE__,
 				__FUNCTION__);
 		return -1;
-	}
-
-	if (port_resv == NULL ) {
-		info("(%s: %d: %s) Reserved PMI Port Table not initialized", THIS_FILE,
-				__LINE__, __FUNCTION__);
-		rc = _init_port();
-		if (rc) {
-			error("(%s: %d: %s) Initializing PMI reserve port table failed",
-					THIS_FILE, __LINE__, __FUNCTION__);
-			return -1;
-		}
-		/*
-		 * This is the code that I think should be here, but until we resolve
-		 * when and if switch_p_slurmctld_init is called, the above is a
-		 * safe-guard.
-		 error("(%s: %d: %s) Reserved PMI Port Table not initialized",
-		 THIS_FILE, __LINE__, __FUNCTION__);
-		 return -1;
-		 */
 	}
 
 	/*
@@ -1891,12 +1841,6 @@ static int _release_port(uint32_t real_port) {
 		return -1;
 	}
 
-	if (port_resv == NULL ) {
-		 error("(%s: %d: %s) Reserved PMI Port Table not initialized",
-		 THIS_FILE, __LINE__, __FUNCTION__);
-		 return -1;
-	}
-
 	port = real_port - MIN_PORT;
 
 	if (port_resv[port]) {
@@ -1907,4 +1851,27 @@ static int _release_port(uint32_t real_port) {
 		return -1;
 	}
 	return 0;
+}
+
+/*
+ * Function: _free_alpsc_peInfo
+ * Description:
+ * 	Frees any allocated members of alpsc_peInfo.
+ * Parameters:
+ * IN	alpsc_peInfo:  alpsc_peInfo_t structure needing to be freed
+ *
+ * Returns
+ * 	Void.
+ */
+static void _free_alpsc_peInfo(alpsc_peInfo_t alpsc_peInfo) {
+	if (alpsc_peInfo.peNidArray) {
+		free(alpsc_peInfo.peNidArray);
+	}
+	if (alpsc_peInfo.peCmdMapArray) {
+		free(alpsc_peInfo.peCmdMapArray);
+	}
+	if (alpsc_peInfo.nodeCpuArray) {
+		free(alpsc_peInfo.nodeCpuArray);
+	}
+	return;
 }
