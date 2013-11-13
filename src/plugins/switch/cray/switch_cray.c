@@ -635,7 +635,6 @@ unpack_error:
 	if (job->step_layout) {
 		slurm_step_layout_destroy(job->step_layout);
 	}
-	slurm_seterrno_ret(EUNPACK);
 	return SLURM_ERROR;
 }
 
@@ -674,7 +673,7 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 	int rc, numPTags, cmdIndex, num_app_cpus, i, j, cnt;
 	int mem_scaling, cpu_scaling;
 	int total_cpus = 0;
-	uint32_t total_mem = 0, app_mem = 0;
+	uint32_t total_mem = 0;
 	int *pTags = NULL;
 	char *errMsg = NULL, *apid_dir = NULL;
 	alpsc_peInfo_t alpsc_peInfo = {-1, -1, -1, -1, NULL, NULL, NULL};
@@ -691,7 +690,6 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 	gni_ntt_descriptor_t *ntt_desc_ptr = NULL;
 	int gpu_cnt = 0;
 	char *buff;
-	int cleng = 0;
 
 	if (!sw_job || (sw_job->magic == CRAY_NULL_JOBINFO_MAGIC)) {
 		debug2("(%s: %d: %s) job->switch_job was NULL", THIS_FILE, __LINE__,
@@ -1444,7 +1442,6 @@ extern int switch_p_job_step_allocated(switch_jobinfo_t *jobinfo,
 }
 
 extern int switch_p_slurmctld_init(void) {
-	int rc;
 	/*
 	 *  Initialize the port reservations.
 	 *  Each job step will be allocated one port from amongst this set of
@@ -1781,7 +1778,7 @@ static int _get_cpu_total(void) {
  *  0 on success and -1 on failure.
  */
 static int _assign_port(uint32_t *real_port) {
-	int port, tmp, attempts = 0, rc;
+	int port, tmp, attempts = 0;
 
 	if (real_port == NULL ) {
 		error("(%s: %d: %s) real_port address was NULL.", THIS_FILE, __LINE__,
