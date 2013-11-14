@@ -64,11 +64,23 @@
 #include "slurm/slurm_errno.h"
 #include "src/common/slurm_xlator.h"
 #include "src/common/pack.h"
+#include "src/common/gres.h"
+#ifdef HAVE_NATIVE_CRAY
 #include "alpscomm_cn.h"
 #include "alpscomm_sn.h"
-#include "src/common/gres.h"
+#endif
 
+
+/* This allows for a BUILD time definition of LEGACY_SPOOL_DIR on the compile
+ * line.
+ * LEGACY_SPOOL_DIR can be customized to wherever the builder desires.
+ * This customization could be important because the default is a hard-coded
+ * path that does not vary regardless of where Slurm is installed.
+ */
+#ifndef LEGACY_SPOOL_DIR
 #define LEGACY_SPOOL_DIR "/var/spool/alps/"
+#endif
+
 /*
  * CRAY_JOBINFO_MAGIC: The switch_jobinfo was not NULL.  The packed data
  *                     is good and can be safely unpacked.
@@ -81,9 +93,12 @@
 #define MAX_PORT	30000
 #define ATTEMPTS	2
 
+#ifdef HAVE_NATIVE_CRAY
 static int port_cnt = MAX_PORT - MIN_PORT + 1;
 static uint32_t port_resv[MAX_PORT - MIN_PORT + 1];
 static uint32_t last_alloc_port = MAX_PORT - MIN_PORT;
+#endif
+
 static uint32_t debug_flags = 0;
 
 /*
@@ -138,13 +153,17 @@ typedef struct slurm_cray_jobinfo {
 } slurm_cray_jobinfo_t;
 
 static void _print_jobinfo(slurm_cray_jobinfo_t *job);
-static int _get_first_pe(uint32_t nodeid, uint32_t task_count,
-		uint32_t **host_to_task_map, int32_t *first_pe);
 static int _list_str_to_array(char *list, int *cnt, int32_t **numbers);
 static void _recursiveRmdir(const char *dirnm);
+#ifdef HAVE_NATIVE_CRAY
+static int _get_first_pe(uint32_t nodeid, uint32_t task_count,
+		uint32_t **host_to_task_map, int32_t *first_pe);
 static int _get_cpu_total(void);
 static int _assign_port(uint32_t *ret_port);
 static int _release_port(uint32_t real_port);
+#endif
+
+#ifdef HAVE_NATIVE_CRAY
 static void _free_alpsc_peInfo(alpsc_peInfo_t alpsc_peInfo);
 
 static void _print_alpsc_peInfo(alpsc_peInfo_t alps_info) {
@@ -159,6 +178,7 @@ static void _print_alpsc_peInfo(alpsc_peInfo_t alps_info) {
 	}
 	info("*************************alpsc_peInfo Stop*************************");
 }
+#endif
 
 static void _print_jobinfo(slurm_cray_jobinfo_t *job) {
 	int i, j, rc, cnt;
@@ -286,6 +306,7 @@ int switch_p_alloc_jobinfo(switch_jobinfo_t **switch_job, uint32_t job_id,
 int switch_p_build_jobinfo(switch_jobinfo_t *switch_job,
 		slurm_step_layout_t *step_layout, char *network) {
 
+#ifdef HAVE_NATIVE_CRAY
 	int i, rc, cnt;
 	uint32_t port = 0;
 	int num_cookies = 2;
@@ -353,6 +374,7 @@ int switch_p_build_jobinfo(switch_jobinfo_t *switch_job,
 
 	xfree(nodes);
 
+
 	/*
 	 * Cookie ID safety check: The cookie_ids should be positive numbers.
 	 */
@@ -406,6 +428,7 @@ int switch_p_build_jobinfo(switch_jobinfo_t *switch_job,
 	job->port = port;
 	job->step_layout = slurm_step_layout_copy(step_layout);
 
+#endif
 	return SLURM_SUCCESS;
 }
 
@@ -668,6 +691,7 @@ int switch_p_job_preinit(switch_jobinfo_t *jobinfo) {
 
 extern int switch_p_job_init(stepd_step_rec_t *job) {
 
+#ifdef HAVE_NATIVE_CRAY
 	slurm_cray_jobinfo_t *sw_job = (slurm_cray_jobinfo_t *) job->switch_job;
 	int rc, numPTags, cmdIndex, num_app_cpus, i, j, cnt;
 	int mem_scaling, cpu_scaling;
@@ -1156,12 +1180,14 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 			free(errMsg);
 		}
 	}
-
+#endif
 	return SLURM_SUCCESS;
 
+#ifdef HAVE_NATIVE_CRAY
 error_free_alpsc_peInfo_t:
 	_free_alpsc_peInfo(alpsc_peInfo);
 	return SLURM_ERROR;
+#endif
 }
 
 extern int switch_p_job_suspend_test(switch_jobinfo_t *jobinfo) {
@@ -1196,7 +1222,7 @@ extern int switch_p_job_resume(void *suspend_info, int max_wait) {
 }
 
 int switch_p_job_fini(switch_jobinfo_t *jobinfo) {
-
+#ifdef HAVE_NATIVE_CRAY
 	slurm_cray_jobinfo_t *job = (slurm_cray_jobinfo_t *) jobinfo;
 
 	if (!job || (job->magic == CRAY_NULL_JOBINFO_MAGIC)) {
@@ -1245,11 +1271,12 @@ int switch_p_job_fini(switch_jobinfo_t *jobinfo) {
 	 * TO DO:
 	 * Set the proxy back to the default state.
 	 */
-
+#endif
 	return SLURM_SUCCESS;
 }
 
 int switch_p_job_postfini(stepd_step_rec_t *job) {
+#ifdef HAVE_NATIVE_CRAY
 	int rc;
 	char *errMsg = NULL;
 	uid_t pgid = job->jmgr_pid;
@@ -1307,6 +1334,7 @@ int switch_p_job_postfini(stepd_step_rec_t *job) {
 	}
 	// do_drop_caches();
 
+#endif
 	return SLURM_SUCCESS;
 }
 
@@ -1374,6 +1402,7 @@ extern char*switch_p_sprintf_node_info(switch_node_info_t *switch_node,
 
 extern int switch_p_job_step_complete(switch_jobinfo_t *jobinfo,
 		char *nodelist) {
+#ifdef HAVE_NATIVE_CRAY
 	slurm_cray_jobinfo_t *job = (slurm_cray_jobinfo_t *) jobinfo;
 	char *errMsg = NULL;
 	int rc = 0;
@@ -1423,6 +1452,7 @@ extern int switch_p_job_step_complete(switch_jobinfo_t *jobinfo,
 		// return SLURM_ERROR;
 	}
 
+#endif
 	return SLURM_SUCCESS;
 }
 
@@ -1441,6 +1471,7 @@ extern int switch_p_job_step_allocated(switch_jobinfo_t *jobinfo,
 }
 
 extern int switch_p_slurmctld_init(void) {
+#ifdef HAVE_NATIVE_CRAY
 	/*
 	 *  Initialize the port reservations.
 	 *  Each job step will be allocated one port from amongst this set of
@@ -1452,11 +1483,12 @@ extern int switch_p_slurmctld_init(void) {
 		return SLURM_ERROR;
 	}
 	memset(port_resv, 0, (MAX_PORT - MIN_PORT + 1) * sizeof(port_resv[0]));
-
+#endif
 	return SLURM_SUCCESS;
 }
 
 extern int switch_p_slurmd_init(void) {
+#ifdef HAVE_NATIVE_CRAY
 	int rc = 0;
 	char *errMsg = NULL;
 
@@ -1479,14 +1511,16 @@ extern int switch_p_slurmd_init(void) {
 				__LINE__, __FUNCTION__, errMsg);
 		free(errMsg);
 	}
-
+#endif
 	return SLURM_SUCCESS;
+
 }
 
 extern int switch_p_slurmd_step_init(void) {
 	return SLURM_SUCCESS;
 }
 
+#ifdef HAVE_NATIVE_CRAY
 /*
  * Function: get_first_pe
  * Description:
@@ -1526,6 +1560,7 @@ static int _get_first_pe(uint32_t nodeid, uint32_t task_count,
 	}
 	return ret;
 }
+#endif
 
 /*
  * Function: list_str_to_array
@@ -1674,6 +1709,7 @@ static void _recursiveRmdir(const char *dirnm) {
 	}
 }
 
+#ifdef HAVE_NATIVE_CRAY
 /*
  * Function: get_cpu_total
  * Description:
@@ -1871,3 +1907,4 @@ static void _free_alpsc_peInfo(alpsc_peInfo_t alpsc_peInfo) {
 	}
 	return;
 }
+#endif
