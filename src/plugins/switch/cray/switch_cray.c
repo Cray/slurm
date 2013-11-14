@@ -143,7 +143,6 @@ static int _get_first_pe(uint32_t nodeid, uint32_t task_count,
 static int _list_str_to_array(char *list, int *cnt, int32_t **numbers);
 static void _recursiveRmdir(const char *dirnm);
 static int _get_cpu_total(void);
-static int _init_port();
 static int _assign_port(uint32_t *ret_port);
 static int _release_port(uint32_t real_port);
 static void _free_alpsc_peInfo(alpsc_peInfo_t alpsc_peInfo);
