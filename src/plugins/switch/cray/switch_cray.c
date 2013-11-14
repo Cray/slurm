@@ -521,9 +521,6 @@ void switch_p_free_jobinfo(switch_jobinfo_t *switch_job) {
 	return;
 }
 
-/*
- * TODO: Pack job id, step id, and apid
- */
 int switch_p_pack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer,
 		uint16_t protocol_version) {
 
@@ -557,10 +554,6 @@ int switch_p_pack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer,
 
 	return 0;
 }
-
-/*
- * TODO: Unpack job id, step id, and apid
- */
 
 int switch_p_unpack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer,
 		uint16_t protocol_version) {
@@ -712,7 +705,7 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 	int32_t firstPeHere;
 	gni_ntt_descriptor_t *ntt_desc_ptr = NULL;
 	int gpu_cnt = 0;
-	char *buff;
+	char *buff = NULL;
 
 	if (!sw_job || (sw_job->magic == CRAY_NULL_JOBINFO_MAGIC)) {
 		debug2("(%s: %d: %s) job->switch_job was NULL", THIS_FILE, __LINE__,
@@ -766,7 +759,7 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 
 	rc = mkdir(apid_dir, 0700);
 	if (rc) {
-		free(apid_dir);
+		xfree(apid_dir);
 		error("(%s: %d: %s) mkdir failed to make directory %s: %m", THIS_FILE, __LINE__,
 				__FUNCTION__, apid_dir);
 		return SLURM_ERROR;
@@ -780,7 +773,7 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 		return SLURM_ERROR;
 	}
 
-	free(apid_dir);
+	xfree(apid_dir);
 	/*
 	 * Not defined yet -- This one may be skipped because we may not need to
 	 * find the PAGG JOB container based on the APID.  It is part of the
@@ -1114,10 +1107,8 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 			sw_job->num_cookies);
 	if (rc == 0) {
 		info("Failed to set env variable CRAY_NUM_COOKIES");
-		free(buff);
 		return SLURM_ERROR;
 	}
-	free(buff);
 
 	/*
 	 * Create the CRAY_COOKIES environment variable in the application's
@@ -1247,7 +1238,7 @@ int switch_p_job_fini(switch_jobinfo_t *jobinfo) {
 
 	// Stolen from ALPS
 	_recursiveRmdir(path_name);
-	free(path_name);
+	xfree(path_name);
 
 	/*
 	 * Remove the ALPS placement file.
@@ -1265,10 +1256,10 @@ int switch_p_job_fini(switch_jobinfo_t *jobinfo) {
 				__FUNCTION__, path_name);
 		return SLURM_ERROR;
 	}
-	free(path_name);
+	xfree(path_name);
 
 	/*
-	 * TO DO:
+	 * TODO:
 	 * Set the proxy back to the default state.
 	 */
 #endif
