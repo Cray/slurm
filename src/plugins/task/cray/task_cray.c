@@ -300,7 +300,8 @@ extern int task_p_pre_launch_priv (stepd_step_rec_t *job)
  *	It is preceded by --task-epilog (from srun command line)
  *	followed by TaskEpilog program (from slurm.conf).
  */
-extern int task_p_post_term (stepd_step_rec_t *job, stepd_step_task_info_t *task)
+extern int task_p_post_term (stepd_step_rec_t *job,
+		stepd_step_task_info_t *task)
 {
 	char llifile[LLI_STATUS_FILE_BUF_SIZE];
 	char status;
@@ -406,8 +407,8 @@ extern int task_p_post_step (stepd_step_rec_t *job)
 
 	if ((job->stepid == NO_VAL) || (job->stepid == SLURM_BATCH_SCRIPT)) {
 		// Batch Job Step
-		rc = snprintf(path, sizeof(path), "/dev/cpuset/slurm/uid_%d/job_%" PRIu32
-				"/step_batch", job->uid, job->jobid);
+		rc = snprintf(path, sizeof(path), "/dev/cpuset/slurm/uid_%d/job_%"
+				PRIu32 "/step_batch", job->uid, job->jobid);
 		if (rc < 0) {
 			error("(%s: %d: %s) snprintf failed. Return code: %d", THIS_FILE,
 					__LINE__, __FUNCTION__, rc);
@@ -415,8 +416,8 @@ extern int task_p_post_step (stepd_step_rec_t *job)
 		}
 	} else {
 		// Normal Job Step
-		rc = snprintf(path, sizeof(path), "/dev/cpuset/slurm/uid_%d/job_%" PRIu32
-				"/step_%" PRIu32, job->uid, job->jobid, job->stepid);
+		rc = snprintf(path, sizeof(path), "/dev/cpuset/slurm/uid_%d/job_%"
+				PRIu32 "/step_%" PRIu32, job->uid, job->jobid, job->stepid);
 		if (rc < 0) {
 			error("(%s: %d: %s) snprintf failed. Return code: %d", THIS_FILE,
 					__LINE__, __FUNCTION__, rc);
@@ -455,9 +456,8 @@ extern int task_p_post_step (stepd_step_rec_t *job)
 					__LINE__, __FUNCTION__, errMsg);
 			free(errMsg);
 		} else {
-			error(
-					"(%s: %d: %s) alpsc_compact_mem failed: No error message present.",
-					THIS_FILE, __LINE__, __FUNCTION__);
+			error("(%s: %d: %s) alpsc_compact_mem failed: No error message "
+					"present.", THIS_FILE, __LINE__, __FUNCTION__);
 		}
 		return SLURM_ERROR;
 	}

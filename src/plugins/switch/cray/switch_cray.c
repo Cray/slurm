@@ -135,7 +135,8 @@ const uint32_t plugin_version = 100;
 /* opaque data structures - no peeking! */
 typedef struct slurm_cray_jobinfo {
 	uint32_t magic;
-	uint32_t num_cookies;	/* The number of cookies sent to configure the HSN */
+	uint32_t num_cookies;	/* The number of cookies sent to configure the
+	                           HSN */
 	/* Double pointer to an array of cookie strings.
 	 * cookie values here as NULL-terminated strings.
 	 * There are num_cookies elements in the array.
@@ -154,7 +155,7 @@ typedef struct slurm_cray_jobinfo {
 
 static void _print_jobinfo(slurm_cray_jobinfo_t *job);
 static int _list_str_to_array(char *list, int *cnt, int32_t **numbers);
-static void _recursiveRmdir(const char *dirnm);
+static void _recursive_rmdir(const char *dirnm);
 #ifdef HAVE_NATIVE_CRAY
 static int _get_first_pe(uint32_t nodeid, uint32_t task_count,
 		uint32_t **host_to_task_map, int32_t *first_pe);
@@ -166,21 +167,25 @@ static int _release_port(uint32_t real_port);
 #ifdef HAVE_NATIVE_CRAY
 static void _free_alpsc_peInfo(alpsc_peInfo_t alpsc_peInfo);
 
-static void _print_alpsc_peInfo(alpsc_peInfo_t alps_info) {
+static void _print_alpsc_peInfo(alpsc_peInfo_t alps_info)
+{
 	int i;
 	info(
-			"*************************alpsc_peInfo Start*************************");
+			"*************************alpsc_peInfo Start"
+			"*************************");
 	info("totalPEs: %d\nfirstPeHere: %d\npesHere: %d\npeDepth: %d\n",
 			alps_info.totalPEs, alps_info.firstPeHere, alps_info.pesHere,
 			alps_info.peDepth);
 	for (i = 0; i < alps_info.totalPEs; i++) {
 		info("Task: %d\tNode: %d", i, alps_info.peNidArray[i]);
 	}
-	info("*************************alpsc_peInfo Stop*************************");
+	info("*************************alpsc_peInfo Stop"
+			"*************************");
 }
 #endif
 
-static void _print_jobinfo(slurm_cray_jobinfo_t *job) {
+static void _print_jobinfo(slurm_cray_jobinfo_t *job)
+{
 	int i, j, rc, cnt;
 	int32_t *nodes;
 
@@ -246,32 +251,38 @@ static void _print_jobinfo(slurm_cray_jobinfo_t *job) {
  * init() is called when the plugin is loaded, before any other functions
  * are called.  Put global initialization here.
  */
-int init(void) {
+int init(void)
+{
 	verbose("%s loaded.", plugin_name);
 	debug_flags = slurm_get_debug_flags();
 	return SLURM_SUCCESS;
 }
 
-int fini(void) {
+int fini(void)
+{
 	return SLURM_SUCCESS;
 }
 
-extern int switch_p_reconfig(void) {
+extern int switch_p_reconfig(void)
+{
 	return SLURM_SUCCESS;
 }
 
 /*
  * switch functions for global state save/restore
  */
-int switch_p_libstate_save(char *dir_name) {
+int switch_p_libstate_save(char *dir_name)
+{
 	return SLURM_SUCCESS;
 }
 
-int switch_p_libstate_restore(char *dir_name, bool recover) {
+int switch_p_libstate_restore(char *dir_name, bool recover)
+{
 	return SLURM_SUCCESS;
 }
 
-int switch_p_libstate_clear(void) {
+int switch_p_libstate_clear(void)
+{
 	return SLURM_SUCCESS;
 }
 
@@ -279,7 +290,8 @@ int switch_p_libstate_clear(void) {
  * switch functions for job step specific credential
  */
 int switch_p_alloc_jobinfo(switch_jobinfo_t **switch_job, uint32_t job_id,
-		uint32_t step_id) {
+		uint32_t step_id)
+{
 	slurm_cray_jobinfo_t *new;
 
 	xassert(switch_job != NULL);
@@ -304,13 +316,14 @@ int switch_p_alloc_jobinfo(switch_jobinfo_t **switch_job, uint32_t job_id,
 }
 
 int switch_p_build_jobinfo(switch_jobinfo_t *switch_job,
-		slurm_step_layout_t *step_layout, char *network) {
+		slurm_step_layout_t *step_layout, char *network)
+{
 
 #ifdef HAVE_NATIVE_CRAY
 	int i, rc, cnt;
 	uint32_t port = 0;
 	int num_cookies = 2;
-	char *errMsg = NULL;
+	char *err_msg = NULL;
 	char **cookies = NULL, **s_cookies = NULL;
 	int32_t *nodes = NULL, *cookie_ids = NULL;
 	uint32_t *s_cookie_ids = NULL;
@@ -351,13 +364,13 @@ int switch_p_build_jobinfo(switch_jobinfo_t *switch_job,
 	 * some research to see if it comes in sorted or calling a sort
 	 * routine.
 	 */
-	rc = alpsc_lease_cookies(&errMsg, "SLURM", job->apid, ALPSC_INFINITE_LEASE,
+	rc = alpsc_lease_cookies(&err_msg, "SLURM", job->apid, ALPSC_INFINITE_LEASE,
 			nodes, step_layout->node_cnt, num_cookies, &cookies, &cookie_ids);
 	if (rc != 0) {
-		if (errMsg) {
+		if (err_msg) {
 			error("(%s: %d: %s) alpsc_lease_cookies failed: %s", THIS_FILE,
-					__LINE__, __FUNCTION__, errMsg);
-			free(errMsg);
+					__LINE__, __FUNCTION__, err_msg);
+			free(err_msg);
 		} else {
 			error("(%s: %d: %s) alpsc_lease_cookies failed: No error message "
 					"present.",
@@ -366,10 +379,10 @@ int switch_p_build_jobinfo(switch_jobinfo_t *switch_job,
 		xfree(nodes);
 		return SLURM_ERROR;
 	}
-	if (errMsg) {
+	if (err_msg) {
 		info("(%s: %d: %s) alpsc_lease_cookies: %s", THIS_FILE, __LINE__,
-				__FUNCTION__, errMsg);
-		free(errMsg);
+				__FUNCTION__, err_msg);
+		free(err_msg);
 	}
 
 	xfree(nodes);
@@ -432,7 +445,8 @@ int switch_p_build_jobinfo(switch_jobinfo_t *switch_job,
 	return SLURM_SUCCESS;
 }
 
-switch_jobinfo_t *switch_p_copy_jobinfo(switch_jobinfo_t *switch_job) {
+switch_jobinfo_t *switch_p_copy_jobinfo(switch_jobinfo_t *switch_job)
+{
 	int i;
 	slurm_cray_jobinfo_t *old = (slurm_cray_jobinfo_t *) switch_job;
 	switch_jobinfo_t *new_init;
@@ -473,7 +487,8 @@ switch_jobinfo_t *switch_p_copy_jobinfo(switch_jobinfo_t *switch_job) {
 /*
  *
  */
-void switch_p_free_jobinfo(switch_jobinfo_t *switch_job) {
+void switch_p_free_jobinfo(switch_jobinfo_t *switch_job)
+{
 	slurm_cray_jobinfo_t *job = (slurm_cray_jobinfo_t *) switch_job;
 	int i;
 
@@ -522,7 +537,8 @@ void switch_p_free_jobinfo(switch_jobinfo_t *switch_job) {
 }
 
 int switch_p_pack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer,
-		uint16_t protocol_version) {
+		uint16_t protocol_version)
+{
 
 	slurm_cray_jobinfo_t *job = (slurm_cray_jobinfo_t *) switch_job;
 
@@ -556,7 +572,8 @@ int switch_p_pack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer,
 }
 
 int switch_p_unpack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer,
-		uint16_t protocol_version) {
+		uint16_t protocol_version)
+{
 
 	int rc;
 	uint32_t num_cookies;
@@ -653,12 +670,14 @@ unpack_error:
 	return SLURM_ERROR;
 }
 
-void switch_p_print_jobinfo(FILE *fp, switch_jobinfo_t *jobinfo) {
+void switch_p_print_jobinfo(FILE *fp, switch_jobinfo_t *jobinfo)
+{
 	return;
 }
 
 char *switch_p_sprint_jobinfo(switch_jobinfo_t *switch_jobinfo, char *buf,
-		size_t size) {
+		size_t size)
+{
 	if ((buf != NULL )&& size) {
 		buf[0] = '\0';
 		return buf;
@@ -670,19 +689,23 @@ char *switch_p_sprint_jobinfo(switch_jobinfo_t *switch_jobinfo, char *buf,
 /*
  * switch functions for job initiation
  */
-int switch_p_node_init(void) {
+int switch_p_node_init(void)
+{
 	return SLURM_SUCCESS;
 }
 
-int switch_p_node_fini(void) {
+int switch_p_node_fini(void)
+{
 	return SLURM_SUCCESS;
 }
 
-int switch_p_job_preinit(switch_jobinfo_t *jobinfo) {
+int switch_p_job_preinit(switch_jobinfo_t *jobinfo)
+{
 	return SLURM_SUCCESS;
 }
 
-extern int switch_p_job_init(stepd_step_rec_t *job) {
+extern int switch_p_job_init(stepd_step_rec_t *job)
+{
 
 #ifdef HAVE_NATIVE_CRAY
 	slurm_cray_jobinfo_t *sw_job = (slurm_cray_jobinfo_t *) job->switch_job;
@@ -691,7 +714,7 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 	int total_cpus = 0;
 	uint32_t total_mem = 0;
 	int *pTags = NULL;
-	char *errMsg = NULL, *apid_dir = NULL;
+	char *err_msg = NULL, *apid_dir = NULL;
 	alpsc_peInfo_t alpsc_peInfo = {-1, -1, -1, -1, NULL, NULL, NULL};
 	FILE *f = NULL;
 	size_t sz = 0;
@@ -727,23 +750,23 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 	struct sockaddr_in controlSoc;
 	alpsc_branchInfo_t alpsc_branchInfo;
 
-	rc = alpsc_attach_cncu_container(&errMsg, sw_job->jobid, job->cont_id);
+	rc = alpsc_attach_cncu_container(&err_msg, sw_job->jobid, job->cont_id);
 
 	if (rc != 1) {
-		if (errMsg) {
+		if (err_msg) {
 			error("(%s: %d: %s) alpsc_attach_cncu_container failed: %s",
-					THIS_FILE, __LINE__, __FUNCTION__, errMsg);
-			free(errMsg);
+					THIS_FILE, __LINE__, __FUNCTION__, err_msg);
+			free(err_msg);
 		} else {
 			error("(%s: %d: %s) alpsc_attach_cncu_container failed: No error "
 					"message present.", THIS_FILE, __LINE__, __FUNCTION__);
 		}
 		return SLURM_ERROR;
 	}
-	if (errMsg) {
+	if (err_msg) {
 		info("(%s: %d: %s) alpsc_attach_cncu_container: %s", THIS_FILE,
-				__LINE__, __FUNCTION__, errMsg);
-		free(errMsg);
+				__LINE__, __FUNCTION__, err_msg);
+		free(err_msg);
 	}
 
 	/*
@@ -761,8 +784,8 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 	rc = mkdir(apid_dir, 0700);
 	if (rc) {
 		xfree(apid_dir);
-		error("(%s: %d: %s) mkdir failed to make directory %s: %m", THIS_FILE, __LINE__,
-				__FUNCTION__, apid_dir);
+		error("(%s: %d: %s) mkdir failed to make directory %s: %m", THIS_FILE,
+				__LINE__, __FUNCTION__, apid_dir);
 		return SLURM_ERROR;
 	}
 
@@ -778,8 +801,8 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 	/*
 	 * Not defined yet -- This one may be skipped because we may not need to
 	 * find the PAGG JOB container based on the APID.  It is part of the
-	 * stepd_step_rec_t struct in the cont_id member, so if we have access to the
-	 * struct, then we have access to the JOB container.
+	 * stepd_step_rec_t struct in the cont_id member, so if we have access to
+	 * the struct, then we have access to the JOB container.
 	 */
 
 	// alpsc_set_PAGG_apid()
@@ -917,7 +940,7 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 					THIS_FILE, __LINE__, __FUNCTION__, job->cont_id);
 		}
 
-		rc = alpsc_configure_nic(&errMsg, 0, cpu_scaling, mem_scaling,
+		rc = alpsc_configure_nic(&err_msg, 0, cpu_scaling, mem_scaling,
 				job->cont_id, sw_job->num_cookies,
 				(const char **) sw_job->cookies, &numPTags, &pTags,
 				ntt_desc_ptr);
@@ -927,20 +950,20 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 		 */
 		free(pTags);
 		if (rc != 1) {
-			if (errMsg) {
+			if (err_msg) {
 				error("(%s: %d: %s) alpsc_configure_nic failed: %s", THIS_FILE,
-						__LINE__, __FUNCTION__, errMsg);
-				free(errMsg);
+						__LINE__, __FUNCTION__, err_msg);
+				free(err_msg);
 			} else {
 				error("(%s: %d: %s) alpsc_configure_nic failed: No error "
 						"message present.", THIS_FILE, __LINE__, __FUNCTION__);
 			}
 			return SLURM_ERROR;
 		}
-		if (errMsg) {
+		if (err_msg) {
 			info("(%s: %d: %s) alpsc_configure_nic: %s", THIS_FILE, __LINE__,
-					__FUNCTION__, errMsg);
-			free(errMsg);
+					__FUNCTION__, err_msg);
+			free(err_msg);
 		}
 	}
 
@@ -1052,7 +1075,8 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 	size = sw_job->step_layout->node_cnt * sizeof(int);
 	alpsc_peInfo.nodeCpuArray = xmalloc(size);
 	memset(alpsc_peInfo.nodeCpuArray, 0, size);
-	if (sw_job->step_layout->node_cnt && (alpsc_peInfo.nodeCpuArray == NULL )) {
+	if (sw_job->step_layout->node_cnt &&
+			(alpsc_peInfo.nodeCpuArray == NULL )) {
 		free(alpsc_peInfo.peCmdMapArray);
 		error("(%s: %d: %s) failed to calloc nodeCpuArray.", THIS_FILE,
 				__LINE__, __FUNCTION__);
@@ -1080,24 +1104,24 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 	alpsc_branchInfo.tLen = 0;
 	alpsc_branchInfo.targ = 0;
 
-	rc = alpsc_write_placement_file(&errMsg, sw_job->apid, cmdIndex,
+	rc = alpsc_write_placement_file(&err_msg, sw_job->apid, cmdIndex,
 			&alpsc_peInfo, controlNid, controlSoc, numBranches,
 			&alpsc_branchInfo);
 	if (rc != 1) {
-		if (errMsg) {
+		if (err_msg) {
 			error("(%s: %d: %s) alpsc_write_placement_file failed: %s",
-					THIS_FILE, __LINE__, __FUNCTION__, errMsg);
-			free(errMsg);
+					THIS_FILE, __LINE__, __FUNCTION__, err_msg);
+			free(err_msg);
 		} else {
 			error("(%s: %d: %s) alpsc_write_placement_file failed: No error "
 					"message present.", THIS_FILE, __LINE__, __FUNCTION__);
 		}
 		goto error_free_alpsc_peInfo_t;
 	}
-	if (errMsg) {
+	if (err_msg) {
 		info("(%s: %d: %s) alpsc_write_placement_file: %s", THIS_FILE, __LINE__,
-				__FUNCTION__, errMsg);
-		free(errMsg);
+				__FUNCTION__, err_msg);
+		free(err_msg);
 	}
 
 
@@ -1156,22 +1180,22 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 			&gpu_cnt);
 	info("gres_cnt: %d %u", rc, gpu_cnt);
 	if (gpu_cnt > 0) {
-		rc = alpsc_pre_launch_GPU_mps(&errMsg, gpu_enable);
+		rc = alpsc_pre_launch_GPU_mps(&err_msg, gpu_enable);
 		if (rc != 1) {
-			if (errMsg) {
+			if (err_msg) {
 				error("(%s: %d: %s) alpsc_prelaunch_GPU_mps failed: %s",
-						THIS_FILE, __LINE__, __FUNCTION__, errMsg);
-				free(errMsg);
+						THIS_FILE, __LINE__, __FUNCTION__, err_msg);
+				free(err_msg);
 			} else {
 				error("(%s: %d: %s) alpsc_prelaunch_GPU_mps failed: No error "
 						"message present.", THIS_FILE, __LINE__, __FUNCTION__);
 			}
 			return SLURM_ERROR;
 		}
-		if (errMsg) {
+		if (err_msg) {
 			info("(%s: %d: %s) alpsc_prelaunch_GPU_mps: %s", THIS_FILE,
-					__LINE__, __FUNCTION__, errMsg);
-			free(errMsg);
+					__LINE__, __FUNCTION__, err_msg);
+			free(err_msg);
 		}
 	}
 #endif
@@ -1184,38 +1208,46 @@ error_free_alpsc_peInfo_t:
 #endif
 }
 
-extern int switch_p_job_suspend_test(switch_jobinfo_t *jobinfo) {
+extern int switch_p_job_suspend_test(switch_jobinfo_t *jobinfo)
+{
 	return SLURM_SUCCESS;
 }
 
 extern void switch_p_job_suspend_info_get(switch_jobinfo_t *jobinfo,
-		void **suspend_info) {
+		void **suspend_info)
+{
 	return;
 }
 
 extern void switch_p_job_suspend_info_pack(void *suspend_info, Buf buffer,
-		uint16_t protocol_version) {
+		uint16_t protocol_version)
+{
 	return;
 }
 
 extern int switch_p_job_suspend_info_unpack(void **suspend_info, Buf buffer,
-		uint16_t protocol_version) {
+		uint16_t protocol_version)
+{
 	return SLURM_SUCCESS;
 }
 
-extern void switch_p_job_suspend_info_free(void *suspend_info) {
+extern void switch_p_job_suspend_info_free(void *suspend_info)
+{
 	return;
 }
 
-extern int switch_p_job_suspend(void *suspend_info, int max_wait) {
+extern int switch_p_job_suspend(void *suspend_info, int max_wait)
+{
 	return SLURM_SUCCESS;
 }
 
-extern int switch_p_job_resume(void *suspend_info, int max_wait) {
+extern int switch_p_job_resume(void *suspend_info, int max_wait)
+{
 	return SLURM_SUCCESS;
 }
 
-int switch_p_job_fini(switch_jobinfo_t *jobinfo) {
+int switch_p_job_fini(switch_jobinfo_t *jobinfo)
+{
 #ifdef HAVE_NATIVE_CRAY
 	slurm_cray_jobinfo_t *job = (slurm_cray_jobinfo_t *) jobinfo;
 
@@ -1240,7 +1272,7 @@ int switch_p_job_fini(switch_jobinfo_t *jobinfo) {
 	}
 
 	// Stolen from ALPS
-	_recursiveRmdir(path_name);
+	_recursive_rmdir(path_name);
 	xfree(path_name);
 
 	/*
@@ -1269,10 +1301,11 @@ int switch_p_job_fini(switch_jobinfo_t *jobinfo) {
 	return SLURM_SUCCESS;
 }
 
-int switch_p_job_postfini(stepd_step_rec_t *job) {
+int switch_p_job_postfini(stepd_step_rec_t *job)
+{
 #ifdef HAVE_NATIVE_CRAY
 	int rc;
-	char *errMsg = NULL;
+	char *err_msg = NULL;
 	uid_t pgid = job->jmgr_pid;
 
 	if (NULL == job->switch_job) {
@@ -1298,12 +1331,12 @@ int switch_p_job_postfini(stepd_step_rec_t *job) {
 	 */
 
 	// Flush Lustre Cache
-	rc = alpsc_flush_lustre(&errMsg);
+	rc = alpsc_flush_lustre(&err_msg);
 	if (rc != 1) {
-		if (errMsg) {
+		if (err_msg) {
 			error("(%s: %d: %s) alpsc_flush_lustre failed: %s", THIS_FILE,
-					__LINE__, __FUNCTION__, errMsg);
-			free(errMsg);
+					__LINE__, __FUNCTION__, err_msg);
+			free(err_msg);
 		} else {
 			error(
 					"(%s: %d: %s) alpsc_flush_lustre failed: No error message "
@@ -1311,10 +1344,10 @@ int switch_p_job_postfini(stepd_step_rec_t *job) {
 		}
 		return SLURM_ERROR;
 	}
-	if (errMsg) {
+	if (err_msg) {
 		info("(%s: %d: %s) alpsc_flush_lustre: %s", THIS_FILE, __LINE__,
-				__FUNCTION__, errMsg);
-		free(errMsg);
+				__FUNCTION__, err_msg);
+		free(err_msg);
 	}
 
 	// Flush virtual memory
@@ -1333,12 +1366,14 @@ int switch_p_job_postfini(stepd_step_rec_t *job) {
 }
 
 int switch_p_job_attach(switch_jobinfo_t *jobinfo, char ***env, uint32_t nodeid,
-		uint32_t procid, uint32_t nnodes, uint32_t nprocs, uint32_t rank) {
+		uint32_t procid, uint32_t nnodes, uint32_t nprocs, uint32_t rank)
+{
 	return SLURM_SUCCESS;
 }
 
 extern int switch_p_get_jobinfo(switch_jobinfo_t *switch_job, int key,
-		void *resulting_data) {
+		void *resulting_data)
+{
 	slurm_seterrno(EINVAL);
 	return SLURM_ERROR;
 }
@@ -1346,11 +1381,13 @@ extern int switch_p_get_jobinfo(switch_jobinfo_t *switch_job, int key,
 /*
  * switch functions for other purposes
  */
-extern int switch_p_get_errno(void) {
+extern int switch_p_get_errno(void)
+{
 	return SLURM_SUCCESS;
 }
 
-extern char *switch_p_strerror(int errnum) {
+extern char *switch_p_strerror(int errnum)
+{
 	return NULL ;
 }
 
@@ -1358,34 +1395,41 @@ extern char *switch_p_strerror(int errnum) {
  * node switch state monitoring functions
  * required for IBM Federation switch
  */
-extern int switch_p_clear_node_state(void) {
+extern int switch_p_clear_node_state(void)
+{
 	return SLURM_SUCCESS;
 }
 
-extern int switch_p_alloc_node_info(switch_node_info_t **switch_node) {
+extern int switch_p_alloc_node_info(switch_node_info_t **switch_node)
+{
 	return SLURM_SUCCESS;
 }
 
-extern int switch_p_build_node_info(switch_node_info_t *switch_node) {
+extern int switch_p_build_node_info(switch_node_info_t *switch_node)
+{
 	return SLURM_SUCCESS;
 }
 
 extern int switch_p_pack_node_info(switch_node_info_t *switch_node, Buf buffer,
-		uint16_t protocol_version) {
+		uint16_t protocol_version)
+{
 	return 0;
 }
 
 extern int switch_p_unpack_node_info(switch_node_info_t *switch_node,
-		Buf buffer, uint16_t protocol_version) {
+		Buf buffer, uint16_t protocol_version)
+{
 	return SLURM_SUCCESS;
 }
 
-extern int switch_p_free_node_info(switch_node_info_t **switch_node) {
+extern int switch_p_free_node_info(switch_node_info_t **switch_node)
+{
 	return SLURM_SUCCESS;
 }
 
 extern char*switch_p_sprintf_node_info(switch_node_info_t *switch_node,
-		char *buf, size_t size) {
+		char *buf, size_t size)
+{
 	if ((buf != NULL )&& size) {
 		buf[0] = '\0';
 		return buf;
@@ -1395,10 +1439,11 @@ extern char*switch_p_sprintf_node_info(switch_node_info_t *switch_node,
 }
 
 extern int switch_p_job_step_complete(switch_jobinfo_t *jobinfo,
-		char *nodelist) {
+		char *nodelist)
+{
 #ifdef HAVE_NATIVE_CRAY
 	slurm_cray_jobinfo_t *job = (slurm_cray_jobinfo_t *) jobinfo;
-	char *errMsg = NULL;
+	char *err_msg = NULL;
 	int rc = 0;
 
 	if (!job || (job->magic == CRAY_NULL_JOBINFO_MAGIC)) {
@@ -1413,15 +1458,15 @@ extern int switch_p_job_step_complete(switch_jobinfo_t *jobinfo,
 	}
 
 	/* Release the cookies */
-	rc = alpsc_release_cookies(&errMsg, (int32_t *) job->cookie_ids,
+	rc = alpsc_release_cookies(&err_msg, (int32_t *) job->cookie_ids,
 			(int32_t) job->num_cookies);
 
 	if (rc != 0) {
 
-		if (errMsg) {
+		if (err_msg) {
 			error("(%s: %d: %s) alpsc_release_cookies failed: %s", THIS_FILE,
-					__LINE__, __FUNCTION__, errMsg);
-			free(errMsg);
+					__LINE__, __FUNCTION__, err_msg);
+			free(err_msg);
 		} else {
 			error("(%s: %d: %s) alpsc_release_cookies failed: No error message "
 					"present.", THIS_FILE, __LINE__, __FUNCTION__);
@@ -1429,10 +1474,10 @@ extern int switch_p_job_step_complete(switch_jobinfo_t *jobinfo,
 		return SLURM_ERROR;
 
 	}
-	if (errMsg) {
+	if (err_msg) {
 		info("(%s: %d: %s) alpsc_release_cookies: %s", THIS_FILE, __LINE__,
-				__FUNCTION__, errMsg);
-		free(errMsg);
+				__FUNCTION__, err_msg);
+		free(err_msg);
 	}
 
 	/*
@@ -1451,20 +1496,24 @@ extern int switch_p_job_step_complete(switch_jobinfo_t *jobinfo,
 }
 
 extern int switch_p_job_step_part_comp(switch_jobinfo_t *jobinfo,
-		char *nodelist) {
+		char *nodelist)
+{
 	return SLURM_SUCCESS;
 }
 
-extern bool switch_p_part_comp(void) {
+extern bool switch_p_part_comp(void)
+{
 	return false;
 }
 
 extern int switch_p_job_step_allocated(switch_jobinfo_t *jobinfo,
-		char *nodelist) {
+		char *nodelist)
+{
 	return SLURM_SUCCESS;
 }
 
-extern int switch_p_slurmctld_init(void) {
+extern int switch_p_slurmctld_init(void)
+{
 #ifdef HAVE_NATIVE_CRAY
 	/*
 	 *  Initialize the port reservations.
@@ -1481,18 +1530,19 @@ extern int switch_p_slurmctld_init(void) {
 	return SLURM_SUCCESS;
 }
 
-extern int switch_p_slurmd_init(void) {
+extern int switch_p_slurmd_init(void)
+{
 #ifdef HAVE_NATIVE_CRAY
 	int rc = 0;
-	char *errMsg = NULL;
+	char *err_msg = NULL;
 
 	// Establish GPU's default state
-	rc = alpsc_establish_GPU_mps_def_state(&errMsg);
+	rc = alpsc_establish_GPU_mps_def_state(&err_msg);
 	if (rc != 1) {
-		if (errMsg) {
+		if (err_msg) {
 			error("(%s: %d: %s) alpsc_establish_GPU_mps_def_state failed: %s",
-					THIS_FILE, __LINE__, __FUNCTION__, errMsg);
-			free(errMsg);
+					THIS_FILE, __LINE__, __FUNCTION__, err_msg);
+			free(err_msg);
 		} else {
 			error("(%s: %d: %s) alpsc_establish_GPU_mps_def_state failed: "
 					"No error message present.", THIS_FILE, __LINE__,
@@ -1500,17 +1550,18 @@ extern int switch_p_slurmd_init(void) {
 		}
 		return SLURM_ERROR;
 	}
-	if (errMsg) {
+	if (err_msg) {
 		info("(%s: %d: %s) alpsc_establish_GPU_mps_def_state: %s", THIS_FILE,
-				__LINE__, __FUNCTION__, errMsg);
-		free(errMsg);
+				__LINE__, __FUNCTION__, err_msg);
+		free(err_msg);
 	}
 #endif
 	return SLURM_SUCCESS;
 
 }
 
-extern int switch_p_slurmd_step_init(void) {
+extern int switch_p_slurmd_step_init(void)
+{
 	return SLURM_SUCCESS;
 }
 
@@ -1532,7 +1583,8 @@ extern int switch_p_slurmd_step_init(void) {
  * 0 on success and -1 on error
  */
 static int _get_first_pe(uint32_t nodeid, uint32_t task_count,
-		uint32_t **host_to_task_map, int32_t *first_pe) {
+		uint32_t **host_to_task_map, int32_t *first_pe)
+{
 
 	int i, ret = 0;
 
@@ -1570,7 +1622,8 @@ static int _get_first_pe(uint32_t nodeid, uint32_t task_count,
  * Returns 0 on success and -1 on failure.
  */
 
-static int _list_str_to_array(char *list, int *cnt, int32_t **numbers) {
+static int _list_str_to_array(char *list, int *cnt, int32_t **numbers)
+{
 
 	int32_t *item_ptr = NULL;
 	hostlist_t hl;
@@ -1641,7 +1694,8 @@ static int _list_str_to_array(char *list, int *cnt, int32_t **numbers) {
  *
  * Stolen from the ALPS code base.  I may need to write my own.
  */
-static void _recursiveRmdir(const char *dirnm) {
+static void _recursive_rmdir(const char *dirnm)
+{
 	int st;
 	size_t dirnmLen, fnmLen, nameLen;
 	char *fnm = 0;
@@ -1680,7 +1734,7 @@ static void _recursiveRmdir(const char *dirnm) {
 			continue;
 		}
 		if (stBuf.st_mode & S_IFDIR) {
-			_recursiveRmdir(fnm);
+			_recursive_rmdir(fnm);
 		} else {
 
 			st = unlink(fnm);
@@ -1717,7 +1771,8 @@ static void _recursiveRmdir(const char *dirnm) {
  * 	this function.  Look at the way task/cgroup/task_cgroup_cpuset.c or
  * 	jobacct_gather/cgroup/jobacct_gather_cgroup.c does it.
  */
-static int _get_cpu_total(void) {
+static int _get_cpu_total(void)
+{
 	FILE *f = NULL;
 	char * token = NULL, *token1 = NULL, *token2 = NULL, *lin = NULL;
 	char *saveptr = NULL, *saveptr1 = NULL, *endptr = NULL;
@@ -1806,7 +1861,8 @@ static int _get_cpu_total(void) {
  * Returns:
  *  0 on success and -1 on failure.
  */
-static int _assign_port(uint32_t *real_port) {
+static int _assign_port(uint32_t *real_port)
+{
 	int port, tmp, attempts = 0;
 
 	if (real_port == NULL ) {
@@ -1856,7 +1912,8 @@ static int _assign_port(uint32_t *real_port) {
  * Returns:
  *  0 on success and -1 on failure.
  */
-static int _release_port(uint32_t real_port) {
+static int _release_port(uint32_t real_port)
+{
 
 	uint32_t port;
 
@@ -1889,7 +1946,8 @@ static int _release_port(uint32_t real_port) {
  * Returns
  * 	Void.
  */
-static void _free_alpsc_peInfo(alpsc_peInfo_t alpsc_peInfo) {
+static void _free_alpsc_peInfo(alpsc_peInfo_t alpsc_peInfo)
+{
 	if (alpsc_peInfo.peNidArray) {
 		xfree(alpsc_peInfo.peNidArray);
 	}
