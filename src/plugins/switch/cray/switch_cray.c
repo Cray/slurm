@@ -1139,7 +1139,6 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 			sw_job->port);
 	if (rc == 0) {
 		info("Failed to set env variable PMI_CONTROL_PORT");
-		free(buff);
 		return SLURM_ERROR;
 	}
 
@@ -1888,7 +1887,7 @@ static int _release_port(uint32_t real_port) {
  */
 static void _free_alpsc_peInfo(alpsc_peInfo_t alpsc_peInfo) {
 	if (alpsc_peInfo.peNidArray) {
-		free(alpsc_peInfo.peNidArray);
+		xfree(alpsc_peInfo.peNidArray);
 	}
 	if (alpsc_peInfo.peCmdMapArray) {
 		free(alpsc_peInfo.peCmdMapArray);
