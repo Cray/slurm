@@ -706,6 +706,7 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 	gni_ntt_descriptor_t *ntt_desc_ptr = NULL;
 	int gpu_cnt = 0;
 	char *buff = NULL;
+	size_t size;
 
 	if (!sw_job || (sw_job->magic == CRAY_NULL_JOBINFO_MAGIC)) {
 		debug2("(%s: %d: %s) job->switch_job was NULL", THIS_FILE, __LINE__,
@@ -1020,7 +1021,9 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 		/* SPMD Launch */
 		cmdIndex = 0;
 
-		alpsc_peInfo.peCmdMapArray = calloc(alpsc_peInfo.totalPEs, sizeof(int));
+		size = alpsc_peInfo.totalPEs * sizeof(int);
+		alpsc_peInfo.peCmdMapArray = xmalloc(size);
+		memset(alpsc_peInfo.peCmdMapArray, 0, size);
 	} else {
 		/* MPMD Launch */
 
@@ -1046,8 +1049,9 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 	 * have to be filled in when support for them is added.
 	 * Currently, it's all zeros.
 	 */
-	alpsc_peInfo.nodeCpuArray = calloc(sw_job->step_layout->node_cnt,
-			sizeof(int));
+	size = sw_job->step_layout->node_cnt * sizeof(int);
+	alpsc_peInfo.nodeCpuArray = xmalloc(size);
+	memset(alpsc_peInfo.nodeCpuArray, 0, size)
 	if (sw_job->step_layout->node_cnt && (alpsc_peInfo.nodeCpuArray == NULL )) {
 		free(alpsc_peInfo.peCmdMapArray);
 		error("(%s: %d: %s) failed to calloc nodeCpuArray.", THIS_FILE,
@@ -1890,10 +1894,10 @@ static void _free_alpsc_peInfo(alpsc_peInfo_t alpsc_peInfo) {
 		xfree(alpsc_peInfo.peNidArray);
 	}
 	if (alpsc_peInfo.peCmdMapArray) {
-		free(alpsc_peInfo.peCmdMapArray);
+		xfree(alpsc_peInfo.peCmdMapArray);
 	}
 	if (alpsc_peInfo.nodeCpuArray) {
-		free(alpsc_peInfo.nodeCpuArray);
+		xfree(alpsc_peInfo.nodeCpuArray);
 	}
 	return;
 }
