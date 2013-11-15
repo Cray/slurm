@@ -1051,7 +1051,7 @@ extern int switch_p_job_init(stepd_step_rec_t *job) {
 	 */
 	size = sw_job->step_layout->node_cnt * sizeof(int);
 	alpsc_peInfo.nodeCpuArray = xmalloc(size);
-	memset(alpsc_peInfo.nodeCpuArray, 0, size)
+	memset(alpsc_peInfo.nodeCpuArray, 0, size);
 	if (sw_job->step_layout->node_cnt && (alpsc_peInfo.nodeCpuArray == NULL )) {
 		free(alpsc_peInfo.peCmdMapArray);
 		error("(%s: %d: %s) failed to calloc nodeCpuArray.", THIS_FILE,
