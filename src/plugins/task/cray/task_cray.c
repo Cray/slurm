@@ -136,7 +136,7 @@ extern int fini (void)
  * task_p_slurmd_batch_request()
  */
 extern int task_p_slurmd_batch_request (uint32_t job_id,
-					batch_job_launch_msg_t *req)
+		batch_job_launch_msg_t *req)
 {
 	debug("task_p_slurmd_batch_request: %u", job_id);
 	return SLURM_SUCCESS;
@@ -146,11 +146,11 @@ extern int task_p_slurmd_batch_request (uint32_t job_id,
  * task_p_slurmd_launch_request()
  */
 extern int task_p_slurmd_launch_request (uint32_t job_id,
-					 launch_tasks_request_msg_t *req,
-					 uint32_t node_id)
+		launch_tasks_request_msg_t *req,
+		uint32_t node_id)
 {
 	debug("task_p_slurmd_launch_request: %u.%u %u",
-	      job_id, req->job_step_id, node_id);
+			job_id, req->job_step_id, node_id);
 	return SLURM_SUCCESS;
 }
 
@@ -158,8 +158,8 @@ extern int task_p_slurmd_launch_request (uint32_t job_id,
  * task_p_slurmd_reserve_resources()
  */
 extern int task_p_slurmd_reserve_resources (uint32_t job_id,
-					    launch_tasks_request_msg_t *req,
-					    uint32_t node_id)
+		launch_tasks_request_msg_t *req,
+		uint32_t node_id)
 {
 	debug("task_p_slurmd_reserve_resources: %u %u", job_id, node_id);
 	return SLURM_SUCCESS;
@@ -200,7 +200,7 @@ extern int task_p_slurmd_release_resources (uint32_t job_id)
 extern int task_p_pre_setuid (stepd_step_rec_t *job)
 {
 	debug("task_p_pre_setuid: %u.%u",
-		job->jobid, job->stepid);
+			job->jobid, job->stepid);
 
 	return SLURM_SUCCESS;
 }
@@ -215,7 +215,7 @@ extern int task_p_pre_launch (stepd_step_rec_t *job)
 	int rc;
 
 	debug("task_p_pre_launch: %u.%u, task %d",
-	      job->jobid, job->stepid, job->envtp->procid);
+			job->jobid, job->stepid, job->envtp->procid);
 	/*
 	 * Send the rank to the application's PMI layer via an environment
 	 * variable.
@@ -261,7 +261,7 @@ extern int task_p_pre_launch_priv (stepd_step_rec_t *job)
 
 	// Get the lli file name
 	snprintf(llifile, sizeof(llifile), LLI_STATUS_FILE,
-		SLURM_ID_HASH(job->jobid, job->stepid));
+		 SLURM_ID_HASH(job->jobid, job->stepid));
 
 	// Make the file
 	errno = 0;
@@ -269,7 +269,7 @@ extern int task_p_pre_launch_priv (stepd_step_rec_t *job)
 	if (fd == -1) {
 		// Another task_p_pre_launch_priv already created it, ignore
 		if (errno == EEXIST) {
-		    return SLURM_SUCCESS;
+			return SLURM_SUCCESS;
 		}
 		error("%s: creat(%s) failed: %m", __func__, llifile);
 		return SLURM_ERROR;
@@ -313,7 +313,7 @@ extern int task_p_post_term (stepd_step_rec_t *job,
 
 	// Get the lli file name
 	snprintf(llifile, sizeof(llifile), LLI_STATUS_FILE,
-		SLURM_ID_HASH(job->jobid, job->stepid));
+		 SLURM_ID_HASH(job->jobid, job->stepid));
 
 	// Open the lli file.
 	fd = open(llifile, O_RDONLY);
@@ -371,13 +371,13 @@ extern int task_p_post_step (stepd_step_rec_t *job)
 {
 	char llifile[LLI_STATUS_FILE_BUF_SIZE];
 	int rc, cnt;
-	char *errMsg = NULL, path[PATH_MAX];
+	char *err_msg = NULL, path[PATH_MAX];
 	int32_t *numa_nodes;
 	cpu_set_t *cpuMasks;
 
 	// Get the lli file name
 	snprintf(llifile, sizeof(llifile), LLI_STATUS_FILE,
-		SLURM_ID_HASH(job->jobid, job->stepid));
+		 SLURM_ID_HASH(job->jobid, job->stepid));
 
 	// Unlink the file
 	errno = 0;
@@ -448,16 +448,16 @@ extern int task_p_post_step (stepd_step_rec_t *job)
 	 * The last argument which is a path to the cpuset directory has to be
 	 * NULL because the CPUSET directory has already been cleaned up.
 	 */
-	rc = alpsc_compact_mem(&errMsg, cnt, numa_nodes, cpuMasks, NULL);
+	rc = alpsc_compact_mem(&err_msg, cnt, numa_nodes, cpuMasks, NULL);
 
 	xfree(numa_nodes);
 	CPU_FREE(cpuMasks);
 
 	if (rc != 1) {
-		if (errMsg) {
-			error("(%s: %d: %s) alpsc_compact_mem failed: %s",
-			      THIS_FILE, __LINE__, __FUNCTION__, errMsg);
-			free(errMsg);
+		if (err_msg) {
+			error("(%s: %d: %s) alpsc_compact_mem failed: %s", THIS_FILE,
+			      __LINE__, __FUNCTION__, err_msg);
+			free(err_msg);
 		} else {
 			error("(%s: %d: %s) alpsc_compact_mem failed:"
 			      " No error message present.",
@@ -465,10 +465,10 @@ extern int task_p_post_step (stepd_step_rec_t *job)
 		}
 		return SLURM_ERROR;
 	}
-	if (errMsg) {
+	if (err_msg) {
 		info("(%s: %d: %s) alpsc_compact_mem: %s", THIS_FILE, __LINE__,
-		     __FUNCTION__, errMsg);
-		free(errMsg);
+		     __FUNCTION__, err_msg);
+		free(err_msg);
 	}
 
 	return SLURM_SUCCESS;
