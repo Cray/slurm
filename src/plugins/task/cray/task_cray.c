@@ -217,9 +217,10 @@ extern int task_p_pre_launch (stepd_step_rec_t *job)
 	debug("task_p_pre_launch: %u.%u, task %d",
 	      job->jobid, job->stepid, job->envtp->procid);
 	/*
-	 * Send the rank to the application's PMI layer via an environment variable.
+	 * Send the rank to the application's PMI layer via an environment
+	 * variable.
 	 */
-	rc = env_array_overwrite_fmt(&job->env, "ALPS_APP_PE", 
+	rc = env_array_overwrite_fmt(&job->env, "ALPS_APP_PE",
 				     "%d", job->envtp->procid);
 	if (rc == 0) {
 		error("Failed to set env variable ALPS_APP_PE");
@@ -236,7 +237,7 @@ extern int task_p_pre_launch (stepd_step_rec_t *job)
 	}
 
 	// Notify the task which offset to use
-	rc = env_array_overwrite_fmt(&job->env, LLI_STATUS_OFFS_ENV, 
+	rc = env_array_overwrite_fmt(&job->env, LLI_STATUS_OFFS_ENV,
 				     "%d", job->envtp->localid + 1);
 	if (rc == 0) {
 		error("%s: Failed to set %s", __func__, LLI_STATUS_OFFS_ENV);
@@ -254,12 +255,12 @@ extern int task_p_pre_launch_priv (stepd_step_rec_t *job)
 {
 	char llifile[LLI_STATUS_FILE_BUF_SIZE];
 	int rv, fd;
-	
+
 	debug("task_p_pre_launch_priv: %u.%u",
 	      job->jobid, job->stepid);
-	
-	// Get the lli file name 
-	snprintf(llifile, sizeof(llifile), LLI_STATUS_FILE, 
+
+	// Get the lli file name
+	snprintf(llifile, sizeof(llifile), LLI_STATUS_FILE,
 		SLURM_ID_HASH(job->jobid, job->stepid));
 
 	// Make the file
@@ -290,7 +291,7 @@ extern int task_p_pre_launch_priv (stepd_step_rec_t *job)
 		return SLURM_ERROR;
 	}
 	info("Created file %s", llifile);
-	
+
 	TEMP_FAILURE_RETRY(close(fd));
 	return SLURM_SUCCESS;
 }
@@ -309,9 +310,9 @@ extern int task_p_post_term (stepd_step_rec_t *job,
 
 	debug("task_p_post_term: %u.%u, task %d",
 	      job->jobid, job->stepid, job->envtp->procid);
-	
-	// Get the lli file name 
-	snprintf(llifile, sizeof(llifile), LLI_STATUS_FILE, 
+
+	// Get the lli file name
+	snprintf(llifile, sizeof(llifile), LLI_STATUS_FILE,
 		SLURM_ID_HASH(job->jobid, job->stepid));
 
 	// Open the lli file.
@@ -354,11 +355,11 @@ extern int task_p_post_term (stepd_step_rec_t *job,
 	// Check the result
 	if (status == 0) {
 		// Cancel the job step, since we didn't find the exiting msg
-		fprintf(stderr, "Terminating job step, task %d improper exit\n", 
+		fprintf(stderr, "Terminating job step, task %d improper exit\n",
 			job->envtp->procid);
 		slurm_terminate_job_step(job->jobid, job->stepid);
 	}
-	
+
 	return SLURM_SUCCESS;
 }
 
@@ -374,8 +375,8 @@ extern int task_p_post_step (stepd_step_rec_t *job)
 	int32_t *numa_nodes;
 	cpu_set_t *cpuMasks;
 
-	// Get the lli file name 
-	snprintf(llifile, sizeof(llifile), LLI_STATUS_FILE, 
+	// Get the lli file name
+	snprintf(llifile, sizeof(llifile), LLI_STATUS_FILE,
 		SLURM_ID_HASH(job->jobid, job->stepid));
 
 	// Unlink the file
@@ -407,44 +408,46 @@ extern int task_p_post_step (stepd_step_rec_t *job)
 
 	if ((job->stepid == NO_VAL) || (job->stepid == SLURM_BATCH_SCRIPT)) {
 		// Batch Job Step
-		rc = snprintf(path, sizeof(path), "/dev/cpuset/slurm/uid_%d/job_%"
-				PRIu32 "/step_batch", job->uid, job->jobid);
+		rc = snprintf(path, sizeof(path),
+			      "/dev/cpuset/slurm/uid_%d/job_%"
+			      PRIu32 "/step_batch", job->uid, job->jobid);
 		if (rc < 0) {
-			error("(%s: %d: %s) snprintf failed. Return code: %d", THIS_FILE,
-					__LINE__, __FUNCTION__, rc);
+			error("(%s: %d: %s) snprintf failed. Return code: %d",
+			      THIS_FILE, __LINE__, __FUNCTION__, rc);
 			return SLURM_ERROR;
 		}
 	} else {
 		// Normal Job Step
-		rc = snprintf(path, sizeof(path), "/dev/cpuset/slurm/uid_%d/job_%"
-				PRIu32 "/step_%" PRIu32, job->uid, job->jobid, job->stepid);
+		rc = snprintf(path, sizeof(path),
+			      "/dev/cpuset/slurm/uid_%d/job_%"
+			      PRIu32 "/step_%" PRIu32,
+			      job->uid, job->jobid, job->stepid);
 		if (rc < 0) {
-			error("(%s: %d: %s) snprintf failed. Return code: %d", THIS_FILE,
-					__LINE__, __FUNCTION__, rc);
+			error("(%s: %d: %s) snprintf failed. Return code: %d",
+			      THIS_FILE, __LINE__, __FUNCTION__, rc);
 			return SLURM_ERROR;
 		}
 	}
 
 	rc = _get_numa_nodes(path, &cnt, &numa_nodes);
 	if (rc < 0) {
-		error("(%s: %d: %s) get_numa_nodes failed. Return code: %d", THIS_FILE,
-				__LINE__, __FUNCTION__, rc);
+		error("(%s: %d: %s) get_numa_nodes failed. Return code: %d",
+		      THIS_FILE, __LINE__, __FUNCTION__, rc);
 		return SLURM_ERROR;
 	}
 
 	rc = _get_cpu_masks(path, &cpuMasks);
 	if (rc < 0) {
-		error("(%s: %d: %s) get_cpu_masks failed. Return code: %d", THIS_FILE,
-				__LINE__, __FUNCTION__, rc);
+		error("(%s: %d: %s) get_cpu_masks failed. Return code: %d",
+		      THIS_FILE, __LINE__, __FUNCTION__, rc);
 		return SLURM_ERROR;
 	}
 
 	/*
 	 * Compact Memory
-	 * The last argument which is a path to the cpuset directory has to be NULL
-	 * because the CPUSET directory has already been cleaned up.
+	 * The last argument which is a path to the cpuset directory has to be
+	 * NULL because the CPUSET directory has already been cleaned up.
 	 */
-
 	rc = alpsc_compact_mem(&errMsg, cnt, numa_nodes, cpuMasks, NULL);
 
 	xfree(numa_nodes);
@@ -452,18 +455,19 @@ extern int task_p_post_step (stepd_step_rec_t *job)
 
 	if (rc != 1) {
 		if (errMsg) {
-			error("(%s: %d: %s) alpsc_compact_mem failed: %s", THIS_FILE,
-					__LINE__, __FUNCTION__, errMsg);
+			error("(%s: %d: %s) alpsc_compact_mem failed: %s",
+			      THIS_FILE, __LINE__, __FUNCTION__, errMsg);
 			free(errMsg);
 		} else {
-			error("(%s: %d: %s) alpsc_compact_mem failed: No error message "
-					"present.", THIS_FILE, __LINE__, __FUNCTION__);
+			error("(%s: %d: %s) alpsc_compact_mem failed:"
+			      " No error message present.",
+			      THIS_FILE, __LINE__, __FUNCTION__);
 		}
 		return SLURM_ERROR;
 	}
 	if (errMsg) {
 		info("(%s: %d: %s) alpsc_compact_mem: %s", THIS_FILE, __LINE__,
-				__FUNCTION__, errMsg);
+		     __FUNCTION__, errMsg);
 		free(errMsg);
 	}
 
@@ -499,8 +503,8 @@ static int _get_numa_nodes(char *path, int *cnt, int32_t **numa_array) {
 
 	rc = snprintf(buffer, sizeof(buffer), "%s/%s", path, "mems");
 	if (rc < 0) {
-		error("(%s: %d: %s) snprintf failed. Return code: %d", THIS_FILE,
-				__LINE__, __FUNCTION__, rc);
+		error("(%s: %d: %s) snprintf failed. Return code: %d",
+		      THIS_FILE, __LINE__, __FUNCTION__, rc);
 	}
 
 	f = fopen(buffer, "r");
@@ -516,36 +520,36 @@ static int _get_numa_nodes(char *path, int *cnt, int32_t **numa_array) {
 		}
 		bm = numa_parse_nodestring(lin);
 		if (bm == NULL ) {
-			error("(%s: %d: %s) Error numa_parse_nodestring: Invalid node "
-					"string: %s", THIS_FILE, __LINE__, __FUNCTION__, lin);
+			error("(%s: %d: %s) Error numa_parse_nodestring:"
+			      " Invalid node string: %s",
+			      THIS_FILE, __LINE__, __FUNCTION__, lin);
 			free(lin);
 			return SLURM_ERROR;
 		}
 	} else {
 		error("(%s: %d: %s) Reading %s failed.", THIS_FILE, __LINE__,
-				__FUNCTION__, buffer);
+		      __FUNCTION__, buffer);
 		return SLURM_ERROR;
 	}
 	free(lin);
 
 	*cnt = numa_bitmask_weight(bm);
 	if (*cnt == 0) {
-		error("(%s: %d: %s)Error no NUMA Nodes found.", THIS_FILE, __LINE__,
-				__FUNCTION__);
+		error("(%s: %d: %s)Error no NUMA Nodes found.",
+		      THIS_FILE, __LINE__, __FUNCTION__);
 		return -1;
 	}
 
 	if (debug_flags & DEBUG_FLAG_TASK) {
-		info("Btimask size: %lu\nSizeof(*(bm->maskp)):%zd\n"
-				"Bitmask %#lx\nBitmask weight(number of bits set): %u\n",
-				bm->size, sizeof(*(bm->maskp)), *(bm->maskp), *cnt);
-
+		info("Bitmask size: %lu\nSizeof(*(bm->maskp)):%zd\n"
+		     "Bitmask %#lx\nBitmask weight(number of bits set): %u\n",
+		     bm->size, sizeof(*(bm->maskp)), *(bm->maskp), *cnt);
 	}
 
 	*numa_array = xmalloc(*cnt * sizeof(int32_t));
 	if (*numa_array == NULL ) {
 		error("(%s: %d: %s)Error out of memory.\n", THIS_FILE, __LINE__,
-				__FUNCTION__);
+		      __FUNCTION__);
 		return -1;
 	}
 
@@ -553,8 +557,8 @@ static int _get_numa_nodes(char *path, int *cnt, int32_t **numa_array) {
 	for (i = 0; i < bm->size; i++) {
 		if (*(bm->maskp) & ((long unsigned) 1 << i)) {
 			if (debug_flags & DEBUG_FLAG_TASK) {
-				info("(%s: %d: %s)NUMA Node %d is present.\n", THIS_FILE,
-						__LINE__, __FUNCTION__, i);
+				info("(%s: %d: %s)NUMA Node %d is present.\n",
+				     THIS_FILE,	__LINE__, __FUNCTION__, i);
 			}
 			(*numa_array)[index++] = i;
 		}
@@ -590,8 +594,8 @@ static int _get_cpu_masks(char *path, cpu_set_t **cpuMasks) {
 
 	rc = snprintf(buffer, sizeof(buffer), "%s/%s", path, "cpus");
 	if (rc < 0) {
-		error("(%s: %d: %s) snprintf failed. Return code: %d", THIS_FILE,
-				__LINE__, __FUNCTION__, rc);
+		error("(%s: %d: %s) snprintf failed. Return code: %d",
+		      THIS_FILE, __LINE__, __FUNCTION__, rc);
 		return -1;
 	}
 
@@ -608,14 +612,14 @@ static int _get_cpu_masks(char *path, cpu_set_t **cpuMasks) {
 		}
 		bm = numa_parse_cpustring(lin);
 		if (bm == NULL ) {
-			error("(%s: %d: %s)Error numa_parse_nodestring", THIS_FILE,
-					__LINE__, __FUNCTION__);
+			error("(%s: %d: %s) Error numa_parse_nodestring",
+			      THIS_FILE, __LINE__, __FUNCTION__);
 			free(lin);
 			return -1;
 		}
 	} else {
 		error("(%s: %d: %s) Reading %s failed.", THIS_FILE, __LINE__,
-				__FUNCTION__, buffer);
+		      __FUNCTION__, buffer);
 		return -1;
 	}
 	free(lin);
@@ -623,30 +627,29 @@ static int _get_cpu_masks(char *path, cpu_set_t **cpuMasks) {
 	cnt = numa_bitmask_weight(bm);
 	if (cnt == 0) {
 		error("(%s: %d: %s)Error no CPUs found.", THIS_FILE, __LINE__,
-				__FUNCTION__);
+		      __FUNCTION__);
 		return -1;
 	}
 
 	if (debug_flags & DEBUG_FLAG_TASK) {
-		info("Btimask size: %lu\nSizeof(*(bm->maskp)):%zd\n"
-				"Bitmask %#lx\nBitmask weight(number of bits set): %u\n",
-				bm->size, sizeof(*(bm->maskp)), *(bm->maskp), cnt);
-
+		info("Bitmask size: %lu\nSizeof(*(bm->maskp)):%zd\n"
+		     "Bitmask %#lx\nBitmask weight(number of bits set): %u\n",
+		     bm->size, sizeof(*(bm->maskp)), *(bm->maskp), cnt);
 	}
 
 	*cpuMasks = CPU_ALLOC(cnt);
 
 	if (*cpuMasks == NULL ) {
 		error("(%s: %d: %s)Error out of memory.\n", THIS_FILE, __LINE__,
-				__FUNCTION__);
+		      __FUNCTION__);
 		return -1;
 	}
 
 	for (i = 0; i < bm->size; i++) {
 		if (*(bm->maskp) & ((long unsigned) 1 << i)) {
 			if (debug_flags & DEBUG_FLAG_TASK) {
-				info("(%s: %d: %s)CPU %d is present.\n", THIS_FILE, __LINE__,
-						__FUNCTION__, i);
+				info("(%s: %d: %s)CPU %d is present.\n",
+				     THIS_FILE, __LINE__, __FUNCTION__, i);
 			}
 			CPU_SET(i, *cpuMasks);
 		}

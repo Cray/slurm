@@ -51,7 +51,7 @@ ProctrackType=proctrack/cray
 PropagateResourceLimits=NONE
 #PropagateResourceLimitsExcept=
 #RebootProgram=
-# ReturnToService 2 will let rebooted nodes come back up immediately 
+# ReturnToService 2 will let rebooted nodes come back up immediately
 ReturnToService=2
 #SallocDefaultCommand=
 SlurmctldPidFile={slurmctldspooldir}/slurmctld.pid

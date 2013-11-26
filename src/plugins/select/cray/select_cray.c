@@ -133,20 +133,20 @@ pthread_mutex_t aeld_mutex = PTHREAD_MUTEX_INITIALIZER;	// Mutex for the above
 #define AELD_EVENT_INTERVAL	100	// aeld event sending interval (ms)
 
 /* Static functions used for aeld communication */
-static void _handle_aeld_error(const char *funcname, char *errmsg, int rv, 
+static void _handle_aeld_error(const char *funcname, char *errmsg, int rv,
 			       alpsc_ev_session_t **session);
 static void _clear_event_list(alpsc_ev_app_t *list, int32_t *size);
-static void _start_session(alpsc_ev_session_t **session, int *sessionfd); 
+static void _start_session(alpsc_ev_session_t **session, int *sessionfd);
 static void *_aeld_event_loop(void *args);
-static void _initialize_event(alpsc_ev_app_t *event, 
-			      struct job_record *job_ptr, 
+static void _initialize_event(alpsc_ev_app_t *event,
+			      struct job_record *job_ptr,
 			      struct step_record *step_ptr,
 			      alpsc_ev_app_state_e state);
 static void _copy_event(alpsc_ev_app_t *dest, alpsc_ev_app_t *src);
 static void _free_event(alpsc_ev_app_t *event);
-static void _add_to_app_list(alpsc_ev_app_t **list, int32_t *size, 
+static void _add_to_app_list(alpsc_ev_app_t **list, int32_t *size,
 			     size_t *capacity, alpsc_ev_app_t *app);
-static void _update_app(struct job_record *job_ptr, 
+static void _update_app(struct job_record *job_ptr,
 			struct step_record *step_ptr,
 			alpsc_ev_app_state_e state);
 #endif
@@ -313,7 +313,7 @@ static void _aeld_cleanup(void)
 /*
  * Deal with an aeld error.
  */
-static void _handle_aeld_error(const char *funcname, char *errmsg, int rv, 
+static void _handle_aeld_error(const char *funcname, char *errmsg, int rv,
 			       alpsc_ev_session_t **session)
 {
 	error("%s failed: %s", funcname, errmsg);
@@ -347,40 +347,40 @@ static void _clear_event_list(alpsc_ev_app_t *list, int32_t *size)
 
 /*
  * Start an aeld session.
- */ 
-static void _start_session(alpsc_ev_session_t **session, int *sessionfd) 
+ */
+static void _start_session(alpsc_ev_session_t **session, int *sessionfd)
 {
 	int rv;
 	char *errmsg;
 
 	while (1) {
 		pthread_mutex_lock(&aeld_mutex);
-		
+
 		// Clear out the event list
 		_clear_event_list(event_list, &event_list_size);
-		
+
 		// Create the session
-		rv = alpsc_ev_create_session(&errmsg, session, app_list, 
+		rv = alpsc_ev_create_session(&errmsg, session, app_list,
 					     app_list_size);
-		
+
 		pthread_mutex_unlock(&aeld_mutex);
-		
+
 		if (rv) {
-			_handle_aeld_error("alpsc_ev_create_session", 
-					   errmsg, rv, session); 
+			_handle_aeld_error("alpsc_ev_create_session",
+					   errmsg, rv, session);
 		} else {
 			// Get the session fd
-			rv = alpsc_ev_get_session_fd(&errmsg, *session, 
+			rv = alpsc_ev_get_session_fd(&errmsg, *session,
 						     sessionfd);
 			if (rv) {
-				_handle_aeld_error("alpsc_ev_get_session_fd", 
+				_handle_aeld_error("alpsc_ev_get_session_fd",
 						   errmsg, rv, session);
 			} else {
 				aeld_running = 2;
 				break;
 			}
 		}
-		
+
 		// If we get here, start over
 		sleep(AELD_SESSION_INTERVAL);
 	}
@@ -407,14 +407,14 @@ static void *_aeld_event_loop(void *args)
 
 	// Now poll on the session fd
 	fds[0].fd = sessionfd;
-	fds[0].events = POLLIN | POLLPRI | POLLRDHUP; 
-	while ((rv = TEMP_FAILURE_RETRY(poll(fds, 1, AELD_EVENT_INTERVAL))) 
+	fds[0].events = POLLIN | POLLPRI | POLLRDHUP;
+	while ((rv = TEMP_FAILURE_RETRY(poll(fds, 1, AELD_EVENT_INTERVAL)))
 		!= -1) {
 		// There was activity on the file descriptor, get state
 		if (rv > 0) {
 			rv = alpsc_ev_get_session_state(&errmsg, session);
 			if (rv > 0) {
-				_handle_aeld_error("alpsc_ev_get_session_state", 
+				_handle_aeld_error("alpsc_ev_get_session_state",
 						   errmsg, rv, &session);
 				_start_session(&session, &sessionfd);
 				fds[0].fd = sessionfd;
@@ -434,7 +434,7 @@ static void *_aeld_event_loop(void *args)
 		pthread_mutex_lock(&aeld_mutex);
 		if (event_list_size > 0) {
 			// Send event list to aeld
-			rv = alpsc_ev_set_application_info(&errmsg, session, 
+			rv = alpsc_ev_set_application_info(&errmsg, session,
 							   event_list,
 							   event_list_size);
 
@@ -442,7 +442,8 @@ static void *_aeld_event_loop(void *args)
 			_clear_event_list(event_list, &event_list_size);
 			pthread_mutex_unlock(&aeld_mutex);
 			if (rv > 0) {
-				_handle_aeld_error("alpsc_ev_set_application_info", 
+				_handle_aeld_error(
+					"alpsc_ev_set_application_info",
 						   errmsg, rv, &session);
 				_start_session(&session, &sessionfd);
 				fds[0].fd = sessionfd;
@@ -453,16 +454,17 @@ static void *_aeld_event_loop(void *args)
 	}
 
 	error("%s: poll failed: %m", __func__);
-	_aeld_cleanup();	
+	_aeld_cleanup();
 	return NULL;
 }
 
 /*
  * Initialize an alpsc_ev_app_t
  */
-static void _initialize_event(alpsc_ev_app_t *event, 
-	struct job_record *job_ptr, struct step_record *step_ptr,
-	alpsc_ev_app_state_e state)
+static void _initialize_event(alpsc_ev_app_t *event,
+			      struct job_record *job_ptr,
+			      struct step_record *step_ptr,
+			      alpsc_ev_app_state_e state)
 {
 	hostlist_t hl;
 	hostlist_iterator_t hlit;
@@ -477,7 +479,7 @@ static void _initialize_event(alpsc_ev_app_t *event,
 	event->state = state;
 	event->nodes = NULL;
 	event->num_nodes = 0;
-	
+
 	// Fill in nodes and num_nodes
 	if (step_ptr->step_layout) {
 		hl = hostlist_create(step_ptr->step_layout->node_list);
@@ -490,19 +492,21 @@ static void _initialize_event(alpsc_ev_app_t *event,
 			return;
 		}
 
-		event->nodes = xmalloc(step_ptr->step_layout->node_cnt 
+		event->nodes = xmalloc(step_ptr->step_layout->node_cnt
 				* sizeof(int32_t));
-		
+
 		while ((node = hostlist_next(hlit)) != NULL) {
-			rv = sscanf(node, "nid%"SCNd32, &event->nodes[event->num_nodes]);
+			rv = sscanf(node, "nid%"SCNd32,
+				    &event->nodes[event->num_nodes]);
 			if (rv) {
 				event->num_nodes++;
 			} else {
-				debug("%s: couldn't parse node %s, skipping", __func__, node);
+				debug("%s: couldn't parse node %s, skipping",
+				      __func__, node);
 			}
 			free(node);
 		}
-		
+
 		hostlist_iterator_destroy(hlit);
 		hostlist_destroy(hl);
 	} else {
@@ -523,7 +527,8 @@ static void _copy_event(alpsc_ev_app_t *dest, alpsc_ev_app_t *src)
         dest->state = src->state;
         if (src->num_nodes > 0 && src->nodes != NULL) {
                 dest->nodes = xmalloc(src->num_nodes * sizeof(int32_t));
-                memcpy(dest->nodes, src->nodes, src->num_nodes * sizeof(int32_t));
+                memcpy(dest->nodes, src->nodes,
+		       src->num_nodes * sizeof(int32_t));
                 dest->num_nodes = src->num_nodes;
         } else {
                 dest->nodes = NULL;
@@ -546,8 +551,8 @@ static void _free_event(alpsc_ev_app_t *event)
 /*
  * Add to a list. Must have the aeld_mutex locked.
  */
-static void _add_to_app_list(alpsc_ev_app_t **list, int32_t *size, 
-		size_t *capacity, alpsc_ev_app_t *app)
+static void _add_to_app_list(alpsc_ev_app_t **list, int32_t *size,
+			     size_t *capacity, alpsc_ev_app_t *app)
 {
 	// Realloc if necessary
 	if (*size + 1 > *capacity) {
@@ -558,20 +563,21 @@ static void _add_to_app_list(alpsc_ev_app_t **list, int32_t *size,
 		}
 		*list = xrealloc(*list, *capacity * sizeof(alpsc_ev_app_t));
 	}
-	
-	// Copy the event to the destination 
+
+	// Copy the event to the destination
 	_copy_event(*list + *size, app);
-	(*size)++;	
+	(*size)++;
 	return;
 }
 
 /*
  * For starting apps, push to the app list. For ending apps, removes from the
  * app list. For suspend/resume apps, edits the app list. Always adds to the
- * event list. 
+ * event list.
  */
-static void _update_app(struct job_record *job_ptr, struct step_record *step_ptr,
-		alpsc_ev_app_state_e state)
+static void _update_app(struct job_record *job_ptr,
+			struct step_record *step_ptr,
+			alpsc_ev_app_state_e state)
 {
 	uint64_t apid;
 	int32_t i;
@@ -590,17 +596,18 @@ static void _update_app(struct job_record *job_ptr, struct step_record *step_ptr
 
 	// Add it to the event list, only if aeld is up
 	if (aeld_running == 2) {
-		_add_to_app_list(&event_list, &event_list_size, &event_list_capacity, 
-				&app);
+		_add_to_app_list(&event_list, &event_list_size,
+				 &event_list_capacity, &app);
 	}
-	
+
 	// Now deal with the app list
 	// Maintain app list even if aeld is down, so we have it ready when
 	// it comes up.
 	switch(state) {
 	case ALPSC_EV_START:
 		// This is new, add to the app list
-		_add_to_app_list(&app_list, &app_list_size, &app_list_capacity, &app);
+		_add_to_app_list(&app_list, &app_list_size,
+				 &app_list_capacity, &app);
 		break;
 	case ALPSC_EV_END:
 		// Search for the app matching this apid
@@ -609,24 +616,26 @@ static void _update_app(struct job_record *job_ptr, struct step_record *step_ptr
 		for (i = 0; i < app_list_size; i++) {
 			if (app_list[i].apid == apid) {
 				found = 1;
-				
+
 				// Free allocated info
 				_free_event(&app_list[i]);
 
 				// Copy last list entry to this spot
 				if (i < app_list_size - 1) {
-					memcpy(&app_list[i], &app_list[app_list_size - 1], 
-							sizeof(alpsc_ev_app_t));
+					memcpy(&app_list[i],
+					       &app_list[app_list_size - 1],
+					       sizeof(alpsc_ev_app_t));
 				}
 
 				app_list_size--;
-				break;	
+				break;
 			}
 		}
-		
+
 		// Not found
 		if (!found) {
-			debug("Application %"PRIu64" not found in app list", apid);
+			debug("Application %"PRIu64" not found in app list",
+			      apid);
 		}
 		break;
 	case ALPSC_EV_SUSPEND:
@@ -636,7 +645,8 @@ static void _update_app(struct job_record *job_ptr, struct step_record *step_ptr
 		for (i = 0; i < app_list_size; i++) {
 			if (app_list[i].apid == apid) {
 				// Found it, update the state
-				app_list[i].state = (state == ALPSC_EV_SUSPEND) ? 
+				app_list[i].state =
+				    (state == ALPSC_EV_SUSPEND) ?
 					ALPSC_EV_SUSPEND : ALPSC_EV_START;
 				break;
 			}
@@ -644,15 +654,16 @@ static void _update_app(struct job_record *job_ptr, struct step_record *step_ptr
 
 		// Not found
 		if (i >= app_list_size) {
-			debug("Application %"PRIu64" not found in app list", apid);
+			debug("Application %"PRIu64" not found in app list",
+			      apid);
 		}
 		break;
 	default:
 		break;
 	}
 
-	pthread_mutex_unlock(&aeld_mutex);	
-	
+	pthread_mutex_unlock(&aeld_mutex);
+
 	_free_event(&app);
 	return;
 }
@@ -1039,7 +1050,8 @@ extern int select_p_job_suspend(struct job_record *job_ptr, bool indf_susp)
 	// Make an event for each job step
 	if (aeld_running) {
 		i = list_iterator_create(job_ptr->step_list);
-		while ((step_ptr = (struct step_record *)list_next(i)) != NULL) {
+		while ((step_ptr = (struct step_record *)list_next(i))
+			!= NULL) {
 			_update_app(job_ptr, step_ptr, ALPSC_EV_SUSPEND);
 		}
 		list_iterator_destroy(i);
@@ -1058,7 +1070,8 @@ extern int select_p_job_resume(struct job_record *job_ptr, bool indf_susp)
 	// Make an event for each job step
 	if (aeld_running) {
 		i = list_iterator_create(job_ptr->step_list);
-		while ((step_ptr = (struct step_record *)list_next(i)) != NULL) {
+		while ((step_ptr = (struct step_record *)list_next(i))
+			!= NULL) {
 			_update_app(job_ptr, step_ptr, ALPSC_EV_RESUME);
 		}
 		list_iterator_destroy(i);

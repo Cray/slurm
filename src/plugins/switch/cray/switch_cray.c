@@ -149,7 +149,7 @@ typedef struct slurm_cray_jobinfo {
 	uint32_t port;/* Port for PMI Communications */
 	uint32_t       jobid;  /* Current SLURM job id */
 	uint32_t       stepid; /* Current step id */
-	/* Cray Application ID -- A unique combination of the job id and step id*/
+	/* Cray Application ID; A unique combination of the job id and step id*/
 	uint64_t apid;
 	slurm_step_layout_t *step_layout;
 } slurm_cray_jobinfo_t;
@@ -166,22 +166,21 @@ static int _release_port(uint32_t real_port);
 #endif
 
 #ifdef HAVE_NATIVE_CRAY
-static void _free_alpsc_peInfo(alpsc_peInfo_t alpsc_peInfo);
+static void _free_alpsc_pe_info(alpsc_peInfo_t alpsc_pe_info);
 
-static void _print_alpsc_peInfo(alpsc_peInfo_t alps_info)
+static void _print_alpsc_pe_info(alpsc_peInfo_t alps_info)
 {
 	int i;
-	info(
-			"*************************alpsc_peInfo Start"
-			"*************************");
+	info("*************************alpsc_peInfo Start"
+	     "*************************");
 	info("totalPEs: %d\nfirstPeHere: %d\npesHere: %d\npeDepth: %d\n",
-			alps_info.totalPEs, alps_info.firstPeHere, alps_info.pesHere,
-			alps_info.peDepth);
+	     alps_info.totalPEs, alps_info.firstPeHere, alps_info.pesHere,
+	     alps_info.peDepth);
 	for (i = 0; i < alps_info.totalPEs; i++) {
 		info("Task: %d\tNode: %d", i, alps_info.peNidArray[i]);
 	}
 	info("*************************alpsc_peInfo Stop"
-			"*************************");
+	     "*************************");
 }
 #endif
 
@@ -192,7 +191,7 @@ static void _print_jobinfo(slurm_cray_jobinfo_t *job)
 
 	if (!job || (job->magic == CRAY_NULL_JOBINFO_MAGIC)) {
 		error("(%s: %d: %s) job pointer was NULL", THIS_FILE, __LINE__,
-				__FUNCTION__);
+		      __FUNCTION__);
 		return;
 	}
 
@@ -226,15 +225,17 @@ static void _print_jobinfo(slurm_cray_jobinfo_t *job)
 		info("  ------");
 		info("  task_cnt: %" PRIu32, job->step_layout->task_cnt);
 		info("  --- hosts to task---");
-		rc = _list_str_to_array(job->step_layout->node_list, &cnt, &nodes);
+		rc = _list_str_to_array(job->step_layout->node_list, &cnt,
+					&nodes);
 		if (rc) {
-			error("(%s: %d: %s) node_list_str_to_array failed", THIS_FILE,
-					__LINE__, __FUNCTION__);
+			error("(%s: %d: %s) node_list_str_to_array failed",
+			      THIS_FILE, __LINE__, __FUNCTION__);
 		}
 		if (job->step_layout->node_cnt != cnt) {
 			error("(%s: %d: %s) list_str_to_array returned count %"
-			PRIu32 "does not match expected count %d", THIS_FILE, __LINE__,
-					__FUNCTION__, cnt, job->step_layout->node_cnt);
+			      PRIu32 "does not match expected count %d",
+			      THIS_FILE, __LINE__, __FUNCTION__, cnt,
+			      job->step_layout->node_cnt);
 		}
 
 		for (i = 0; i < job->step_layout->node_cnt; i++) {
@@ -308,8 +309,8 @@ int switch_p_alloc_jobinfo(switch_jobinfo_t **switch_job, uint32_t job_id,
 	*switch_job = (switch_jobinfo_t *) new;
 
 	if (debug_flags & DEBUG_FLAG_SWITCH) {
-		info("(%s: %d: %s) switch_jobinfo_t contents", THIS_FILE, __LINE__,
-				__FUNCTION__);
+		info("(%s: %d: %s) switch_jobinfo_t contents",
+		     THIS_FILE, __LINE__, __FUNCTION__);
 		_print_jobinfo(new);
 	}
 
@@ -317,7 +318,7 @@ int switch_p_alloc_jobinfo(switch_jobinfo_t **switch_job, uint32_t job_id,
 }
 
 int switch_p_build_jobinfo(switch_jobinfo_t *switch_job,
-		slurm_step_layout_t *step_layout, char *network)
+			   slurm_step_layout_t *step_layout, char *network)
 {
 
 #ifdef HAVE_NATIVE_CRAY
@@ -332,7 +333,7 @@ int switch_p_build_jobinfo(switch_jobinfo_t *switch_job,
 
 	if (!job || (job->magic == CRAY_NULL_JOBINFO_MAGIC)) {
 		debug2("(%s: %d: %s) switch_job was NULL", THIS_FILE, __LINE__,
-				__FUNCTION__);
+		       __FUNCTION__);
 		return SLURM_SUCCESS;
 	}
 
@@ -341,8 +342,8 @@ int switch_p_build_jobinfo(switch_jobinfo_t *switch_job,
 	rc = _list_str_to_array(step_layout->node_list, &cnt, &nodes);
 
 	if (rc < 0) {
-		error("(%s: %d: %s) list_str_to_array failed", THIS_FILE, __LINE__,
-				__FUNCTION__);
+		error("(%s: %d: %s) list_str_to_array failed",
+		      THIS_FILE, __LINE__, __FUNCTION__);
 		return SLURM_ERROR;
 	}
 	if (step_layout->node_cnt != cnt) {
@@ -355,34 +356,37 @@ int switch_p_build_jobinfo(switch_jobinfo_t *switch_job,
 	 * Get cookies for network configuration
 	 *
 	 * TODO: I could specify a lease time if I knew the wall-clock limit of
-	 * the job.  However, if the job got suspended, then all bets are off.  An
-	 * infinite release time seems safest for now.
+	 * the job.  However, if the job got suspended, then all bets are off.
+	 * An infinite release time seems safest for now.
 	 *
-	 * TODO: I'm hard-coding the number of cookies for now to two.  Maybe we'll
-	 * have a dynamic way to ascertain the number of cookies later.
+	 * TODO: I'm hard-coding the number of cookies for now to two.
+	 * Maybe we'll have a dynamic way to ascertain the number of
+	 * cookies later.
 	 *
 	 * TODO: I could ensure that the nodes list was sorted either by doing
 	 * some research to see if it comes in sorted or calling a sort
 	 * routine.
 	 */
-	rc = alpsc_lease_cookies(&err_msg, "SLURM", job->apid, ALPSC_INFINITE_LEASE,
-			nodes, step_layout->node_cnt, num_cookies, &cookies, &cookie_ids);
+	rc = alpsc_lease_cookies(&err_msg, "SLURM", job->apid,
+				 ALPSC_INFINITE_LEASE, nodes,
+				 step_layout->node_cnt, num_cookies,
+				 &cookies, &cookie_ids);
 	if (rc != 0) {
 		if (err_msg) {
-			error("(%s: %d: %s) alpsc_lease_cookies failed: %s", THIS_FILE,
-					__LINE__, __FUNCTION__, err_msg);
+			error("(%s: %d: %s) alpsc_lease_cookies failed: %s",
+			      THIS_FILE, __LINE__, __FUNCTION__, err_msg);
 			free(err_msg);
 		} else {
-			error("(%s: %d: %s) alpsc_lease_cookies failed: No error message "
-					"present.",
-					THIS_FILE, __LINE__, __FUNCTION__);
+			error("(%s: %d: %s) alpsc_lease_cookies failed:"
+			      " No error message present.",
+			      THIS_FILE, __LINE__, __FUNCTION__);
 		}
 		xfree(nodes);
 		return SLURM_ERROR;
 	}
 	if (err_msg) {
-		info("(%s: %d: %s) alpsc_lease_cookies: %s", THIS_FILE, __LINE__,
-				__FUNCTION__, err_msg);
+		info("(%s: %d: %s) alpsc_lease_cookies: %s",
+		     THIS_FILE, __LINE__, __FUNCTION__, err_msg);
 		free(err_msg);
 	}
 
@@ -394,17 +398,18 @@ int switch_p_build_jobinfo(switch_jobinfo_t *switch_job,
 	 */
 	for (i=0; i<num_cookies; i++) {
 		if (cookie_ids[i] < 0) {
-			error("(%s: %d: %s) alpsc_lease_cookies returned a cookie ID number"
-					" %d with a negative value: %d", THIS_FILE, __LINE__,
-					__FUNCTION__, i, cookie_ids[i]);
+			error("(%s: %d: %s) alpsc_lease_cookies returned a "
+			      "cookie ID number %d with a negative value: %d",
+			      THIS_FILE, __LINE__, __FUNCTION__, i,
+			      cookie_ids[i]);
 			return SLURM_ERROR;
 		}
 	}
 
 	/*
 	 * xmalloc the space for the cookies and cookie_ids, so it can be freed
-	 * with xfree later, which is consistent with SLURM practices and how the
-	 * rest of the structure will be freed.
+	 * with xfree later, which is consistent with SLURM practices and how
+	 * the rest of the structure will be freed.
 	 * We must free() the ALPS Common library allocated memory using free(),
 	 * not xfree().
 	 */
@@ -424,8 +429,8 @@ int switch_p_build_jobinfo(switch_jobinfo_t *switch_job,
 	 */
 	rc = _assign_port(&port);
 	if (rc < 0) {
-		info("(%s: %d: %s) assign_port failed", THIS_FILE, __LINE__,
-				__FUNCTION__);
+		info("(%s: %d: %s) assign_port failed",
+		     THIS_FILE, __LINE__, __FUNCTION__);
 		return SLURM_ERROR;
 	}
 
@@ -456,10 +461,11 @@ switch_jobinfo_t *switch_p_copy_jobinfo(switch_jobinfo_t *switch_job)
 
 	if (!old || (old->magic == CRAY_NULL_JOBINFO_MAGIC)) {
 		debug2("(%s: %d: %s) switch_job was NULL", THIS_FILE, __LINE__,
-				__FUNCTION__);
+		       __FUNCTION__);
 		return NULL;
 	}
-	xassert(((slurm_cray_jobinfo_t *)switch_job)->magic == CRAY_JOBINFO_MAGIC);
+	xassert(((slurm_cray_jobinfo_t *)switch_job)->magic
+		== CRAY_JOBINFO_MAGIC);
 
 	if (switch_p_alloc_jobinfo(&new_init, old->jobid, old->stepid)) {
 		error("Allocating new jobinfo");
@@ -495,7 +501,7 @@ void switch_p_free_jobinfo(switch_jobinfo_t *switch_job)
 
 	if (!job || (job->magic == CRAY_NULL_JOBINFO_MAGIC)) {
 		debug2("(%s: %d: %s) switch_job was NULL", THIS_FILE, __LINE__,
-				__FUNCTION__);
+		       __FUNCTION__);
 		return;
 	}
 
@@ -557,8 +563,8 @@ int switch_p_pack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer,
 	xassert(job->magic == CRAY_JOBINFO_MAGIC);
 
 	if (debug_flags & DEBUG_FLAG_SWITCH) {
-		info("(%s: %d: %s) switch_jobinfo_t contents", THIS_FILE, __LINE__,
-				__FUNCTION__);
+		info("(%s: %d: %s) switch_jobinfo_t contents",
+		     THIS_FILE, __LINE__, __FUNCTION__);
 		_print_jobinfo(job);
 	}
 
@@ -567,13 +573,14 @@ int switch_p_pack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer,
 	packstr_array(job->cookies, job->num_cookies, buffer);
 	pack32_array(job->cookie_ids, job->num_cookies, buffer);
 	pack32(job->port, buffer);
-	pack_slurm_step_layout(job->step_layout, buffer, SLURM_PROTOCOL_VERSION);
+	pack_slurm_step_layout(job->step_layout, buffer,
+			       SLURM_PROTOCOL_VERSION);
 
 	return 0;
 }
 
 int switch_p_unpack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer,
-		uint16_t protocol_version)
+			    uint16_t protocol_version)
 {
 
 	int rc;
@@ -581,7 +588,7 @@ int switch_p_unpack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer,
 
 	if (NULL == switch_job) {
 		debug2("(%s: %d: %s) switch_job was NULL", THIS_FILE, __LINE__,
-				__FUNCTION__);
+		       __FUNCTION__);
 		return SLURM_SUCCESS;
 	}
 
@@ -590,67 +597,73 @@ int switch_p_unpack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer,
 	xassert(buffer);
 	rc = unpack32(&job->magic, buffer);
 	if (rc != SLURM_SUCCESS) {
-		error("(%s: %d: %s) unpack32 of magic failed. Return code: %d", THIS_FILE,
-				__LINE__, __FUNCTION__, rc);
+		error("(%s: %d: %s) unpack32 of magic failed. Return code: %d",
+		      THIS_FILE, __LINE__, __FUNCTION__, rc);
 		goto unpack_error;
 	}
 
 	if (job->magic == CRAY_NULL_JOBINFO_MAGIC) {
 			debug2("(%s: %d: %s) Nothing to unpack.",
-					THIS_FILE, __LINE__, __FUNCTION__);
+			       THIS_FILE, __LINE__, __FUNCTION__);
 			return SLURM_SUCCESS;
 	}
 
 	xassert(job->magic == CRAY_JOBINFO_MAGIC);
 	rc = unpack32(&(job->num_cookies), buffer);
 	if (rc != SLURM_SUCCESS) {
-		error("(%s: %d: %s) unpack32 of num_cookies failed. Return code: %d",
-				THIS_FILE, __LINE__, __FUNCTION__, rc);
+		error("(%s: %d: %s) unpack32 of num_cookies failed."
+		      " Return code: %d",
+		      THIS_FILE, __LINE__, __FUNCTION__, rc);
 		goto unpack_error;
 	}
 	rc = unpackstr_array(&(job->cookies), &num_cookies, buffer);
 	if (rc != SLURM_SUCCESS) {
-		error("(%s: %d: %s) unpackstr_array cookies failed. Return code: %d",
-				THIS_FILE, __LINE__, __FUNCTION__, rc);
+		error("(%s: %d: %s) unpackstr_array cookies failed."
+		      " Return code: %d",
+		      THIS_FILE, __LINE__, __FUNCTION__, rc);
 		goto unpack_error;
 	}
 	if (num_cookies != job->num_cookies) {
-		error("(%s: %d: %s) Wrong number of cookies received.  Expected: %"
-		PRIu32 "Received: %" PRIu32, THIS_FILE, __LINE__, __FUNCTION__,
-				job->num_cookies, num_cookies);
+		error("(%s: %d: %s) Wrong number of cookies received."
+		      " Expected: %" PRIu32 "Received: %" PRIu32,
+		      THIS_FILE, __LINE__, __FUNCTION__,
+		      job->num_cookies, num_cookies);
 		goto unpack_error;
 	}
 	rc = unpack32_array(&(job->cookie_ids), &num_cookies, buffer);
 	if (rc != SLURM_SUCCESS) {
-		error("(%s: %d: %s) unpack32_array cookie IDs failed. Return code: %d",
-				THIS_FILE, __LINE__, __FUNCTION__, rc);
+		error("(%s: %d: %s) unpack32_array cookie IDs failed."
+		      " Return code: %d",
+		      THIS_FILE, __LINE__, __FUNCTION__, rc);
 		goto unpack_error;
 	}
 	if (num_cookies != job->num_cookies) {
-		error("(%s: %d: %s) Wrong number of cookie IDs received.  Expected: %"
-		PRIu32 "Received: %" PRIu32, THIS_FILE, __LINE__, __FUNCTION__,
-				job->num_cookies, num_cookies);
+		error("(%s: %d: %s) Wrong number of cookie IDs received."
+		      " Expected: %" PRIu32 "Received: %" PRIu32,
+		      THIS_FILE, __LINE__, __FUNCTION__,
+		      job->num_cookies, num_cookies);
 		goto unpack_error;
 	}
 
 	rc = unpack32(&job->port, buffer);
 	if (rc != SLURM_SUCCESS) {
 		error("(%s: %d: %s) unpack32 PMI port failed. Return code: %d",
-				THIS_FILE, __LINE__, __FUNCTION__, rc);
+		      THIS_FILE, __LINE__, __FUNCTION__, rc);
 		goto unpack_error;
 	}
 
 	rc = unpack_slurm_step_layout(&(job->step_layout), buffer,
-			SLURM_PROTOCOL_VERSION);
+				      SLURM_PROTOCOL_VERSION);
 	if (rc != SLURM_SUCCESS) {
-		error("(%s: %d: %s) unpack32 step_layout failed. Return code: %d",
-				THIS_FILE, __LINE__, __FUNCTION__, rc);
+		error("(%s: %d: %s) unpack32 step_layout failed."
+		      " Return code: %d",
+		      THIS_FILE, __LINE__, __FUNCTION__, rc);
 		goto unpack_error;
 	}
 
 	if (debug_flags & DEBUG_FLAG_SWITCH) {
-		info("(%s:%d: %s) switch_jobinfo_t contents:", THIS_FILE, __LINE__,
-				__FUNCTION__);
+		info("(%s:%d: %s) switch_jobinfo_t contents:",
+		     THIS_FILE, __LINE__, __FUNCTION__);
 		_print_jobinfo(job);
 	}
 
@@ -658,7 +671,7 @@ int switch_p_unpack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer,
 
 unpack_error:
 	error("(%s:%d: %s) Unpacking error", THIS_FILE, __LINE__,
-				__FUNCTION__);
+	      __FUNCTION__);
 	if (job->cookies) {
 		xfree(job->cookies);
 	}
@@ -677,9 +690,9 @@ void switch_p_print_jobinfo(FILE *fp, switch_jobinfo_t *jobinfo)
 }
 
 char *switch_p_sprint_jobinfo(switch_jobinfo_t *switch_jobinfo, char *buf,
-		size_t size)
+			      size_t size)
 {
-	if ((buf != NULL )&& size) {
+	if ((buf != NULL) && size) {
 		buf[0] = '\0';
 		return buf;
 	}
@@ -710,13 +723,13 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 
 #ifdef HAVE_NATIVE_CRAY
 	slurm_cray_jobinfo_t *sw_job = (slurm_cray_jobinfo_t *) job->switch_job;
-	int rc, numPTags, cmdIndex, num_app_cpus, i, j, cnt;
+	int rc, num_ptags, cmd_index, num_app_cpus, i, j, cnt;
 	int mem_scaling, cpu_scaling;
 	int total_cpus = 0;
 	uint32_t total_mem = 0;
-	int *pTags = NULL;
+	int *ptags = NULL;
 	char *err_msg = NULL, *apid_dir = NULL;
-	alpsc_peInfo_t alpsc_peInfo = {-1, -1, -1, -1, NULL, NULL, NULL};
+	alpsc_peInfo_t alpsc_pe_info = {-1, -1, -1, -1, NULL, NULL, NULL};
 	FILE *f = NULL;
 	size_t sz = 0;
 	ssize_t lsz;
@@ -726,15 +739,15 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 	uint32_t task;
 	int32_t *task_to_nodes_map = NULL;
 	int32_t *nodes = NULL;
-	int32_t firstPeHere;
+	int32_t first_pe_here;
 	gni_ntt_descriptor_t *ntt_desc_ptr = NULL;
 	int gpu_cnt = 0;
 	char *buff = NULL;
 	size_t size;
 
 	if (!sw_job || (sw_job->magic == CRAY_NULL_JOBINFO_MAGIC)) {
-		debug2("(%s: %d: %s) job->switch_job was NULL", THIS_FILE, __LINE__,
-				__FUNCTION__);
+		debug2("(%s: %d: %s) job->switch_job was NULL",
+		       THIS_FILE, __LINE__, __FUNCTION__);
 		return SLURM_SUCCESS;
 	}
 
@@ -742,38 +755,39 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 
 	if (debug_flags & DEBUG_FLAG_SWITCH) {
 		info("(%s:%d: %s) Job ID (in JOB): %" PRIu32
-				"Job ID (in Switch jobinfo): %" PRIu32,
-							THIS_FILE, __LINE__, __FUNCTION__, job->jobid,
-							sw_job->jobid);
+		     "Job ID (in Switch jobinfo): %" PRIu32,
+		     THIS_FILE, __LINE__, __FUNCTION__, job->jobid,
+		     sw_job->jobid);
 	}
 	// Dummy variables to satisfy alpsc_write_placement_file
-	int controlNid = 0, numBranches = 0;
-	struct sockaddr_in controlSoc;
-	alpsc_branchInfo_t alpsc_branchInfo;
+	int control_nid = 0, num_branches = 0;
+	struct sockaddr_in control_soc;
+	alpsc_branchInfo_t alpsc_branch_info;
 
 	rc = alpsc_attach_cncu_container(&err_msg, sw_job->jobid, job->cont_id);
-
 	if (rc != 1) {
 		if (err_msg) {
-			error("(%s: %d: %s) alpsc_attach_cncu_container failed: %s",
-					THIS_FILE, __LINE__, __FUNCTION__, err_msg);
+			error("(%s: %d: %s) alpsc_attach_cncu_container failed:"
+			      " %s",
+			      THIS_FILE, __LINE__, __FUNCTION__, err_msg);
 			free(err_msg);
 		} else {
-			error("(%s: %d: %s) alpsc_attach_cncu_container failed: No error "
-					"message present.", THIS_FILE, __LINE__, __FUNCTION__);
+			error("(%s: %d: %s) alpsc_attach_cncu_container failed:"
+			      " No error message present.",
+			      THIS_FILE, __LINE__, __FUNCTION__);
 		}
 		return SLURM_ERROR;
 	}
 	if (err_msg) {
 		info("(%s: %d: %s) alpsc_attach_cncu_container: %s", THIS_FILE,
-				__LINE__, __FUNCTION__, err_msg);
+		     __LINE__, __FUNCTION__, err_msg);
 		free(err_msg);
 	}
 
 	/*
 	 * Create APID directory
-	 * Make its owner be the user who launched the application and under which
-	 * the application will run.
+	 * Make its owner be the user who launched the application and under
+	 * which the application will run.
 	 */
 	apid_dir = xstrdup_printf(LEGACY_SPOOL_DIR "%" PRIu64, sw_job->apid);
 	if (NULL == apid_dir) {
@@ -785,8 +799,8 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 	rc = mkdir(apid_dir, 0700);
 	if (rc) {
 		xfree(apid_dir);
-		error("(%s: %d: %s) mkdir failed to make directory %s: %m", THIS_FILE,
-				__LINE__, __FUNCTION__, apid_dir);
+		error("(%s: %d: %s) mkdir failed to make directory %s: %m",
+		      THIS_FILE, __LINE__, __FUNCTION__, apid_dir);
 		return SLURM_ERROR;
 	}
 
@@ -794,7 +808,7 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 	if (rc) {
 		free(apid_dir);
 		error("(%s: %d: %s) chown failed: %m", THIS_FILE, __LINE__,
-				__FUNCTION__);
+		      __FUNCTION__);
 		return SLURM_ERROR;
 	}
 
@@ -802,8 +816,8 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 	/*
 	 * Not defined yet -- This one may be skipped because we may not need to
 	 * find the PAGG JOB container based on the APID.  It is part of the
-	 * stepd_step_rec_t struct in the cont_id member, so if we have access to
-	 * the struct, then we have access to the JOB container.
+	 * stepd_step_rec_t struct in the cont_id member, so if we have access
+	 * to the struct, then we have access to the JOB container.
 	 */
 
 	// alpsc_set_PAGG_apid()
@@ -811,9 +825,9 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 	/*
 	 * Configure the network
 	 *
-	 * I'm setting exclusive flag to zero for now until we can figure out a way
-	 * to guarantee that the application not only has exclusive access to the
-	 * node but also will not be suspended.  This may not happen.
+	 * I'm setting exclusive flag to zero for now until we can figure out a
+	 * way to guarantee that the application not only has exclusive access
+	 * to the node but also will not be suspended.  This may not happen.
 	 *
 	 * Only configure the network if the application has more than one rank.
 	 * Single rank applications have no other ranks to communicate with, so
@@ -826,25 +840,27 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 		 */
 		total_cpus = _get_cpu_total();
 		if (total_cpus <= 0) {
-			error("(%s: %d: %s) total_cpus <=0: %d", THIS_FILE, __LINE__,
-					__FUNCTION__, total_cpus);
+			error("(%s: %d: %s) total_cpus <=0: %d",
+			      THIS_FILE, __LINE__, __FUNCTION__, total_cpus);
 			return SLURM_ERROR;
 		}
 
 		/*
-		 * Use /proc/meminfo to get the total amount of memory on the node
+		 * Use /proc/meminfo to get the total amount of memory on the
+		 * node
 		 */
 		f = fopen("/proc/meminfo", "r");
 		if (f == NULL ) {
-			error("(%s: %d: %s) Failed to open /proc/meminfo: %m", THIS_FILE,
-					__LINE__, __FUNCTION__);
+			error("(%s: %d: %s) Failed to open /proc/meminfo: %m",
+			      THIS_FILE, __LINE__, __FUNCTION__);
 			return SLURM_ERROR;
 		}
 
 		while (!feof(f)) {
 			lsz = getline(&lin, &sz, f);
 			if (lsz > 0) {
-				sscanf(lin, "%s %d", meminfo_str, &meminfo_value);
+				sscanf(lin, "%s %d", meminfo_str,
+				       &meminfo_value);
 				if (!strcmp(meminfo_str, "MemTotal:")) {
 					total_mem = meminfo_value;
 					break;
@@ -855,8 +871,9 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 		 TEMP_FAILURE_RETRY(fclose(f));
 
 		if (total_mem == 0) {
-			error("(%s: %d: %s) Scanning /proc/meminfo results in MemTotal=0",
-					THIS_FILE, __LINE__, __FUNCTION__);
+			error("(%s: %d: %s) Scanning /proc/meminfo results in"
+			      " MemTotal=0",
+			      THIS_FILE, __LINE__, __FUNCTION__);
 			return SLURM_ERROR;
 		}
 
@@ -870,100 +887,100 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 
 		num_app_cpus = job->node_tasks * job->cpus_per_task;
 		if (num_app_cpus <= 0) {
-			error("(%s: %d: %s) num_app_cpus <=0: %d", THIS_FILE, __LINE__,
-					__FUNCTION__, num_app_cpus);
+			error("(%s: %d: %s) num_app_cpus <=0: %d",
+			      THIS_FILE, __LINE__, __FUNCTION__, num_app_cpus);
 			return SLURM_ERROR;
 		}
 
-		cpu_scaling =
-				(((double) num_app_cpus / (double) total_cpus) * (double) 100)
-						+ 0.5;
+		cpu_scaling = (((double) num_app_cpus / (double) total_cpus) *
+			(double) 100) + 0.5;
 		if (cpu_scaling > 100) {
-			error(
-					"(%s: %d: %s) Cpu scaling out of bounds: %d.  "
-					"Reducing to 100%%",
-					THIS_FILE, __LINE__, __FUNCTION__, cpu_scaling);
+			error("(%s: %d: %s) Cpu scaling out of bounds: %d."
+			      " Reducing to 100%%",
+			      THIS_FILE, __LINE__, __FUNCTION__, cpu_scaling);
 			cpu_scaling = 100;
 		}
 		if (cpu_scaling <= 0) {
-			error("(%s: %d: %s) Cpu scaling out of bounds: %d.  Increasing to "
-					"1%%", THIS_FILE,
-					__LINE__, __FUNCTION__, cpu_scaling);
+			error("(%s: %d: %s) Cpu scaling out of bounds: %d."
+			      " Increasing to 1%%",
+			      THIS_FILE, __LINE__, __FUNCTION__, cpu_scaling);
 			cpu_scaling = 1;
 		}
 
 		/*
-		 * Scale total_mem, which is in kilobytes, to megabytes because app_mem
-		 * is in megabytes.
+		 * Scale total_mem, which is in kilobytes, to megabytes because
+		 * app_mem is in megabytes.
 		 * Round to the nearest integer.
-		 * If the memory request is greater than 100 percent, then scale it to
-		 * 100%.
+		 * If the memory request is greater than 100 percent, then scale
+		 * it to 100%.
 		 * If the memory request is zero, then return an error.
 		 *
 		 * Note: Because this has caused some confusion in the past,
-		 * The MEM_PER_CPU flag is used to indicate that job->step_mem is the
-		 * amount of memory per CPU, not total.  However, this flag is read
-		 * and cleared in slurmd prior to passing this value to slurmstepd.
+		 * The MEM_PER_CPU flag is used to indicate that job->step_mem
+		 * is the amount of memory per CPU, not total.  However, this
+		 * flag is read and cleared in slurmd prior to passing this
+		 * value to slurmstepd.
 		 * The value comes to slurmstepd already properly scaled.
-		 * Thus, this function does not need to check the MEM_PER_CPU flag.
-		 *
+		 * Thus, this function does not need to check the MEM_PER_CPU
+		 * flag.
 		 */
-		mem_scaling =
-				((((double) job->step_mem / ((double) total_mem / 1024))
-						* (double) 100)) + 0.5;
-
+		mem_scaling = ((((double) job->step_mem /
+				((double) total_mem / 1024)) * (double) 100))
+				+ 0.5;
 		if (mem_scaling > 100) {
-			info(
-					"(%s: %d: %s) Memory scaling out of bounds: %d.  "
-					"Reducing to 100%%.",
-					THIS_FILE, __LINE__, __FUNCTION__, mem_scaling);
+			info("(%s: %d: %s) Memory scaling out of bounds: %d. "
+			     "Reducing to 100%%.",
+			     THIS_FILE, __LINE__, __FUNCTION__, mem_scaling);
 			mem_scaling = 100;
 		}
 
 		if (mem_scaling <= 0) {
-			error("(%s: %d: %s) Memory scaling out of bounds: %d.  Increasing "
-					"to 1%%", THIS_FILE,
-					__LINE__, __FUNCTION__, mem_scaling);
+			error("(%s: %d: %s) Memory scaling out of bounds: %d. "
+			      " Increasing to 1%%",
+			      THIS_FILE, __LINE__, __FUNCTION__, mem_scaling);
 			mem_scaling = 1;
 		}
 
 		if (debug_flags & DEBUG_FLAG_SWITCH) {
-			info("(%s:%d: %s) --Network Scaling Start--", THIS_FILE, __LINE__,
-					__FUNCTION__);
-			info("(%s:%d: %s) --CPU Scaling: %d--", THIS_FILE, __LINE__,
-					__FUNCTION__, cpu_scaling);
-			info("(%s:%d: %s) --Memory Scaling: %d--", THIS_FILE, __LINE__,
-					__FUNCTION__, mem_scaling);
-			info("(%s:%d: %s) --Network Scaling End--", THIS_FILE, __LINE__,
-					__FUNCTION__);
+			info("(%s:%d: %s) --Network Scaling Start--",
+			     THIS_FILE, __LINE__, __FUNCTION__);
+			info("(%s:%d: %s) --CPU Scaling: %d--",
+			     THIS_FILE, __LINE__, __FUNCTION__, cpu_scaling);
 
-			info("(%s:%d: %s) --PAGG Job Container ID: %" PRIx64 "--",
-					THIS_FILE, __LINE__, __FUNCTION__, job->cont_id);
+			info("(%s:%d: %s) --Memory Scaling: %d--",
+			     THIS_FILE, __LINE__, __FUNCTION__, mem_scaling);
+			info("(%s:%d: %s) --Network Scaling End--",
+			     THIS_FILE, __LINE__, __FUNCTION__);
+
+			info("(%s:%d: %s) --PAGG Job Container ID: %"PRIx64"--",
+			     THIS_FILE, __LINE__, __FUNCTION__, job->cont_id);
 		}
 
 		rc = alpsc_configure_nic(&err_msg, 0, cpu_scaling, mem_scaling,
-				job->cont_id, sw_job->num_cookies,
-				(const char **) sw_job->cookies, &numPTags, &pTags,
-				ntt_desc_ptr);
+					 job->cont_id, sw_job->num_cookies,
+					 (const char **) sw_job->cookies,
+					 &num_ptags, &ptags, ntt_desc_ptr);
 		/*
-		 * We don't use the pTags because Cray's LLI acquires them itself, so
-		 * they can be immediately discarded.
+		 * We don't use the ptags because Cray's LLI acquires them
+		 * itself, so they can be immediately discarded.
 		 */
-		free(pTags);
+		free(ptags);
 		if (rc != 1) {
 			if (err_msg) {
-				error("(%s: %d: %s) alpsc_configure_nic failed: %s", THIS_FILE,
-						__LINE__, __FUNCTION__, err_msg);
+				error("(%s: %d: %s) alpsc_configure_nic failed:"
+				      " %s", THIS_FILE,
+				      __LINE__, __FUNCTION__, err_msg);
 				free(err_msg);
 			} else {
-				error("(%s: %d: %s) alpsc_configure_nic failed: No error "
-						"message present.", THIS_FILE, __LINE__, __FUNCTION__);
+				error("(%s: %d: %s) alpsc_configure_nic failed:"
+				      " No error message present.",
+				      THIS_FILE, __LINE__, __FUNCTION__);
 			}
 			return SLURM_ERROR;
 		}
 		if (err_msg) {
-			info("(%s: %d: %s) alpsc_configure_nic: %s", THIS_FILE, __LINE__,
-					__FUNCTION__, err_msg);
+			info("(%s: %d: %s) alpsc_configure_nic: %s",
+			     THIS_FILE, __LINE__, __FUNCTION__, err_msg);
 			free(err_msg);
 		}
 	}
@@ -972,82 +989,85 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 	//alpsc_config_gpcd();
 
 	/*
-	 * The following section will fill in the alpsc_peInfo structure which is
-	 * the key argument to the alpsc_write_placement_file() call.
+	 * The following section will fill in the alpsc_peInfo structure which
+	 * is the key argument to the alpsc_write_placement_file() call.
 	 */
-	alpsc_peInfo.totalPEs = job->ntasks;
-	alpsc_peInfo.pesHere = job->node_tasks;
-	alpsc_peInfo.peDepth = job->cpus_per_task;
+	alpsc_pe_info.totalPEs = job->ntasks;
+	alpsc_pe_info.pesHere = job->node_tasks;
+	alpsc_pe_info.peDepth = job->cpus_per_task;
 
 	/*
-	 * Fill in alpsc_peInfo.firstPeHere
+	 * Fill in alpsc_pe_info.firstPeHere
 	 */
-	rc = _get_first_pe(job->nodeid, job->node_tasks, sw_job->step_layout->tids,
-			&firstPeHere);
+	rc = _get_first_pe(job->nodeid, job->node_tasks,
+			   sw_job->step_layout->tids,
+			   &first_pe_here);
 	if (rc < 0) {
 		error("(%s: %d: %s) get_first_pe failed", THIS_FILE, __LINE__,
-				__FUNCTION__);
+		      __FUNCTION__);
 		return SLURM_ERROR;
 	}
-	alpsc_peInfo.firstPeHere = firstPeHere;
+	alpsc_pe_info.firstPeHere = first_pe_here;
 
 	/*
-	 * Fill in alpsc_peInfo.peNidArray
+	 * Fill in alpsc_pe_info.peNidArray
 	 *
 	 * The peNidArray maps tasks to nodes.
 	 * Basically, reverse the tids variable which maps nodes to tasks.
 	 */
 	rc = _list_str_to_array(sw_job->step_layout->node_list, &cnt, &nodes);
-
 	if (rc < 0) {
-		error("(%s: %d: %s) list_str_to_array failed", THIS_FILE, __LINE__,
-				__FUNCTION__);
+		error("(%s: %d: %s) list_str_to_array failed",
+		      THIS_FILE, __LINE__, __FUNCTION__);
 		return SLURM_ERROR;
 	}
 	if (cnt == 0) {
-		error("(%s: %d: %s) list_str_to_array returned a node count of zero.",
-				THIS_FILE, __LINE__, __FUNCTION__);
+		error("(%s: %d: %s) list_str_to_array returned a node count of"
+		      " zero.",
+		      THIS_FILE, __LINE__, __FUNCTION__);
 		return SLURM_ERROR;
 	}
 	if (sw_job->step_layout->node_cnt != cnt) {
 		error("(%s: %d: %s) list_str_to_array returned count %"
-		PRIu32 "does not match expected count %d", THIS_FILE, __LINE__,
-				__FUNCTION__, cnt, sw_job->step_layout->node_cnt);
+		      PRIu32 "does not match expected count %d",
+		      THIS_FILE, __LINE__, __FUNCTION__, cnt,
+		      sw_job->step_layout->node_cnt);
 	}
 
-	task_to_nodes_map =
-			xmalloc(sw_job->step_layout->task_cnt * sizeof(int32_t));
+	task_to_nodes_map = xmalloc(sw_job->step_layout->task_cnt *
+				    sizeof(int32_t));
 
 	for (i = 0; i < sw_job->step_layout->node_cnt; i++) {
 		for (j = 0; j < sw_job->step_layout->tasks[i]; j++) {
 			task = sw_job->step_layout->tids[i][j];
 			task_to_nodes_map[task] = nodes[i];
 			if (debug_flags & DEBUG_FLAG_SWITCH) {
-				info("(%s:%d: %s) peNidArray:\tTask: %d\tNode: %d", THIS_FILE,
-						__LINE__, __FUNCTION__, task, nodes[i]);
+				info("(%s:%d: %s) peNidArray:\tTask: %d\tNode:"
+				     " %d", THIS_FILE,
+				     __LINE__, __FUNCTION__, task, nodes[i]);
 			}
 		}
 	}
-	alpsc_peInfo.peNidArray = task_to_nodes_map;
+	alpsc_pe_info.peNidArray = task_to_nodes_map;
 	xfree(nodes);
 
 	/*
-	 * Fill in alpsc_peInfo.peCmdMapArray
+	 * Fill in alpsc_pe_info.peCmdMapArray
 	 *
-	 * If the job is an SPMD job, then the command Index (cmdIndex) is 0.
-	 * Otherwise, if the job is an MPMD job, then the command Index (cmdIndex)
-	 * is equal to the number of executables in the job minus 1.
+	 * If the job is an SPMD job, then the command index (cmd_index) is 0.
+	 * Otherwise, if the job is an MPMD job, then the command index
+	 * (cmd_index) is equal to the number of executables in the job minus 1.
 	 *
 	 * TODO: Add MPMD support once SchedMD provides the needed MPMD data.
 	 */
 
 	if (!job->multi_prog) {
 		/* SPMD Launch */
-		cmdIndex = 0;
+		cmd_index = 0;
 
-		size = alpsc_peInfo.totalPEs * sizeof(int);
-		alpsc_peInfo.peCmdMapArray = xmalloc(size);
-		memset(alpsc_peInfo.peCmdMapArray, 0, size);
+		size = alpsc_pe_info.totalPEs * sizeof(int);
+		alpsc_pe_info.peCmdMapArray = xmalloc(size);
+		memset(alpsc_pe_info.peCmdMapArray, 0, size);
 	} else {
 		/* MPMD Launch */
 
@@ -1062,11 +1082,11 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 
 		error("(%s: %d: %s) MPMD Applications are not currently supported.",
 				THIS_FILE, __LINE__, __FUNCTION__);
-		goto error_free_alpsc_peInfo_t;
+		goto error_free_alpsc_pe_info_t;
 	}
 
 	/*
-	 * Fill in alpsc_peInfo.nodeCpuArray
+	 * Fill in alpsc_pe_info.nodeCpuArray
 	 * I don't know how to get this information from SLURM.
 	 * Cray's PMI does not need the information.
 	 * It may be used by debuggers like ATP or lgdb.  If so, then it will
@@ -1074,66 +1094,68 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 	 * Currently, it's all zeros.
 	 */
 	size = sw_job->step_layout->node_cnt * sizeof(int);
-	alpsc_peInfo.nodeCpuArray = xmalloc(size);
-	memset(alpsc_peInfo.nodeCpuArray, 0, size);
+	alpsc_pe_info.nodeCpuArray = xmalloc(size);
+	memset(alpsc_pe_info.nodeCpuArray, 0, size);
 	if (sw_job->step_layout->node_cnt &&
-			(alpsc_peInfo.nodeCpuArray == NULL )) {
-		free(alpsc_peInfo.peCmdMapArray);
+			(alpsc_pe_info.nodeCpuArray == NULL )) {
+		free(alpsc_pe_info.peCmdMapArray);
 		error("(%s: %d: %s) failed to calloc nodeCpuArray.", THIS_FILE,
 				__LINE__, __FUNCTION__);
-		goto error_free_alpsc_peInfo_t;
+		goto error_free_alpsc_pe_info_t;
 	}
 
 	if (debug_flags & DEBUG_FLAG_SWITCH) {
-		_print_alpsc_peInfo(alpsc_peInfo);
+		_print_alpsc_pe_info(alpsc_pe_info);
 	}
 
 	/*
-	 * Some of the input parameters for alpsc_write_placement_file do not apply
-	 * for SLURM.  These parameters will be given zero values.
+	 * Some of the input parameters for alpsc_write_placement_file do not
+	 * apply for SLURM.  These parameters will be given zero values.
 	 * They are
-	 *  int controlNid
-	 *  struct sockaddr_in controlSoc
-	 *  int numBranches
-	 *  alpsc_branchInfo_t alpsc_branchInfo
+	 *  int control_nid
+	 *  struct sockaddr_in control_soc
+	 *  int num_branches
+	 *  alpsc_branchInfo_t alpsc_branch_info
 	 */
-	controlSoc.sin_port = 0;
-	controlSoc.sin_addr.s_addr = 0;
-	/* Just assigning controlSoc because it's already zero. */
-	alpsc_branchInfo.tAddr = controlSoc;
-	alpsc_branchInfo.tIndex = 0;
-	alpsc_branchInfo.tLen = 0;
-	alpsc_branchInfo.targ = 0;
+	control_soc.sin_port = 0;
+	control_soc.sin_addr.s_addr = 0;
+	/* Just assigning control_soc because it's already zero. */
+	alpsc_branch_info.tAddr = control_soc;
+	alpsc_branch_info.tIndex = 0;
+	alpsc_branch_info.tLen = 0;
+	alpsc_branch_info.targ = 0;
 
-	rc = alpsc_write_placement_file(&err_msg, sw_job->apid, cmdIndex,
-			&alpsc_peInfo, controlNid, controlSoc, numBranches,
-			&alpsc_branchInfo);
+	rc = alpsc_write_placement_file(&err_msg, sw_job->apid, cmd_index,
+			&alpsc_pe_info, control_nid, control_soc, num_branches,
+			&alpsc_branch_info);
 	if (rc != 1) {
 		if (err_msg) {
-			error("(%s: %d: %s) alpsc_write_placement_file failed: %s",
-					THIS_FILE, __LINE__, __FUNCTION__, err_msg);
+			error("(%s: %d: %s) alpsc_write_placement_file failed:"
+			      " %s",
+			      THIS_FILE, __LINE__, __FUNCTION__, err_msg);
 			free(err_msg);
 		} else {
-			error("(%s: %d: %s) alpsc_write_placement_file failed: No error "
-					"message present.", THIS_FILE, __LINE__, __FUNCTION__);
+			error("(%s: %d: %s) alpsc_write_placement_file failed:"
+			      " No error message present.",
+			      THIS_FILE, __LINE__, __FUNCTION__);
 		}
-		goto error_free_alpsc_peInfo_t;
+		goto error_free_alpsc_pe_info_t;
 	}
 	if (err_msg) {
-		info("(%s: %d: %s) alpsc_write_placement_file: %s", THIS_FILE, __LINE__,
-				__FUNCTION__, err_msg);
+		info("(%s: %d: %s) alpsc_write_placement_file: %s",
+		     THIS_FILE, __LINE__, __FUNCTION__, err_msg);
 		free(err_msg);
 	}
 
 
-	/* Clean up alpsc_peInfo*/
-	_free_alpsc_peInfo(alpsc_peInfo);
+	/* Clean up alpsc_pe_info*/
+	_free_alpsc_pe_info(alpsc_pe_info);
 
 	/*
 	 * Write the CRAY_NUM_COOKIES and CRAY_COOKIES variables out, too.
 	 */
 	rc = env_array_overwrite_fmt(&job->env, "CRAY_NUM_COOKIES", "%" PRIu32,
-			sw_job->num_cookies);
+				     sw_job->num_cookies);
 	if (rc == 0) {
 		info("Failed to set env variable CRAY_NUM_COOKIES");
 		return SLURM_ERROR;
@@ -1177,25 +1199,27 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 	 * reading the user's environment variable.
 	 */
 
-	rc = gres_get_step_info(job->step_gres_list, "gpu", 0, GRES_STEP_DATA_COUNT,
-			&gpu_cnt);
+	rc = gres_get_step_info(job->step_gres_list, "gpu", 0,
+				GRES_STEP_DATA_COUNT, &gpu_cnt);
 	info("gres_cnt: %d %u", rc, gpu_cnt);
 	if (gpu_cnt > 0) {
 		rc = alpsc_pre_launch_GPU_mps(&err_msg, gpu_enable);
 		if (rc != 1) {
 			if (err_msg) {
-				error("(%s: %d: %s) alpsc_prelaunch_GPU_mps failed: %s",
-						THIS_FILE, __LINE__, __FUNCTION__, err_msg);
+				error("(%s: %d: %s) alpsc_prelaunch_GPU_mps"
+				      " failed: %s", THIS_FILE,
+				      __LINE__, __FUNCTION__, err_msg);
 				free(err_msg);
 			} else {
-				error("(%s: %d: %s) alpsc_prelaunch_GPU_mps failed: No error "
-						"message present.", THIS_FILE, __LINE__, __FUNCTION__);
+				error("(%s: %d: %s) alpsc_prelaunch_GPU_mps"
+				      " failed: No error message present.",
+				      THIS_FILE, __LINE__, __FUNCTION__);
 			}
 			return SLURM_ERROR;
 		}
 		if (err_msg) {
-			info("(%s: %d: %s) alpsc_prelaunch_GPU_mps: %s", THIS_FILE,
-					__LINE__, __FUNCTION__, err_msg);
+			info("(%s: %d: %s) alpsc_prelaunch_GPU_mps: %s",
+			     THIS_FILE, __LINE__, __FUNCTION__, err_msg);
 			free(err_msg);
 		}
 	}
@@ -1209,8 +1233,8 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 	return SLURM_SUCCESS;
 
 #ifdef HAVE_NATIVE_CRAY
-error_free_alpsc_peInfo_t:
-	_free_alpsc_peInfo(alpsc_peInfo);
+error_free_alpsc_pe_info_t:
+	_free_alpsc_pe_info(alpsc_pe_info);
 	return SLURM_ERROR;
 #endif
 }
@@ -1221,19 +1245,19 @@ extern int switch_p_job_suspend_test(switch_jobinfo_t *jobinfo)
 }
 
 extern void switch_p_job_suspend_info_get(switch_jobinfo_t *jobinfo,
-		void **suspend_info)
+					  void **suspend_info)
 {
 	return;
 }
 
 extern void switch_p_job_suspend_info_pack(void *suspend_info, Buf buffer,
-		uint16_t protocol_version)
+					   uint16_t protocol_version)
 {
 	return;
 }
 
 extern int switch_p_job_suspend_info_unpack(void **suspend_info, Buf buffer,
-		uint16_t protocol_version)
+					    uint16_t protocol_version)
 {
 	return SLURM_SUCCESS;
 }
@@ -1259,8 +1283,8 @@ int switch_p_job_fini(switch_jobinfo_t *jobinfo)
 	slurm_cray_jobinfo_t *job = (slurm_cray_jobinfo_t *) jobinfo;
 
 	if (!job || (job->magic == CRAY_NULL_JOBINFO_MAGIC)) {
-		error("(%s: %d: %s) jobinfo pointer was NULL", THIS_FILE, __LINE__,
-				__FUNCTION__);
+		error("(%s: %d: %s) jobinfo pointer was NULL",
+		      THIS_FILE, __LINE__, __FUNCTION__);
 		return SLURM_SUCCESS;
 	}
 
@@ -1274,7 +1298,7 @@ int switch_p_job_fini(switch_jobinfo_t *jobinfo)
 	path_name = xstrdup_printf(LEGACY_SPOOL_DIR "%" PRIu64, job->apid);
 	if (NULL == path_name) {
 		error("(%s: %d: %s) xstrdup_printf failed", THIS_FILE, __LINE__,
-				__FUNCTION__);
+		      __FUNCTION__);
 		return SLURM_ERROR;
 	}
 
@@ -1286,16 +1310,17 @@ int switch_p_job_fini(switch_jobinfo_t *jobinfo)
 	 * Remove the ALPS placement file.
 	 * LEGACY_SPOOL_DIR/places<APID>
 	 */
-	path_name = xstrdup_printf(LEGACY_SPOOL_DIR "places%" PRIu64, job->apid);
+	path_name = xstrdup_printf(LEGACY_SPOOL_DIR "places%" PRIu64,
+				   job->apid);
 	if (NULL == path_name) {
 		error("(%s: %d: %s) xstrdup_printf failed", THIS_FILE, __LINE__,
-				__FUNCTION__);
+		      __FUNCTION__);
 		return SLURM_ERROR;
 	}
 	rc = remove(path_name);
 	if (rc) {
 		error("(%s: %d: %s) remove %s failed: %m", THIS_FILE, __LINE__,
-				__FUNCTION__, path_name);
+		      __FUNCTION__, path_name);
 		return SLURM_ERROR;
 	}
 	xfree(path_name);
@@ -1316,8 +1341,8 @@ int switch_p_job_postfini(stepd_step_rec_t *job)
 	uid_t pgid = job->jmgr_pid;
 
 	if (NULL == job->switch_job) {
-		debug2("(%s: %d: %s) job->switch_job was NULL", THIS_FILE, __LINE__,
-				__FUNCTION__);
+		debug2("(%s: %d: %s) job->switch_job was NULL",
+		       THIS_FILE, __LINE__, __FUNCTION__);
 	}
 
 	/*
@@ -1328,7 +1353,7 @@ int switch_p_job_postfini(stepd_step_rec_t *job)
 		kill(-pgid, SIGKILL);
 	} else
 		info("Job %u.%u: Bad pid value %lu", job->jobid, job->stepid,
-				(unsigned long) pgid);
+		     (unsigned long) pgid);
 	/*
 	 * Clean-up
 	 *
@@ -1341,19 +1366,19 @@ int switch_p_job_postfini(stepd_step_rec_t *job)
 	rc = alpsc_flush_lustre(&err_msg);
 	if (rc != 1) {
 		if (err_msg) {
-			error("(%s: %d: %s) alpsc_flush_lustre failed: %s", THIS_FILE,
-					__LINE__, __FUNCTION__, err_msg);
+			error("(%s: %d: %s) alpsc_flush_lustre failed: %s",
+			      THIS_FILE, __LINE__, __FUNCTION__, err_msg);
 			free(err_msg);
 		} else {
-			error(
-					"(%s: %d: %s) alpsc_flush_lustre failed: No error message "
-					"present.", THIS_FILE, __LINE__, __FUNCTION__);
+			error("(%s: %d: %s) alpsc_flush_lustre failed:"
+			      " No error message present.",
+			      THIS_FILE, __LINE__, __FUNCTION__);
 		}
 		return SLURM_ERROR;
 	}
 	if (err_msg) {
 		info("(%s: %d: %s) alpsc_flush_lustre: %s", THIS_FILE, __LINE__,
-				__FUNCTION__, err_msg);
+		     __FUNCTION__, err_msg);
 		free(err_msg);
 	}
 
@@ -1363,8 +1388,9 @@ int switch_p_job_postfini(stepd_step_rec_t *job)
 		rc = WEXITSTATUS(rc);
 	}
 	if (rc) {
-		error("(%s: %d: %s) Flushing virtual memory failed. Return code: %d",
-				THIS_FILE, __LINE__, __FUNCTION__, rc);
+		error("(%s: %d: %s) Flushing virtual memory failed."
+		      " Return code: %d",
+		      THIS_FILE, __LINE__, __FUNCTION__, rc);
 	}
 	// do_drop_caches();
 
@@ -1373,7 +1399,8 @@ int switch_p_job_postfini(stepd_step_rec_t *job)
 }
 
 int switch_p_job_attach(switch_jobinfo_t *jobinfo, char ***env, uint32_t nodeid,
-		uint32_t procid, uint32_t nnodes, uint32_t nprocs, uint32_t rank)
+			uint32_t procid, uint32_t nnodes, uint32_t nprocs,
+			uint32_t rank)
 {
 	return SLURM_SUCCESS;
 }
@@ -1460,8 +1487,8 @@ extern int switch_p_job_step_complete(switch_jobinfo_t *jobinfo,
 	}
 
 	if (debug_flags & DEBUG_FLAG_SWITCH) {
-		info("(%s:%d: %s) switch_p_job_step_complete", THIS_FILE, __LINE__,
-				__FUNCTION__);
+		info("(%s:%d: %s) switch_p_job_step_complete", THIS_FILE,
+		     __LINE__, __FUNCTION__);
 	}
 
 	/* Release the cookies */
@@ -1471,19 +1498,20 @@ extern int switch_p_job_step_complete(switch_jobinfo_t *jobinfo,
 	if (rc != 0) {
 
 		if (err_msg) {
-			error("(%s: %d: %s) alpsc_release_cookies failed: %s", THIS_FILE,
-					__LINE__, __FUNCTION__, err_msg);
+			error("(%s: %d: %s) alpsc_release_cookies failed: %s",
+			      THIS_FILE, __LINE__, __FUNCTION__, err_msg);
 			free(err_msg);
 		} else {
-			error("(%s: %d: %s) alpsc_release_cookies failed: No error message "
-					"present.", THIS_FILE, __LINE__, __FUNCTION__);
+			error("(%s: %d: %s) alpsc_release_cookies failed:"
+			      " No error message present.",
+			      THIS_FILE, __LINE__, __FUNCTION__);
 		}
 		return SLURM_ERROR;
 
 	}
 	if (err_msg) {
-		info("(%s: %d: %s) alpsc_release_cookies: %s", THIS_FILE, __LINE__,
-				__FUNCTION__, err_msg);
+		info("(%s: %d: %s) alpsc_release_cookies: %s",
+		     THIS_FILE, __LINE__, __FUNCTION__, err_msg);
 		free(err_msg);
 	}
 
@@ -1493,8 +1521,8 @@ extern int switch_p_job_step_complete(switch_jobinfo_t *jobinfo,
 	 */
 	rc = _release_port(job->port);
 	if (rc != 0) {
-		error("(%s: %d: %s) Releasing port %" PRIu32 " failed.", THIS_FILE,
-				__LINE__, __FUNCTION__, job->port);
+		error("(%s: %d: %s) Releasing port %" PRIu32 " failed.",
+		      THIS_FILE, __LINE__, __FUNCTION__, job->port);
 		// return SLURM_ERROR;
 	}
 
@@ -1528,8 +1556,8 @@ extern int switch_p_slurmctld_init(void)
 	 *  reservations for use by Cray's PMI for control tree communications.
 	 */
 	if (MAX_PORT < MIN_PORT) {
-		error("(%s: %d: %s) MAX_PORT: %d < MIN_PORT: %d", THIS_FILE, __LINE__,
-				__FUNCTION__, MAX_PORT, MIN_PORT);
+		error("(%s: %d: %s) MAX_PORT: %d < MIN_PORT: %d",
+		      THIS_FILE, __LINE__, __FUNCTION__, MAX_PORT, MIN_PORT);
 		return SLURM_ERROR;
 	}
 	memset(port_resv, 0, (MAX_PORT - MIN_PORT + 1) * sizeof(port_resv[0]));
@@ -1547,24 +1575,24 @@ extern int switch_p_slurmd_init(void)
 	rc = alpsc_establish_GPU_mps_def_state(&err_msg);
 	if (rc != 1) {
 		if (err_msg) {
-			error("(%s: %d: %s) alpsc_establish_GPU_mps_def_state failed: %s",
-					THIS_FILE, __LINE__, __FUNCTION__, err_msg);
+			error("(%s: %d: %s) alpsc_establish_GPU_mps_def_state"
+			      " failed: %s",
+			      THIS_FILE, __LINE__, __FUNCTION__, err_msg);
 			free(err_msg);
 		} else {
-			error("(%s: %d: %s) alpsc_establish_GPU_mps_def_state failed: "
-					"No error message present.", THIS_FILE, __LINE__,
-					__FUNCTION__);
+			error("(%s: %d: %s) alpsc_establish_GPU_mps_def_state"
+			      " failed: No error message present.",
+			      THIS_FILE, __LINE__, __FUNCTION__);
 		}
 		return SLURM_ERROR;
 	}
 	if (err_msg) {
-		info("(%s: %d: %s) alpsc_establish_GPU_mps_def_state: %s", THIS_FILE,
-				__LINE__, __FUNCTION__, err_msg);
+		info("(%s: %d: %s) alpsc_establish_GPU_mps_def_state: %s",
+		     THIS_FILE,	__LINE__, __FUNCTION__, err_msg);
 		free(err_msg);
 	}
 #endif
 	return SLURM_SUCCESS;
-
 }
 
 extern int switch_p_slurmd_step_init(void)
@@ -1590,19 +1618,19 @@ extern int switch_p_slurmd_step_init(void)
  * 0 on success and -1 on error
  */
 static int _get_first_pe(uint32_t nodeid, uint32_t task_count,
-		uint32_t **host_to_task_map, int32_t *first_pe)
+			 uint32_t **host_to_task_map, int32_t *first_pe)
 {
 
 	int i, ret = 0;
 
 	if (task_count == 0) {
 		error("(%s: %d: %s) task_count == 0", THIS_FILE, __LINE__,
-				__FUNCTION__);
+		      __FUNCTION__);
 		return -1;
 	}
 	if (host_to_task_map == NULL ) {
-		error("(%s: %d: %s) host_to_task_map == NULL", THIS_FILE, __LINE__,
-				__FUNCTION__);
+		error("(%s: %d: %s) host_to_task_map == NULL",
+		      THIS_FILE, __LINE__, __FUNCTION__);
 		return -1;
 	}
 	*first_pe = host_to_task_map[nodeid][0];
@@ -1657,25 +1685,21 @@ static int _list_str_to_array(char *list, int *cnt, int32_t **numbers)
 	 * Create an integer array of item_ptr in the same order as in the list.
 	 */
 	item_ptr = *numbers = xmalloc(num_items * sizeof(uint32_t));
-	if (item_ptr == NULL ) {
-		error("(%s: %d: %s) xmalloc failed", THIS_FILE, __LINE__, __FUNCTION__);
-		hostlist_destroy(hl);
-		return -1;
-	}
 	for (i = 0; i < num_items; i++) {
 		// str must be freed using free(), not xfree()
 		str = hostlist_shift(hl);
 		if (str == NULL ) {
-			error("(%s: %d: %s) hostlist_shift error", THIS_FILE, __LINE__,
-					__FUNCTION__);
+			error("(%s: %d: %s) hostlist_shift error",
+			      THIS_FILE, __LINE__, __FUNCTION__);
 			xfree(item_ptr);
 			hostlist_destroy(hl);
 			return -1;
 		}
 		cptr = strpbrk(str, "0123456789");
 		if (cptr == NULL ) {
-			error("(%s: %d: %s) Error: Node was not recognizable: %s",
-					THIS_FILE, __LINE__, __FUNCTION__, str);
+			error("(%s: %d: %s) Error: Node was not recognizable:"
+			      " %s",
+			      THIS_FILE, __LINE__, __FUNCTION__, str);
 			free(str);
 			xfree(item_ptr);
 			hostlist_destroy(hl);
@@ -1704,11 +1728,11 @@ static int _list_str_to_array(char *list, int *cnt, int32_t **numbers)
 static void _recursive_rmdir(const char *dirnm)
 {
 	int st;
-	size_t dirnmLen, fnmLen, nameLen;
+	size_t dirnm_len, fnm_len, name_len;
 	char *fnm = 0;
 	DIR *dirp;
 	struct dirent *dir;
-	struct stat stBuf;
+	struct stat st_buf;
 
 	/* Don't do anything if there is no directory name */
 	if (dirnm == NULL ) {
@@ -1722,25 +1746,25 @@ static void _recursive_rmdir(const char *dirnm)
 		return;
 	}
 
-	dirnmLen = strlen(dirnm);
-	if (dirnmLen == 0)
+	dirnm_len = strlen(dirnm);
+	if (dirnm_len == 0)
 		return;
 	while ((dir = readdir(dirp))) {
-		nameLen = strlen(dir->d_name);
-		if (nameLen == 1 && dir->d_name[0] == '.')
+		name_len = strlen(dir->d_name);
+		if (name_len == 1 && dir->d_name[0] == '.')
 			continue;
-		if (nameLen == 2 && strcmp(dir->d_name, "..") == 0)
+		if (name_len == 2 && strcmp(dir->d_name, "..") == 0)
 			continue;
-		fnmLen = dirnmLen + nameLen + 2;
+		fnm_len = dirnm_len + name_len + 2;
 		free(fnm);
-		fnm = malloc(fnmLen);
-		snprintf(fnm, fnmLen, "%s/%s", dirnm, dir->d_name);
-		st = stat(fnm, &stBuf);
+		fnm = malloc(fnm_len);
+		snprintf(fnm, fnm_len, "%s/%s", dirnm, dir->d_name);
+		st = stat(fnm, &st_buf);
 		if (st < 0) {
 			error("stat of %s", fnm);
 			continue;
 		}
-		if (stBuf.st_mode & S_IFDIR) {
+		if (st_buf.st_mode & S_IFDIR) {
 			_recursive_rmdir(fnm);
 		} else {
 
@@ -1748,8 +1772,8 @@ static void _recursive_rmdir(const char *dirnm)
 			if (st < 0 && errno == EISDIR)
 				st = rmdir(fnm);
 			if (st < 0 && errno != ENOENT) {
-				error("(%s: %d: %s) Error removing %s", THIS_FILE, __LINE__,
-						__FUNCTION__, fnm);
+				error("(%s: %d: %s) Error removing %s",
+				      THIS_FILE, __LINE__, __FUNCTION__, fnm);
 			}
 		}
 	}
@@ -1760,7 +1784,7 @@ static void _recursive_rmdir(const char *dirnm)
 		st = rmdir(dirnm);
 	if (st < 0 && errno != ENOENT) {
 		error("(%s: %d: %s) Error removing %s", THIS_FILE, __LINE__,
-				__FUNCTION__, dirnm);
+		      __FUNCTION__, dirnm);
 	}
 }
 
@@ -1791,8 +1815,9 @@ static int _get_cpu_total(void)
 	f = fopen("/sys/devices/system/cpu/online", "r");
 
 	if (f == NULL ) {
-		error("(%s: %d: %s) Failed to open file /sys/devices/system/cpu/online:"
-				" %m\n", THIS_FILE, __LINE__, __FUNCTION__);
+		error("(%s: %d: %s) Failed to open file"
+		      " /sys/devices/system/cpu/online: %m",
+		      THIS_FILE, __LINE__, __FUNCTION__);
 		return -1;
 	}
 
@@ -1805,36 +1830,52 @@ static int _get_cpu_total(void)
 				token1 = strtok_r(token, "-", &saveptr1);
 				if (token1) {
 					number1 = strtol(token1, &endptr, 10);
-					if ((number1 == LONG_MIN)|| (number1 == LONG_MAX)){
-					error("(%s: %d: %s) Error: %m", THIS_FILE, __LINE__,
-							__FUNCTION__);
-					free(lin);
-					TEMP_FAILURE_RETRY(fclose(f));
-					return -1;
-				} else if (endptr == token1) {
-					error("(%s: %d: %s) Error: Not a number: %s\n",
-							THIS_FILE, __LINE__, __FUNCTION__, endptr);
-					free(lin);
-					TEMP_FAILURE_RETRY(fclose(f));
-					return -1;
-				}
-
-					token2 = strtok_r(NULL, "-", &saveptr1);
-					if (token2) {
-						number2 = strtol(token2, &endptr, 10);
-						if ((number2 == LONG_MIN)|| (number2 == LONG_MAX)){
-						error("(%s: %d: %s) Error: %m", THIS_FILE,
-								__LINE__, __FUNCTION__);
+					if ((number1 == LONG_MIN) ||
+					    (number1 == LONG_MAX)) {
+						error("(%s: %d: %s) Error: %m",
+						      THIS_FILE, __LINE__,
+						      __FUNCTION__);
 						free(lin);
 						TEMP_FAILURE_RETRY(fclose(f));
 						return -1;
-					} else if (endptr == token2) {
-						error("(%s: %d: %s) Error: Not a number: '%s'\n",
-								THIS_FILE, __LINE__, __FUNCTION__, endptr);
+					} else if (endptr == token1) {
+						error("(%s: %d: %s) Error:"
+						      " Not a number: %s\n",
+						      THIS_FILE, __LINE__,
+						      __FUNCTION__, endptr);
 						free(lin);
 						TEMP_FAILURE_RETRY(fclose(f));
 						return -1;
 					}
+
+					token2 = strtok_r(NULL, "-", &saveptr1);
+					if (token2) {
+						number2 = strtol(token2,
+								 &endptr, 10);
+						if ((number2 == LONG_MIN) ||
+						    (number2 == LONG_MAX)) {
+							error("(%s: %d: %s)"
+							      " Error: %m",
+							      THIS_FILE,
+							      __LINE__,
+							      __FUNCTION__);
+							free(lin);
+							TEMP_FAILURE_RETRY(
+								fclose(f));
+							return -1;
+						} else if (endptr == token2) {
+							error("(%s: %d: %s)"
+							      " Error: Not a"
+							      " number: '%s'\n",
+							      THIS_FILE,
+							      __LINE__,
+							      __FUNCTION__,
+							      endptr);
+							free(lin);
+							TEMP_FAILURE_RETRY(
+								fclose(f));
+							return -1;
+						}
 
 						total += number2 - number1 + 1;
 					} else {
@@ -1873,8 +1914,8 @@ static int _assign_port(uint32_t *real_port)
 	int port, tmp, attempts = 0;
 
 	if (real_port == NULL ) {
-		error("(%s: %d: %s) real_port address was NULL.", THIS_FILE, __LINE__,
-				__FUNCTION__);
+		error("(%s: %d: %s) real_port address was NULL.",
+		      THIS_FILE, __LINE__, __FUNCTION__);
 		return -1;
 	}
 
@@ -1894,9 +1935,10 @@ static int _assign_port(uint32_t *real_port)
 		port = tmp;
 		attempts++;
 		if ((attempts / port_cnt) >= ATTEMPTS) {
-			error("(%s: %d: %s) No free ports among %d ports.  Went through "
-					"entire port list %d times", THIS_FILE, __LINE__,
-					__FUNCTION__, port_cnt, ATTEMPTS);
+			error("(%s: %d: %s) No free ports among %d ports. "
+			      " Went through entire port list %d times",
+			      THIS_FILE, __LINE__, __FUNCTION__, port_cnt,
+			      ATTEMPTS);
 			return -1;
 		}
 	}
@@ -1925,9 +1967,10 @@ static int _release_port(uint32_t real_port)
 	uint32_t port;
 
 	if ((real_port < MIN_PORT) || (real_port >= MAX_PORT)) {
-		error("(%s: %d: %s) Port %" PRIu32 "outside of valid range %" PRIu32
-		": %" PRIu32, THIS_FILE, __LINE__, __FUNCTION__, real_port, MIN_PORT,
-				MAX_PORT);
+		error("(%s: %d: %s) Port %" PRIu32
+		      "outside of valid range %" PRIu32
+		      ": %" PRIu32, THIS_FILE, __LINE__,
+		      __FUNCTION__, real_port, MIN_PORT, MAX_PORT);
 		return -1;
 	}
 
@@ -1936,33 +1979,34 @@ static int _release_port(uint32_t real_port)
 	if (port_resv[port]) {
 		port_resv[port] = 0;
 	} else {
-		error("(%s: %d: %s) Attempting to release port %d, but it was not "
-				"reserved. ", THIS_FILE, __LINE__, __FUNCTION__, real_port);
+		error("(%s: %d: %s) Attempting to release port %d,"
+		      " but it was not reserved.",
+		      THIS_FILE, __LINE__, __FUNCTION__, real_port);
 		return -1;
 	}
 	return 0;
 }
 
 /*
- * Function: _free_alpsc_peInfo
+ * Function: _free_alpsc_pe_info
  * Description:
- * 	Frees any allocated members of alpsc_peInfo.
+ * 	Frees any allocated members of alpsc_pe_info.
  * Parameters:
- * IN	alpsc_peInfo:  alpsc_peInfo_t structure needing to be freed
+ * IN	alpsc_pe_info:  alpsc_peInfo_t structure needing to be freed
  *
  * Returns
  * 	Void.
  */
-static void _free_alpsc_peInfo(alpsc_peInfo_t alpsc_peInfo)
+static void _free_alpsc_pe_info(alpsc_peInfo_t alpsc_pe_info)
 {
-	if (alpsc_peInfo.peNidArray) {
-		xfree(alpsc_peInfo.peNidArray);
+	if (alpsc_pe_info.peNidArray) {
+		xfree(alpsc_pe_info.peNidArray);
 	}
-	if (alpsc_peInfo.peCmdMapArray) {
-		xfree(alpsc_peInfo.peCmdMapArray);
+	if (alpsc_pe_info.peCmdMapArray) {
+		xfree(alpsc_pe_info.peCmdMapArray);
 	}
-	if (alpsc_peInfo.nodeCpuArray) {
-		xfree(alpsc_peInfo.nodeCpuArray);
+	if (alpsc_pe_info.nodeCpuArray) {
+		xfree(alpsc_pe_info.nodeCpuArray);
 	}
 	return;
 }
