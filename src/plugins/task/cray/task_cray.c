@@ -55,6 +55,7 @@
 #include <errno.h>
 #include <numa.h>
 #include "limits.h"
+#include <sched.h>
 
 #include "slurm/slurm_errno.h"
 #include "src/common/slurm_xlator.h"
@@ -432,7 +433,6 @@ extern int task_p_post_step (stepd_step_rec_t *job)
 		return SLURM_ERROR;
 	}
 
-	cpuMasks = xmalloc(cnt * sizeof(cpu_set_t));
 	rc = _get_cpu_masks(cnt, path, &cpuMasks);
 	if (rc < 0) {
 		error("(%s: %d: %s) get_cpu_masks failed. Return code: %d", THIS_FILE,
@@ -570,8 +570,8 @@ static int _get_numa_nodes(char *path, int *cnt, int32_t **numa_array) {
  * Function: get_cpu_masks
  * Description:
  *
- *  Returns cpuMasks which contains an array of a cpu_set_t cpumask per NUMA
- *  node id within the numaNodes array; the cpumask identifies
+ *  Returns cpuMasks which contains an array of a cpu_set_t cpumask one per
+ *  NUMA node id within the numaNodes array; the cpumask identifies
  *  which CPUs are within that NUMA node.
  *
  *  It does the following.
@@ -582,132 +582,19 @@ static int _get_numa_nodes(char *path, int *cnt, int32_t **numa_array) {
  *  3.  Bitwise-ANDs the bitmasks from steps #1 and #2 to obtain the CPUs
  *      allowed per Numa Node bitmask.
  *
- *  IN int cnt -- Number of entries in cpuMasks array; There is one per NUMA
- *                node.
- *  IN char* path -- The path to the directory containing the files containing
- *                   information about NUMA nodes.
- *  OUT cpu_set_t **cpuMasks -- Pointer to the CPUS used by the application.
- *                              Must be freed via CPU_FREE() by the caller.
+ *  IN int num_numa_nodes -- Number of NUMA nodes in numa_array
+ *  IN int32_t *numa_array -- Array of NUMA nodes length num_numa_nodes
+ *  OUT cpu_set_t **cpuMasks -- An array of cpu_set_t's one per NUMA node
+ *                              The caller must free *cpuMasks via xfree().
  * RETURN
  *  0 on success and -1 on failure.
  */
-static int _get_cpu_masks(int num_numa_nodes, int32_t *numa_array, char *path,
-		cpu_set_t **cpuMasks) {
-	struct bitmask *bm;
-	int i, rc, cnt;
-	char buffer[PATH_MAX];
-	FILE *f = NULL;
-	char *lin = NULL;
-	int lsz;
-	size_t sz;
+static int _get_cpu_masks(int num_numa_nodes, int32_t *numa_array,
+						  cpu_set_t **cpuMasks) {
 
-	rc = snprintf(buffer, sizeof(buffer), "%s/%s", path, "cpus");
-	if (rc < 0) {
-		error("(%s: %d: %s) snprintf failed. Return code: %d", THIS_FILE,
-				__LINE__, __FUNCTION__, rc);
-		return -1;
-	}
-
-	f = fopen(buffer, "r");
-	if (f == NULL ) {
-		error("Failed to open file %s: %m\n", buffer);
-		return -1;
-	}
-
-	/*
-	 * Get allowed CPUs
-	 */
-
-	lsz = getline(&lin, &sz, f);
-	if (lsz > 0) {
-		if (lin[strlen(lin) - 1] == '\n') {
-			lin[strlen(lin) - 1] = '\0';
-		}
-		bm = numa_parse_cpustring(lin);
-		if (bm == NULL ) {
-			error("(%s: %d: %s)Error numa_parse_nodestring", THIS_FILE,
-					__LINE__, __FUNCTION__);
-			free(lin);
-			return -1;
-		}
-	} else {
-		error("(%s: %d: %s) Reading %s failed.", THIS_FILE, __LINE__,
-				__FUNCTION__, buffer);
-		return -1;
-	}
-	free(lin);
-
-	cnt = numa_bitmask_weight(bm);
-	if (cnt == 0) {
-		error("(%s: %d: %s)Error no CPUs found.", THIS_FILE, __LINE__,
-				__FUNCTION__);
-		return -1;
-	}
-
-	if (debug_flags & DEBUG_FLAG_TASK) {
-		info("Btimask size: %lu\nSizeof(*(bm->maskp)):%zd\n"
-				"Bitmask %#lx\nBitmask weight(number of bits set): %u\n",
-				bm->size, sizeof(*(bm->maskp)), *(bm->maskp), cnt);
-
-	}
-
-
-
-	// I don't think this is correct either.
-	*cpuMasks = CPU_ALLOC(cnt);
-
-	if (*cpuMasks == NULL ) {
-		error("(%s: %d: %s)Error out of memory.\n", THIS_FILE, __LINE__,
-				__FUNCTION__);
-		return -1;
-	}
-
-	for (i = 0; i < bm->size; i++) {
-		if (*(bm->maskp) & ((long unsigned) 1 << i)) {
-			if (debug_flags & DEBUG_FLAG_TASK) {
-				info("(%s: %d: %s)CPU %d is present.\n", THIS_FILE, __LINE__,
-						__FUNCTION__, i);
-			}
-			CPU_SET(i, *cpuMasks);
-		}
-	}
-
-	numa_free_cpumask(bm);
-
-	return 0;
-}
-
-/*
- * Function: get_cpu_masks2
- * Description:
- *
- *  Returns cpuMasks which contains an array of a cpu_set_t cpumask per NUMA
- *  node id within the numaNodes array; the cpumask identifies
- *  which CPUs are within that NUMA node.
- *
- *  It does the following.
- *  0.  Uses the cpuset.mems file to determine the total number of Numa Nodes
- *      and their individual index numbers.
- *  1.  Uses numa_node_to_cpus to get the bitmask of CPUs for each Numa Node.
- *  2.  Obtains the bitmask of CPUs for the cpuset from the cpuset.cpus file.
- *  3.  Bitwise-ANDs the bitmasks from steps #1 and #2 to obtain the CPUs
- *      allowed per Numa Node bitmask.
- *
- *  IN int cnt -- Number of entries in cpuMasks array; There is one per NUMA
- *                node.
- *  IN char* path -- The path to the directory containing the files containing
- *                   information about NUMA nodes.
- *  OUT cpu_set_t **cpuMasks -- Pointer to the CPUS used by the application.
- *                              Must be freed via CPU_FREE() by the caller.
- * RETURN
- *  0 on success and -1 on failure.
- */
-static int _get_cpu_masks2(int num_numa_nodes, int32_t *numa_array, char *path,
-		cpu_set_t **cpuMasks) {
-
-	struct bitmask **bm_pptr = NULL, **bm_pptr_AND = NULL;;
-	int i, j, num_numa_nodes;
-
+	struct bitmask **numa_node_cpus = NULL,
+			**remaining_numa_node_cpus = NULL, *collective;
+	int i, j, at_least_one_cpu = 0;
 	cpu_set_t *cpusetptr;
 
 	if (numa_available()) {
@@ -716,151 +603,113 @@ static int _get_cpu_masks2(int num_numa_nodes, int32_t *numa_array, char *path,
 		return -1;
 	}
 
-	bm_pptr = malloc(num_numa_nodes * sizeof(struct bitmask *));
-	bm_pptr_AND = malloc(num_numa_nodes * sizeof(struct bitmask *));
+	/*
+	 * bm_numa_node_cpus: The CPUs available to the NUMA node.
+	 * numa_all_cpus_ptr: all CPUs on which the calling task may execute.
+	 * bm_remaining_numa_node_cpus: Bitwise-AND of the above two to get all of
+	 *                              the CPUs that the task can run on in this
+	 *                              NUMA node.
+	 * bm_collective: Collects all of the CPUs as a precaution.
+	 */
+	numa_node_cpus = xmalloc(num_numa_nodes * sizeof(struct bitmask *));
+	remaining_numa_node_cpus = xmalloc(num_numa_nodes * sizeof(struct bitmask *));
+	collective = numa_allocate_cpumask();
 
 	for (i = 0; i < num_numa_nodes; i++) {
-		bm_pptr[i] = numa_allocate_cpumask();
-		bm_pptr_AND[i] = numa_allocate_cpumask();
-
-		// system("echo > /proc/self/");
-
-		numa_node_to_cpus(i, bm_pptr[i]);
-		for (j = 0; j < (bm_pptr[i]->size / sizeof(unsigned long)); j++) {
-			(bm_pptr_AND[i]->maskp[j]) = (bm_pptr[i]->maskp[j]) & (numa_all_cpus_ptr->maskp[j]);
+		numa_node_cpus[i] = numa_allocate_cpumask();
+		remaining_numa_node_cpus[i] = numa_allocate_cpumask();
+		numa_node_to_cpus(numa_array[i], numa_node_cpus[i]);
+		for (j = 0; j <
+		    (numa_node_cpus[i]->size / sizeof(unsigned long)); j++) {
+			(remaining_numa_node_cpus[i]->maskp[j]) =
+					(numa_node_cpus[i]->maskp[j]) &
+					(numa_all_cpus_ptr->maskp[j]);
+			collective->maskp[j] |=
+								(remaining_numa_node_cpus[i]->maskp[j]);
 		}
 	}
 
-	//Print
-	printf("Size of unsigned long: %lu\n", sizeof(unsigned long));
-
-	for (i =0; i < num_numa_nodes; i++) {
-		printf("%6lu|", bm_pptr[i]->size);
-	}
-	printf("\t Bitmask Size: \n");
-
-	for (i =0; i < num_numa_nodes; i++) {
-		for (j = 0; j < (bm_pptr[i]->size / (sizeof(unsigned long) * 8)); j++) {
-			printf("%6lx", bm_pptr[i]->maskp[j]);
+	/*
+	 * Ensure that we have not masked off all of the CPUs.
+	 * If we have, just re-enable them all.  Better to clear them all than
+	 * none of them.
+	 */
+	for (j=0; j < collective->size; j++) {
+		if (numa_bitmask_isbitset(collective->maskp, j)) {
+			at_least_one_cpu = 1;
 		}
-		printf("|");
 	}
-	printf("\t Bitmask: Allowed CPUs for NUMA Node\n");
 
-
-	for (i =0; i < num_numa_nodes; i++) {
-		for (j = 0; j < (bm_pptr[i]->size / (sizeof(unsigned long) * 8)); j++) {
-			printf("%6lx", numa_all_cpus_ptr->maskp[j]);
-		}
-		printf("|");
-	}
-	printf("\t Bitmask: Allowed CPUs for for CPUSET\n");
-
-
-
-	for (i =0; i < num_numa_nodes; i++) {
-		for (j = 0; j < (bm_pptr[i]->size / (sizeof(unsigned long) * 8)); j++) {
-			printf("%6lx", bm_pptr_AND[i]->maskp[j]);
-		}
-		printf("|");
-	}
-	printf("\t Bitmask: Allowed CPUs between CPUSet and NUMA Node\n");
-
-	// Convert bitmasks to cpu_set_t types
-	cpusetptr = malloc(num_numa_nodes * sizeof(cpu_set_t));
-
-	for (i=0; i < num_numa_nodes; i++) {
-		CPU_ZERO(&cpusetptr[i]);
-		for (j=0; j < bm_pptr_AND[i]->size; j++) {
-			if (numa_bitmask_isbitset(bm_pptr_AND[i], j)) {
-				CPU_SET(j, &cpusetptr[i]);
+	if (!at_least_one_cpu) {
+		for (i = 0; i < num_numa_nodes; i++) {
+			for (j = 0; j <
+			    (remaining_numa_node_cpus[i]->size / sizeof(unsigned long));
+			    j++) {
+				(remaining_numa_node_cpus[i]->maskp[j]) =
+						(numa_all_cpus_ptr->maskp[j]);
 			}
 		}
-		printf("CPU_COUNT() of set:    %d\n", CPU_COUNT(&cpusetptr[i]));
-	}
 
-	// Freeing Everything
-	for (i =0; i < num_numa_nodes; i++) {
-		numa_free_cpumask(bm_pptr[i]);
-		numa_free_cpumask(bm_pptr_AND[i]);
-	}
-	free(bm_pptr);
-	free(bm_pptr_AND);
-	free(cpusetptr);
-
-	/// Old Crap
-	extern struct bitmask *numa_all_cpus_ptr;
-	struct bitmask *allowed_cpus_bm, *numa_node_cpus_bm_array;
-	int i, rc, cnt;
-	char buffer[PATH_MAX];
-	FILE *f = NULL;
-	char *lin = NULL;
-	int lsz;
-	size_t sz;
-
-	rc = snprintf(buffer, sizeof(buffer), "%s/%s", path, "cpus");
-	if (rc < 0) {
-		error("(%s: %d: %s) snprintf failed. Return code: %d", THIS_FILE,
-				__LINE__, __FUNCTION__, rc);
-		return -1;
-	}
-
-	f = fopen(buffer, "r");
-	if (f == NULL ) {
-		error("Failed to open file %s: %m\n", buffer);
-		return -1;
-	}
-
-	/*
-	 * Bitwise-AND the CPUs in the Numa Node with the allowed CPUs
-	 */
-	numa_node_cpus_bm_array = xmalloc(num_numa_nodes * sizeof(struct bitmask));
-	for (i=0; i < num_numa_nodes; i++){
-		numa_node_to_cpus(numa_array[i], &numa_node_cpus_bm_array[i]);
-		numa_node_cpus_bm_array[i] &= *numa_all_cpus_ptr;
-	}
-
-	/*
-	 *
-	 */
-
-
-	cnt = numa_bitmask_weight(allowed_cpus_bm);
-	if (cnt == 0) {
-		error("(%s: %d: %s)Error no CPUs found.", THIS_FILE, __LINE__,
-				__FUNCTION__);
-		return -1;
 	}
 
 	if (debug_flags & DEBUG_FLAG_TASK) {
-		info("Btimask size: %lu\nSizeof(*(allowed_cpus_bm->maskp)):%zd\n"
-				"Bitmask %#lx\nBitmask weight(number of bits set): %u\n",
-				allowed_cpus_bm->size, sizeof(*(allowed_cpus_bm->maskp)), *(allowed_cpus_bm->maskp), cnt);
+		for (i =0; i < num_numa_nodes; i++) {
+			info("%6lu|", numa_node_cpus[i]->size);
+		}
+		info("\t Bitmask Size: \n");
 
-	}
-
-
-
-	// I don't think this is correct either.
-	*cpuMasks = CPU_ALLOC(cnt);
-
-	if (*cpuMasks == NULL ) {
-		error("(%s: %d: %s)Error out of memory.\n", THIS_FILE, __LINE__,
-				__FUNCTION__);
-		return -1;
-	}
-
-	for (i = 0; i < allowed_cpus_bm->size; i++) {
-		if (*(allowed_cpus_bm->maskp) & ((long unsigned) 1 << i)) {
-			if (debug_flags & DEBUG_FLAG_TASK) {
-				info("(%s: %d: %s)CPU %d is present.\n", THIS_FILE, __LINE__,
-						__FUNCTION__, i);
+		for (i =0; i < num_numa_nodes; i++) {
+			for (j = 0; j < (numa_node_cpus[i]->size / (sizeof(unsigned long) * 8)); j++) {
+				info("%6lx", bm_numa_node_cpus_pptr[i]->maskp[j]);
 			}
-			CPU_SET(i, *cpuMasks);
+			info("|");
+		}
+		info("\t Bitmask: Allowed CPUs for NUMA Node\n");
+
+
+		for (i =0; i < num_numa_nodes; i++) {
+			for (j = 0; j < (numa_node_cpus[i]->size / (sizeof(unsigned long) * 8)); j++) {
+				info("%6lx", numa_all_cpus_ptr->maskp[j]);
+			}
+			info("|");
+		}
+		info("\t Bitmask: Allowed CPUs for for CPUSET\n");
+
+		for (i =0; i < num_numa_nodes; i++) {
+			for (j = 0; j < (numa_node_cpus[i]->size / (sizeof(unsigned long) * 8)); j++) {
+				info("%6lx", remaining_numa_node_cpus[i]->maskp[j]);
+			}
+			info("|");
+		}
+		info("\t Bitmask: Allowed CPUs between CPUSet and NUMA Node\n");
+	}
+
+
+	// Convert bitmasks to cpu_set_t types
+	cpusetptr = xmalloc(num_numa_nodes * sizeof(cpu_set_t));
+
+	for (i=0; i < num_numa_nodes; i++) {
+		CPU_ZERO(&cpusetptr[i]);
+		for (j=0; j < remaining_numa_node_cpus[i]->size; j++) {
+			if (numa_bitmask_isbitset(remaining_numa_node_cpus[i], j)) {
+				CPU_SET(j, &cpusetptr[i]);
+			}
+		}
+		if (debug_flags & DEBUG_FLAG_TASK) {
+			info("CPU_COUNT() of set:    %d\n", CPU_COUNT(&cpusetptr[i]));
 		}
 	}
 
-	numa_free_cpumask(allowed_cpus_bm);
+	*cpuMasks = cpusetptr;
+
+	// Freeing Everything
+	numa_free_cpumask(collective);
+	for (i =0; i < num_numa_nodes; i++) {
+		numa_free_cpumask(numa_node_cpus[i]);
+		numa_free_cpumask(remaining_numa_node_cpus[i]);
+	}
+	xfree(numa_node_cpus);
+	xfree(remaining_numa_node_cpus);
 
 	return 0;
 }
