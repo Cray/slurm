@@ -1794,7 +1794,7 @@ static int _get_cpu_total(void)
 
 	if (f == NULL ) {
 		error("(%s: %d: %s) Failed to open file "
-				/sys/devices/system/cpu/online:"
+				"/sys/devices/system/cpu/online:"
 				" %m\n", THIS_FILE, __LINE__, __FUNCTION__);
 		return -1;
 	}
