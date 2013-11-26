@@ -173,7 +173,7 @@ static int _build_gres_alloc_string(struct job_record *job_ptr, int valtype)
 		i_first = bit_ffs(node_bitmap);
 		i_last  = bit_fls(node_bitmap);
 	} else {
-		if (slurm_get_debug_flags() & DEBUG_FLAG_GRES)
+		if (slurmctld_conf.debug_flags & DEBUG_FLAG_GRES)
 			debug("(%s:%d) job id: %u -- No nodes in bitmap of "
 			      "job_record!",
 			      THIS_FILE, __LINE__, job_ptr->job_id);
@@ -198,7 +198,7 @@ static int _build_gres_alloc_string(struct job_record *job_ptr, int valtype)
 		else
 			count = 0;
 
-		if (slurm_get_debug_flags() & DEBUG_FLAG_GRES)
+		if (slurmctld_conf.debug_flags & DEBUG_FLAG_GRES)
 			debug("(%s:%d) job id: %u -- Count of "
 			      "GRES types in the gres_list is: %d",
 			      THIS_FILE, __LINE__, job_ptr->job_id, count);
@@ -206,7 +206,7 @@ static int _build_gres_alloc_string(struct job_record *job_ptr, int valtype)
 		/* Only reallocate when there is an increase in size of the
 		 * local arrays. */
 		if (count > oldcount) {
-			if (slurm_get_debug_flags() & DEBUG_FLAG_GRES)
+			if (slurmctld_conf.debug_flags & DEBUG_FLAG_GRES)
 				debug("(%s:%d) job id: %u -- Old GRES "
 				      "count: %d New GRES count: %d",
 				      THIS_FILE, __LINE__, job_ptr->job_id,
@@ -282,7 +282,7 @@ static int _build_gres_alloc_string(struct job_record *job_ptr, int valtype)
 		if (prefix[0] == '\0')
 			prefix = ",";
 
-		if (slurm_get_debug_flags() & DEBUG_FLAG_GRES)
+		if (slurmctld_conf.debug_flags & DEBUG_FLAG_GRES)
 			debug("(%s:%d) job id: %u -- gres_alloc substring=(%s)",
 			      THIS_FILE, __LINE__, job_ptr->job_id, buf);
 	}
@@ -511,7 +511,6 @@ extern void deallocate_nodes(struct job_record *job_ptr, bool timeout,
 
 	if ((agent_args->node_count - down_node_cnt) == 0) {
 		job_ptr->job_state &= (~JOB_COMPLETING);
-		job_hold_requeue(job_ptr);
 		delete_step_records(job_ptr);
 		slurm_sched_g_schedule();
 	}
@@ -1669,7 +1668,7 @@ extern int select_nodes(struct job_record *job_ptr, bool test_only,
 	 * strings representing the amount of each GRES type requested
 	 *  and allocated. */
 	_fill_in_gres_fields(job_ptr);
-	if (slurm_get_debug_flags() & DEBUG_FLAG_GRES)
+	if (slurmctld_conf.debug_flags & DEBUG_FLAG_GRES)
 		debug("(%s:%d) job id: %u -- job_record->gres: (%s), "
 		      "job_record->gres_alloc: (%s)",
 		      THIS_FILE, __LINE__, job_ptr->job_id,
@@ -1726,7 +1725,7 @@ static int _fill_in_gres_fields(struct job_record *job_ptr)
 
 	/* First build the GRES requested field. */
 	if ((req_config == NULL) || (req_config[0] == '\0')) {
-		if (slurm_get_debug_flags() & DEBUG_FLAG_GRES)
+		if (slurmctld_conf.debug_flags & DEBUG_FLAG_GRES)
 			debug("(%s:%d) job id: %u -- job_record->gres "
 			      "is empty or NULL; this is OK if no GRES "
 			      "was requested",
@@ -1768,7 +1767,7 @@ static int _fill_in_gres_fields(struct job_record *job_ptr)
 
 			if (prefix[0] == '\0')
 				prefix = ",";
-			if (slurm_get_debug_flags() & DEBUG_FLAG_GRES) {
+			if (slurmctld_conf.debug_flags & DEBUG_FLAG_GRES) {
 				debug("(%s:%d) job id:%u -- ngres_req:"
 				      "%u, gres_req substring = (%s)",
 				      THIS_FILE, __LINE__,
@@ -1793,7 +1792,7 @@ static int _fill_in_gres_fields(struct job_record *job_ptr)
 
 		/* Now build the GRES allocated field. */
 		rv = _build_gres_alloc_string(job_ptr, valtype);
-		if (slurm_get_debug_flags() & DEBUG_FLAG_GRES) {
+		if (slurmctld_conf.debug_flags & DEBUG_FLAG_GRES) {
 			debug("(%s:%d) job id: %u -- job_record->gres: (%s), "
 			      "job_record->gres_alloc: (%s)",
 			      THIS_FILE, __LINE__, job_ptr->job_id,
@@ -2514,7 +2513,6 @@ extern void re_kill_job(struct job_record *job_ptr)
 				    ((--job_ptr->node_cnt) == 0)) {
 					last_node_update = time(NULL);
 					job_ptr->job_state &= (~JOB_COMPLETING);
-					job_hold_requeue(job_ptr);
 					delete_step_records(job_ptr);
 					slurm_sched_g_schedule();
 				}
@@ -2542,7 +2540,6 @@ extern void re_kill_job(struct job_record *job_ptr)
 			if ((job_ptr->node_cnt > 0) &&
 			    ((--job_ptr->node_cnt) == 0)) {
 				job_ptr->job_state &= (~JOB_COMPLETING);
-				job_hold_requeue(job_ptr);
 				delete_step_records(job_ptr);
 				slurm_sched_g_schedule();
 				last_node_update = time(NULL);

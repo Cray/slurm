@@ -561,6 +561,7 @@ void _fill_ctld_conf(slurm_ctl_conf_t * conf_ptr)
 
 	conf_ptr->fast_schedule       = conf->fast_schedule;
 	conf_ptr->first_job_id        = conf->first_job_id;
+	conf_ptr->fs_dampening_factor = conf->fs_dampening_factor;
 
 	conf_ptr->gres_plugins        = xstrdup(conf->gres_plugins);
 	conf_ptr->group_info          = conf->group_info;
@@ -2134,7 +2135,7 @@ static void _slurm_rpc_node_registration(slurm_msg_t * msg)
 	}
 	if (error_code == SLURM_SUCCESS) {
 		/* do RPC call */
-		if (!(slurm_get_debug_flags() & DEBUG_FLAG_NO_CONF_HASH) &&
+		if (!(slurmctld_conf.debug_flags & DEBUG_FLAG_NO_CONF_HASH) &&
 		    (node_reg_stat_msg->hash_val != NO_VAL) &&
 		    (node_reg_stat_msg->hash_val != slurm_get_hash_val())) {
 			error("Node %s appears to have a different slurm.conf "
@@ -2487,7 +2488,7 @@ static void _slurm_rpc_reconfigure_controller(slurm_msg_t * msg)
 		info("_slurm_rpc_reconfigure_controller: completed %s",
 		     TIME_STR);
 		slurm_send_rc_msg(msg, SLURM_SUCCESS);
-		priority_g_reconfig();          /* notify priority plugin too */
+		priority_g_reconfig(false);	/* notify priority plugin too */
 		schedule(0);			/* has its own locks */
 		save_all_state();
 	}
@@ -3657,8 +3658,19 @@ inline static void _slurm_rpc_requeue(slurm_msg_t * msg)
 
 	job_ptr = find_job_record(req_ptr->job_id);
 	if (job_ptr == NULL) {
+		slurm_msg_t resp_msg;
+		return_code_msg_t rc_msg;
+
 		info("%s: %u: %s", __func__, req_ptr->job_id,
 		     slurm_strerror(ESLURM_INVALID_JOB_ID));
+
+		slurm_msg_t_init(&resp_msg);
+		resp_msg.protocol_version = msg->protocol_version;
+		resp_msg.msg_type  = RESPONSE_SLURM_RC;
+		rc_msg.return_code = ESLURM_INVALID_JOB_ID;
+		resp_msg.data      = &rc_msg;
+		slurm_send_node_msg(msg->conn_fd, &resp_msg);
+
 		return;
 	}
 
@@ -4254,7 +4266,7 @@ inline static void  _slurm_rpc_set_debug_flags(slurm_msg_t *msg)
 	}
 
 	lock_slurmctld (config_write_lock);
-	debug_flags  = slurm_get_debug_flags();
+	debug_flags  = slurmctld_conf.debug_flags;
 	debug_flags &= (~request_msg->debug_flags_minus);
 	debug_flags |= request_msg->debug_flags_plus;
 	slurm_set_debug_flags(debug_flags);
@@ -4264,7 +4276,7 @@ inline static void  _slurm_rpc_set_debug_flags(slurm_msg_t *msg)
 	log_set_debug_flags();
 	gs_reconfig();
 	gres_plugin_reconfig(NULL);
-	priority_g_reconfig();
+	priority_g_reconfig(false);
 	select_g_reconfigure();
 	(void) slurm_sched_g_reconfig();
 	(void) switch_g_reconfig();

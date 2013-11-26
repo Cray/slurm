@@ -1090,8 +1090,8 @@ static hostrange_t hostrange_intersect(hostrange_t h1, hostrange_t h2)
 
 	assert(hostrange_cmp(h1, h2) <= 0);
 
-	if ((hostrange_prefix_cmp(h1, h2) == 0)
-	    && (h1->hi > h2->lo)
+	if ((h1->hi > h2->lo)
+	    && (hostrange_prefix_cmp(h1, h2) == 0)
 	    && (hostrange_width_combine(h1, h2))) {
 
 		if (!(new = hostrange_copy(h1)))
@@ -1408,8 +1408,8 @@ static int hostlist_push_range(hostlist_t hl, hostrange_t hr)
 		goto error;
 
 	if (hl->nranges > 0
-	    && hostrange_prefix_cmp(tail, hr) == 0
 	    && tail->hi == hr->lo - 1
+	    && hostrange_prefix_cmp(tail, hr) == 0
 	    && hostrange_width_combine(tail, hr)) {
 		tail->hi = hr->hi;
 	} else {
@@ -1829,7 +1829,7 @@ _push_range_list(hostlist_t hl, char *prefix, struct _range *range,
 	if (((p = strrchr(tmp_prefix, '[')) != NULL) &&
 	    ((q = strrchr(p, ']')) != NULL)) {
 		struct _range *prefix_range;
-		struct _range *saved_range = range, *pre_range = prefix_range;
+		struct _range *saved_range = range, *pre_range;
 		unsigned long j, prefix_cnt = 0;
 		*p++ = '\0';
 		*q++ = '\0';
@@ -1841,6 +1841,7 @@ _push_range_list(hostlist_t hl, char *prefix, struct _range *range,
 			xfree(prefix_range);
 			return -1;	/* bad numeric expression */
 		}
+		pre_range = prefix_range;
 		for (i = 0; i < nr; i++) {
 			prefix_cnt += pre_range->hi - pre_range->lo + 1;
 			if (prefix_cnt > MAX_PREFIX_CNT) {
@@ -2448,8 +2449,8 @@ static void hostlist_collapse(hostlist_t hl)
 		hostrange_t hprev = hl->hr[i - 1];
 		hostrange_t hnext = hl->hr[i];
 
-		if (hostrange_prefix_cmp(hprev, hnext) == 0 &&
-		    hprev->hi == hnext->lo - 1 &&
+		if (hprev->hi == hnext->lo - 1 &&
+		    hostrange_prefix_cmp(hprev, hnext) == 0 &&
 		    hostrange_width_combine(hprev, hnext)) {
 			hprev->hi = hnext->hi;
 			hostlist_delete_range(hl, i);

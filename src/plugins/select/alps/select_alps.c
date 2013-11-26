@@ -282,9 +282,19 @@ extern int select_p_job_test(struct job_record *job_ptr, bitstr_t *bitmap,
 			     List *preemptee_job_list,
 			     bitstr_t *exc_core_bitmap)
 {
+
+	if (!job_ptr->details)
+		return EINVAL;
+
 	if (min_nodes == 0) {
 		/* Allocate resources only on a front-end node */
 		job_ptr->details->min_cpus = 0;
+	}
+
+	if (job_ptr->details->core_spec) {
+		verbose("select/alps: job %u core_spec(%u) not supported",
+			job_ptr->job_id, job_ptr->details->core_spec);
+		job_ptr->details->core_spec = 0;
 	}
 
 	return other_job_test(job_ptr, bitmap, min_nodes, max_nodes,
@@ -434,6 +444,11 @@ extern bitstr_t *select_p_step_pick_nodes(struct job_record *job_ptr,
 					  uint32_t node_count)
 {
 	return other_step_pick_nodes(job_ptr, jobinfo, node_count);
+}
+
+extern int select_p_step_start(struct step_record *step_ptr)
+{
+	return other_step_start(step_ptr);
 }
 
 extern int select_p_step_finish(struct step_record *step_ptr)

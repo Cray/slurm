@@ -214,9 +214,9 @@ static bool _job_runnable_test2(struct job_record *job_ptr, bool check_min_time)
 	int reason;
 
 	reason = job_limits_check(&job_ptr, check_min_time);
-	if ((reason != WAIT_NO_REASON) &&
-	    (reason != job_ptr->state_reason) &&
-	    (part_policy_job_runnable_state(job_ptr))) {
+	if ((reason != job_ptr->state_reason) &&
+	    ((reason != WAIT_NO_REASON) ||
+	     (!part_policy_job_runnable_state(job_ptr)))) {
 		job_ptr->state_reason = reason;
 		xfree(job_ptr->state_desc);
 	}
@@ -883,6 +883,20 @@ next_part:			part_ptr = (struct part_record *)
 
 		slurmctld_diag_stats.schedule_cycle_depth++;
 
+		if ((job_ptr->resv_name == NULL) &&
+		    _failed_partition(job_ptr->part_ptr, failed_parts,
+				      failed_part_cnt)) {
+			if (job_ptr->state_reason == WAIT_NO_REASON) {
+				job_ptr->state_reason = WAIT_PRIORITY;
+				xfree(job_ptr->state_desc);
+			}
+			debug3("sched: JobId=%u. State=PENDING. "
+			       "Reason=Priority. Priority=%u. Partition=%s.",
+			       job_ptr->job_id, job_ptr->priority,
+			       job_ptr->partition);
+			continue;
+		}
+
 		/* Test for valid account, QOS and required nodes on each pass */
 		if (job_ptr->state_reason == FAIL_ACCOUNT) {
 			slurmdb_association_rec_t assoc_rec;
@@ -931,22 +945,6 @@ next_part:			part_ptr = (struct part_record *)
 			continue;
 		}
 
-		if ((job_ptr->resv_name == NULL) &&
-		    _failed_partition(job_ptr->part_ptr, failed_parts,
-				      failed_part_cnt)) {
-			if (job_ptr->state_reason == WAIT_NO_REASON) {
-				job_ptr->state_reason = WAIT_PRIORITY;
-				xfree(job_ptr->state_desc);
-			}
-			debug3("sched: JobId=%u. State=%s. Reason=%s. "
-			       "Priority=%u. Partition=%s.",
-			       job_ptr->job_id,
-			       job_state_string(job_ptr->job_state),
-			       job_reason_string(job_ptr->state_reason),
-			       job_ptr->priority,
-			       job_ptr->partition);
-			continue;
-		}
 		i = bit_overlap(avail_node_bitmap,
 				job_ptr->part_ptr->node_bitmap);
 		if ((job_ptr->details &&
@@ -1362,7 +1360,7 @@ extern void print_job_dependency(struct job_record *job_ptr)
 {
 	ListIterator depend_iter;
 	struct depend_spec *dep_ptr;
-	char *dep_str;
+	char *array_task_id, *dep_str;
 
 	info("Dependency information for job %u", job_ptr->job_id);
 	if ((job_ptr->details == NULL) ||
@@ -1387,7 +1385,11 @@ extern void print_job_dependency(struct job_record *job_ptr)
 			dep_str = "expand";
 		else
 			dep_str = "unknown";
-		info("  %s:%u", dep_str, dep_ptr->job_id);
+		if (dep_ptr->array_task_id == INFINITE)
+			array_task_id = "_*";
+		else
+			array_task_id = "";
+		info("  %s:%u%s", dep_str, dep_ptr->job_id, array_task_id);
 	}
 	list_iterator_destroy(depend_iter);
 }
@@ -1406,7 +1408,7 @@ extern int test_job_dependency(struct job_record *job_ptr)
  	List job_queue = NULL;
  	bool run_now;
 	int count = 0;
- 	struct job_record *qjob_ptr;
+	struct job_record *qjob_ptr, *djob_ptr;
 
 	if ((job_ptr->details == NULL) ||
 	    (job_ptr->details->depend_list == NULL))
@@ -1417,6 +1419,12 @@ extern int test_job_dependency(struct job_record *job_ptr)
 	while ((dep_ptr = list_next(depend_iter))) {
 		bool clear_dep = false;
 		count--;
+		if (dep_ptr->array_task_id == INFINITE) {
+			/* Advance to latest element of this job array */
+			dep_ptr->job_ptr = find_job_array_rec(dep_ptr->job_id,
+							dep_ptr->array_task_id);
+		}
+		djob_ptr = dep_ptr->job_ptr;
  		if ((dep_ptr->depend_type == SLURM_DEPEND_SINGLETON) &&
  		    job_ptr->name) {
  			/* get user jobs with the same user and name */
@@ -1443,8 +1451,10 @@ extern int test_job_dependency(struct job_record *job_ptr)
  				list_delete_item(depend_iter);
  			else
 				depends = true;
- 		} else if ((dep_ptr->job_ptr->magic != JOB_MAGIC) ||
-			   (dep_ptr->job_ptr->job_id != dep_ptr->job_id)) {
+		} else if ((djob_ptr == NULL) ||
+			   (djob_ptr->magic != JOB_MAGIC) ||
+			   ((djob_ptr->job_id != dep_ptr->job_id) &&
+			    (djob_ptr->array_job_id != dep_ptr->job_id))){
 			/* job is gone, dependency lifted */
 			clear_dep = true;
 		} else if (dep_ptr->depend_type == SLURM_DEPEND_AFTER) {
@@ -1458,9 +1468,11 @@ extern int test_job_dependency(struct job_record *job_ptr)
 			} else
 				depends = true;
 		} else if (dep_ptr->depend_type == SLURM_DEPEND_AFTER_NOT_OK) {
-			if (!IS_JOB_FINISHED(dep_ptr->job_ptr))
+			if (dep_ptr->job_ptr->job_state & JOB_SPECIAL_EXIT) {
+				clear_dep = true;
+			} else if (!IS_JOB_FINISHED(dep_ptr->job_ptr)) {
 				depends = true;
-			else if (!IS_JOB_COMPLETE(dep_ptr->job_ptr)) {
+			} else if (!IS_JOB_COMPLETE(dep_ptr->job_ptr)) {
 				clear_dep = true;
 			} else {
 				failure = true;
@@ -1496,8 +1508,18 @@ extern int test_job_dependency(struct job_record *job_ptr)
 		} else
 			failure = true;
 		if (clear_dep) {
-			char *rmv_dep = xstrdup_printf(
-				":%u", dep_ptr->job_ptr->job_id);
+			char *rmv_dep;
+			if (dep_ptr->array_task_id == INFINITE) {
+				rmv_dep = xstrdup_printf(":%u_*",
+							 dep_ptr->job_id);
+			} else if (dep_ptr->array_task_id != NO_VAL) {
+				rmv_dep = xstrdup_printf(":%u_%u",
+							dep_ptr->job_id,
+							dep_ptr->array_task_id);
+			} else {
+				rmv_dep = xstrdup_printf(":%u",
+							 dep_ptr->job_id);
+			}
 			xstrsubstitute(job_ptr->details->dependency,
 				       rmv_dep, "");
 			xfree(rmv_dep);
@@ -1528,6 +1550,7 @@ extern int update_job_dependency(struct job_record *job_ptr, char *new_depend)
 	int rc = SLURM_SUCCESS;
 	uint16_t depend_type = 0;
 	uint32_t job_id = 0;
+	uint32_t array_task_id;
 	char *tok = new_depend, *sep_ptr, *sep_ptr2 = NULL;
 	List new_depend_list = NULL;
 	struct depend_spec *dep_ptr;
@@ -1575,21 +1598,51 @@ extern int update_job_dependency(struct job_record *job_ptr, char *new_depend)
 		sep_ptr = strchr(tok, ':');
 		if ((sep_ptr == NULL) && (job_id == 0)) {
 			job_id = strtol(tok, &sep_ptr, 10);
+			if ((sep_ptr != NULL) && (sep_ptr[0] == '_')) {
+				if (sep_ptr[1] == '*') {
+					array_task_id = INFINITE;
+					sep_ptr++;
+				} else {
+					array_task_id = strtol(sep_ptr+1,
+							       &sep_ptr, 10);
+				}
+			} else
+				array_task_id = NO_VAL;
 			if ((sep_ptr == NULL) || (sep_ptr[0] != '\0') ||
 			    (job_id == 0) || (job_id == job_ptr->job_id)) {
 				rc = ESLURM_DEPENDENCY;
 				break;
 			}
 			/* old format, just a single job_id */
-			dep_job_ptr = find_job_record(job_id);
+			if (array_task_id == NO_VAL) {
+				dep_job_ptr = find_job_record(job_id);
+				if (dep_job_ptr &&
+				    (dep_job_ptr->array_job_id == job_id) &&
+				    (dep_job_ptr->array_task_id != NO_VAL)) {
+					array_task_id = INFINITE;
+					snprintf(dep_buf, sizeof(dep_buf),
+						 "afterany:%u_*", job_id);
+				} else {
+					snprintf(dep_buf, sizeof(dep_buf),
+						 "afterany:%u", job_id);
+				}
+			} else {
+				dep_job_ptr = find_job_array_rec(job_id,
+								 array_task_id);
+				snprintf(dep_buf, sizeof(dep_buf),
+					 "afterany:%u_%u", job_id,
+					 array_task_id);
+			}
 			if (!dep_job_ptr)	/* assume already done */
 				break;
-			snprintf(dep_buf, sizeof(dep_buf),
-				 "afterany:%u", job_id);
 			new_depend = dep_buf;
 			dep_ptr = xmalloc(sizeof(struct depend_spec));
+			dep_ptr->array_task_id = array_task_id;
 			dep_ptr->depend_type = SLURM_DEPEND_AFTER_ANY;
-			dep_ptr->job_id = job_id;
+			if (array_task_id == NO_VAL)
+				dep_ptr->job_id = dep_job_ptr->job_id;
+			else
+				dep_ptr->job_id = dep_job_ptr->array_job_id;
 			dep_ptr->job_ptr = dep_job_ptr;
 			(void) list_append(new_depend_list, dep_ptr);
 			break;
@@ -1619,6 +1672,16 @@ extern int update_job_dependency(struct job_record *job_ptr, char *new_depend)
 		sep_ptr++;	/* skip over ":" */
 		while (rc == SLURM_SUCCESS) {
 			job_id = strtol(sep_ptr, &sep_ptr2, 10);
+			if ((sep_ptr2 != NULL) && (sep_ptr2[0] == '_')) {
+				if (sep_ptr2[1] == '*') {
+					array_task_id = INFINITE;
+					sep_ptr++;
+				} else {
+					array_task_id = strtol(sep_ptr2+1,
+							       &sep_ptr2, 10);
+				}
+			} else
+				array_task_id = NO_VAL;
 			if ((sep_ptr2 == NULL) ||
 			    (job_id == 0) || (job_id == job_ptr->job_id) ||
 			    ((sep_ptr2[0] != '\0') && (sep_ptr2[0] != ',') &&
@@ -1626,7 +1689,16 @@ extern int update_job_dependency(struct job_record *job_ptr, char *new_depend)
 				rc = ESLURM_DEPENDENCY;
 				break;
 			}
-			dep_job_ptr = find_job_record(job_id);
+			if (array_task_id == NO_VAL) {
+				dep_job_ptr = find_job_record(job_id);
+				if (dep_job_ptr &&
+				    (dep_job_ptr->array_job_id == job_id) &&
+				    (dep_job_ptr->array_task_id != NO_VAL)) {
+					array_task_id = INFINITE;
+				}
+			} else
+				dep_job_ptr = find_job_array_rec(job_id,
+								 array_task_id);
 			if ((depend_type == SLURM_DEPEND_EXPAND) &&
 			    ((expand_cnt++ > 0) || (dep_job_ptr == NULL) ||
 			     (!IS_JOB_RUNNING(dep_job_ptr))              ||
@@ -1652,8 +1724,9 @@ extern int update_job_dependency(struct job_record *job_ptr, char *new_depend)
 			}
 			if (dep_job_ptr) {	/* job still active */
 				dep_ptr = xmalloc(sizeof(struct depend_spec));
+				dep_ptr->array_task_id = array_task_id;
 				dep_ptr->depend_type = depend_type;
-				dep_ptr->job_id = job_id;
+				dep_ptr->job_id  = dep_job_ptr->job_id;
 				dep_ptr->job_ptr = dep_job_ptr;
 				(void) list_append(new_depend_list, dep_ptr);
 			}
@@ -2065,6 +2138,11 @@ static char **_build_env(struct job_record *job_ptr)
 	}
 	sprintf(buf, "%d:%d", exit_code, signal);
 	setenvf(&my_env, "SLURM_JOB_EXIT_CODE2", "%s", buf);
+
+	if (job_ptr->array_job_id != 0)
+		setenvf(&my_env, "SLURM_ARRAY_JOB_ID", "%u", job_ptr->array_job_id);
+	if (job_ptr->array_task_id != NO_VAL)
+		setenvf(&my_env, "SLURM_ARRAY_TASK_ID", "%u", job_ptr->array_task_id);
 
 	setenvf(&my_env, "SLURM_JOB_EXIT_CODE", "%u", job_ptr->exit_code);
 	setenvf(&my_env, "SLURM_JOB_GID", "%u", job_ptr->group_id);

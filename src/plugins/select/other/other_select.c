@@ -81,6 +81,7 @@ const char *node_select_syms[] = {
 	"select_p_job_suspend",
 	"select_p_job_resume",
 	"select_p_step_pick_nodes",
+	"select_p_step_start",
 	"select_p_step_finish",
 	"select_p_pack_select_info",
 	"select_p_select_nodeinfo_pack",
@@ -126,6 +127,7 @@ extern int other_select_init(void)
 	int retval = SLURM_SUCCESS;
 	char *plugin_type = "select";
 	char *type = NULL;
+	int n_syms;
 
 	if (init_run && g_context)
 		return retval;
@@ -140,9 +142,17 @@ extern int other_select_init(void)
 	else
 		type = "select/linear";
 
+	n_syms = sizeof(node_select_syms);
+	if (n_syms != sizeof(ops))
+		fatal("For some reason node_select_syms in "
+		      "src/plugins/select/other/other_select.c differs from "
+		      "slurm_select_ops_t found in src/common/node_select.h.  "
+		      "node_select_syms should match what is in "
+		      "src/common/node_select.c");
+
 	if (!(g_context = plugin_context_create(
 		     plugin_type, type, (void **)&ops,
-		     node_select_syms, sizeof(node_select_syms)))) {
+		     node_select_syms, n_syms))) {
 		error("cannot create %s context for %s", plugin_type, type);
 		retval = SLURM_ERROR;
 		goto done;
@@ -412,6 +422,15 @@ extern bitstr_t *other_step_pick_nodes(struct job_record *job_ptr,
 		return NULL;
 
 	return (*(ops.step_pick_nodes))(job_ptr, jobinfo, node_count);
+}
+
+extern int other_step_start(struct step_record *step_ptr)
+{
+	if (other_select_init() < 0)
+		return SLURM_ERROR;
+
+	return (*(ops.step_start))
+		(step_ptr);
 }
 
 /*

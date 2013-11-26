@@ -311,18 +311,17 @@ where <list> is <cpuid1>,<cpuid2>,...<cpuidN>.
 CPU IDs are interpreted as decimal values unless they are preceded
 with '0x' in which case they are interpreted as hexadecimal values.
 Not supported unless the entire node is allocated to the job.
-This option is currently only supported by the task/affinity plugin.
 .TP
 .B mask_cpu:<list>
 Bind by setting CPU masks on tasks as specified
 where <list> is <mask1>,<mask2>,...<maskN>.
 CPU masks are \fBalways\fR interpreted as hexadecimal values but can be
-preceded with an optional '0x'.
-Not supported unless the entire node is allocated to the job.
-This option is currently only supported by the task/affinity plugin.
+preceded with an optional '0x'. Not supported unless the entire node is
+allocated to the job.
 .TP
 .B rank_ldom
-Bind to a NUMA locality domain by rank
+Bind to a NUMA locality domain by rank. Not supported unless the entire
+node is allocated to the job.
 .TP
 .B map_ldom:<list>
 Bind by mapping NUMA locality domain IDs to tasks as specified where
@@ -358,6 +357,12 @@ this can result in sub\-optimal binding.
 Automatically generate masks binding tasks to NUMA locality domains.
 If the number of tasks differs from the number of allocated locality domains
 this can result in sub\-optimal binding.
+.TP
+.B boards
+Automatically generate masks binding tasks to boards.
+If the number of tasks differs from the number of allocated boards
+this can result in sub\-optimal binding. This option is supported by the
+task/cgroup plugin only.
 .TP
 .B help
 Show help message for cpu_bind
@@ -771,6 +776,9 @@ Default value is \fBDefMemPerNode\fR and the maximum value is
 seen using the \fBscontrol show config\fR command.
 This parameter would generally be used if whole nodes
 are allocated to jobs (\fBSelectType=select/linear\fR).
+Specifying a memory limit of zero for a job step will restrict the job step
+to the amount of memory allocated to the job, but not remove any of the job's
+memory allocation from being available to other job steps.
 Also see \fB\-\-mem\-per\-cpu\fR.
 \fB\-\-mem\fR and \fB\-\-mem\-per\-cpu\fR are mutually exclusive.
 NOTE: Enforcement of memory limits currently relies upon the task/cgroup plugin
@@ -794,6 +802,9 @@ value will equal the original \fB\-\-mem\-per\-cpu\fR value specified by
 the user.
 This parameter would generally be used if individual processors
 are allocated to jobs (\fBSelectType=select/cons_res\fR).
+Specifying a memory limit of zero for a job step will restrict the job step
+to the amount of memory allocated to the job, but not remove any of the job's
+memory allocation from being available to other job steps.
 Also see \fB\-\-mem\fR.
 \fB\-\-mem\fR and \fB\-\-mem\-per\-cpu\fR are mutually exclusive.
 
@@ -1298,6 +1309,13 @@ option takes precedence over the job's option.
 This option may result the allocation being granted sooner than if the \-\-share
 option was not set and allow higher system utilization, but application
 performance will likely suffer due to competition for resources within a node.
+
+.TP
+\fB\-S\fR, \fB\-\-core\-spec\fR=<\fInum\fR>
+Count of specialized cores per nodereserved by the job for system operations
+and not used by the application. The application will not use these cores,
+but will be charged for their allocation. Default value is zero.
+
 
 .TP
 \fB\-\-signal\fR=<\fIsig_num\fR>[@<\fIsig_time\fR>]

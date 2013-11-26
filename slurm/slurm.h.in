@@ -38,6 +38,9 @@
  *  with SLURM; if not, write to the Free Software Foundation, Inc.,
  *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA.
 \*****************************************************************************/
+/*
+ * Copyright 2013 Cray Inc. All Rights Reserved.
+ */
 
 #ifndef _SLURM_H
 #define _SLURM_H
@@ -581,6 +584,7 @@ enum node_states {
 };
 #define NODE_STATE_BASE       0x000f
 #define NODE_STATE_FLAGS      0xfff0
+#define NODE_STATE_UNDRAIN    0x0040	/* Clear DRAIN flag for a node */
 #define NODE_STATE_CLOUD      0x0080	/* node comes from cloud */
 #define NODE_RESUME           0x0100	/* Restore a DRAINED, DRAINING, DOWN
 					 * or FAILING node to service (e.g.
@@ -1034,6 +1038,7 @@ typedef struct job_descriptor {	/* For submit, allocate, and update requests */
 	char *comment;		/* arbitrary comment (used by Moab scheduler) */
 	uint16_t contiguous;	/* 1 if job requires contiguous nodes,
 				 * 0 otherwise,default=0 */
+	uint16_t core_spec;	/* specialized core count */
 	char *cpu_bind;		/* binding map for map/mask_cpu */
 	uint16_t cpu_bind_type;	/* see cpu_bind_type_t */
 	char *dependency;	/* synchronize job execution with other jobs */
@@ -1168,7 +1173,7 @@ typedef struct job_info {
 	char    *alloc_node;	/* local node making resource alloc */
 	uint32_t alloc_sid;	/* local sid making resource alloc */
 	uint32_t array_job_id;	/* job_id of a job array or 0 if N/A */
-	uint16_t array_task_id;	/* task_id of a job array */
+	uint32_t array_task_id;	/* task_id of a job array */
 	uint32_t assoc_id;	/* association id for job */
 	uint16_t batch_flag;	/* 1 if batch: queued job with script */
 	char *batch_host;	/* name of host running batch script */
@@ -1177,6 +1182,7 @@ typedef struct job_info {
 				 * job's argv and NULL for salloc command */
 	char *comment;		/* arbitrary comment (used by Moab scheduler) */
 	uint16_t contiguous;	/* 1 if job requires contiguous nodes */
+	uint16_t core_spec;	/* specialized core count */
 	uint16_t cpus_per_task;	/* number of processors required for
 				 * each task */
 	char *dependency;	/* synchronize job execution with other jobs */
@@ -1500,7 +1506,7 @@ typedef struct {
 
 typedef struct {
 	uint32_t array_job_id;	/* job_id of a job array or 0 if N/A */
-	uint16_t array_task_id;	/* task_id of a job array */
+	uint32_t array_task_id;	/* task_id of a job array */
 	char *ckpt_dir;		/* path to store checkpoint image files */
 	uint16_t ckpt_interval;	/* checkpoint interval in minutes */
 	char *gres;		/* generic resources required */
@@ -1967,6 +1973,7 @@ typedef struct reservation_name_msg {
 #define DEBUG_FLAG_INFINIBAND	0x00400000	/* AcctGatherInfiniband plugin */
 #define DEBUG_FLAG_FILESYSTEM 	0x00800000      /* AcctGatherFilesystem plugin */
 #define DEBUG_FLAG_JOB_CONT 	0x01000000      /* JobContainer plugin */
+#define DEBUG_FLAG_TASK 	0x02000000      /* TaskType plugin */
 
 #define GROUP_FORCE		0x8000	/* if set, update group membership
 					 * info even if no updates to
@@ -2049,6 +2056,7 @@ typedef struct slurm_ctl_conf {
 	uint16_t fast_schedule;	/* 1 to *not* check configurations by node
 				 * (only check configuration file, faster) */
 	uint32_t first_job_id;	/* first slurm generated job_id to assign */
+	uint16_t fs_dampening_factor; /* dampening for Fairshare factor */
 	uint16_t get_env_timeout; /* timeout for srun --get-user-env option */
 	char * gres_plugins;	/* list of generic resource plugins */
 	uint16_t group_info;	/* see GROUP_* fields above */
@@ -2088,7 +2096,7 @@ typedef struct slurm_ctl_conf {
 	char *licenses_used;	/* licenses used on this cluster */
 	uint16_t log_fmt;       /* Log file timestamp format */
 	char *mail_prog;	/* pathname of mail program */
-	uint16_t max_array_sz;	/* Maximum job array size */
+	uint32_t max_array_sz;	/* Maximum job array size */
 	uint32_t max_job_cnt;	/* maximum number of active jobs */
 	uint32_t max_job_id;	/* maximum job id before using first_job_id */
 	uint32_t max_mem_per_cpu; /* maximum MB memory per allocated CPU */

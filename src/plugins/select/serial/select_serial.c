@@ -1606,9 +1606,16 @@ extern int select_p_job_test(struct job_record *job_ptr, bitstr_t * bitmap,
 
 	if (!job_ptr->details)
 		return EINVAL;
+
 	if ((min_nodes > 1) || !_is_job_spec_serial(job_ptr)) {
 		info("select/serial: job %u not serial", job_ptr->job_id);
 		return SLURM_ERROR;
+	}
+
+	if (job_ptr->details->core_spec) {
+		verbose("select/serial: job %u core_spec(%u) not supported",
+			job_ptr->job_id, job_ptr->details->core_spec);
+		job_ptr->details->core_spec = 0;
 	}
 
 	job_node_share = _get_job_node_share(job_ptr);
@@ -1743,6 +1750,11 @@ extern bitstr_t *select_p_step_pick_nodes(struct job_record *job_ptr,
 					  uint32_t node_count)
 {
 	return NULL;
+}
+
+extern int select_p_step_start(struct step_record *step_ptr)
+{
+	return SLURM_SUCCESS;
 }
 
 extern int select_p_step_finish(struct step_record *step_ptr)
