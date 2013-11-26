@@ -704,6 +704,91 @@ static int _get_cpu_masks(int num_numa_nodes, int32_t *numa_array, char *path,
  */
 static int _get_cpu_masks2(int num_numa_nodes, int32_t *numa_array, char *path,
 		cpu_set_t **cpuMasks) {
+
+	struct bitmask **bm_pptr = NULL, **bm_pptr_AND = NULL;;
+	int i, j, num_numa_nodes;
+
+	cpu_set_t *cpusetptr;
+
+	if (numa_available()) {
+		error("(%s: %d: %s) alpsc_configure_nic failed: %s", THIS_FILE,
+								__LINE__, __FUNCTION__, err_msg);
+		return -1;
+	}
+
+	bm_pptr = malloc(num_numa_nodes * sizeof(struct bitmask *));
+	bm_pptr_AND = malloc(num_numa_nodes * sizeof(struct bitmask *));
+
+	for (i = 0; i < num_numa_nodes; i++) {
+		bm_pptr[i] = numa_allocate_cpumask();
+		bm_pptr_AND[i] = numa_allocate_cpumask();
+
+		// system("echo > /proc/self/");
+
+		numa_node_to_cpus(i, bm_pptr[i]);
+		for (j = 0; j < (bm_pptr[i]->size / sizeof(unsigned long)); j++) {
+			(bm_pptr_AND[i]->maskp[j]) = (bm_pptr[i]->maskp[j]) & (numa_all_cpus_ptr->maskp[j]);
+		}
+	}
+
+	//Print
+	printf("Size of unsigned long: %lu\n", sizeof(unsigned long));
+
+	for (i =0; i < num_numa_nodes; i++) {
+		printf("%6lu|", bm_pptr[i]->size);
+	}
+	printf("\t Bitmask Size: \n");
+
+	for (i =0; i < num_numa_nodes; i++) {
+		for (j = 0; j < (bm_pptr[i]->size / (sizeof(unsigned long) * 8)); j++) {
+			printf("%6lx", bm_pptr[i]->maskp[j]);
+		}
+		printf("|");
+	}
+	printf("\t Bitmask: Allowed CPUs for NUMA Node\n");
+
+
+	for (i =0; i < num_numa_nodes; i++) {
+		for (j = 0; j < (bm_pptr[i]->size / (sizeof(unsigned long) * 8)); j++) {
+			printf("%6lx", numa_all_cpus_ptr->maskp[j]);
+		}
+		printf("|");
+	}
+	printf("\t Bitmask: Allowed CPUs for for CPUSET\n");
+
+
+
+	for (i =0; i < num_numa_nodes; i++) {
+		for (j = 0; j < (bm_pptr[i]->size / (sizeof(unsigned long) * 8)); j++) {
+			printf("%6lx", bm_pptr_AND[i]->maskp[j]);
+		}
+		printf("|");
+	}
+	printf("\t Bitmask: Allowed CPUs between CPUSet and NUMA Node\n");
+
+	// Convert bitmasks to cpu_set_t types
+	cpusetptr = malloc(num_numa_nodes * sizeof(cpu_set_t));
+
+	for (i=0; i < num_numa_nodes; i++) {
+		CPU_ZERO(&cpusetptr[i]);
+		for (j=0; j < bm_pptr_AND[i]->size; j++) {
+			if (numa_bitmask_isbitset(bm_pptr_AND[i], j)) {
+				CPU_SET(j, &cpusetptr[i]);
+			}
+		}
+		printf("CPU_COUNT() of set:    %d\n", CPU_COUNT(&cpusetptr[i]));
+	}
+
+	// Freeing Everything
+	for (i =0; i < num_numa_nodes; i++) {
+		numa_free_cpumask(bm_pptr[i]);
+		numa_free_cpumask(bm_pptr_AND[i]);
+	}
+	free(bm_pptr);
+	free(bm_pptr_AND);
+	free(cpusetptr);
+
+	/// Old Crap
 	extern struct bitmask *numa_all_cpus_ptr;
 	struct bitmask *allowed_cpus_bm, *numa_node_cpus_bm_array;
 	int i, rc, cnt;
