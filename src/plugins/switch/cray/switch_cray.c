@@ -35,9 +35,9 @@
  *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA.
 \*****************************************************************************/
 
- /*
-  * Copyright 2013 Cray Inc. All Rights Reserved.
-  */
+/*
+ * Copyright 2013 Cray Inc. All Rights Reserved.
+ */
 
 #if     HAVE_CONFIG_H
 #include "config.h"
@@ -171,9 +171,8 @@ static void _free_alpsc_peInfo(alpsc_peInfo_t alpsc_peInfo);
 static void _print_alpsc_peInfo(alpsc_peInfo_t alps_info)
 {
 	int i;
-	info(
-			"*************************alpsc_peInfo Start"
-			"*************************");
+	info("*************************alpsc_peInfo Start"
+		"*************************");
 	info("totalPEs: %d\nfirstPeHere: %d\npesHere: %d\npeDepth: %d\n",
 			alps_info.totalPEs, alps_info.firstPeHere, alps_info.pesHere,
 			alps_info.peDepth);
@@ -181,7 +180,7 @@ static void _print_alpsc_peInfo(alpsc_peInfo_t alps_info)
 		info("Task: %d\tNode: %d", i, alps_info.peNidArray[i]);
 	}
 	info("*************************alpsc_peInfo Stop"
-			"*************************");
+		"*************************");
 }
 #endif
 
@@ -233,8 +232,8 @@ static void _print_jobinfo(slurm_cray_jobinfo_t *job)
 		}
 		if (job->step_layout->node_cnt != cnt) {
 			error("(%s: %d: %s) list_str_to_array returned count %"
-			PRIu32 "does not match expected count %d", THIS_FILE, __LINE__,
-					__FUNCTION__, cnt, job->step_layout->node_cnt);
+					PRIu32 "does not match expected count %d", THIS_FILE,
+					__LINE__, __FUNCTION__, cnt, job->step_layout->node_cnt);
 		}
 
 		for (i = 0; i < job->step_layout->node_cnt; i++) {
@@ -347,7 +346,7 @@ int switch_p_build_jobinfo(switch_jobinfo_t *switch_job,
 	}
 	if (step_layout->node_cnt != cnt) {
 		error("(%s: %d: %s) list_str_to_array returned count %"
-		PRIu32 "does not match expected count %d", THIS_FILE, __LINE__,
+				PRIu32 "does not match expected count %d", THIS_FILE, __LINE__,
 				__FUNCTION__, cnt, job->step_layout->node_cnt);
 	}
 
@@ -365,7 +364,8 @@ int switch_p_build_jobinfo(switch_jobinfo_t *switch_job,
 	 * some research to see if it comes in sorted or calling a sort
 	 * routine.
 	 */
-	rc = alpsc_lease_cookies(&err_msg, "SLURM", job->apid, ALPSC_INFINITE_LEASE,
+	rc = alpsc_lease_cookies(&err_msg, "SLURM", job->apid,
+			ALPSC_INFINITE_LEASE,
 			nodes, step_layout->node_cnt, num_cookies, &cookies, &cookie_ids);
 	if (rc != 0) {
 		if (err_msg) {
@@ -590,15 +590,15 @@ int switch_p_unpack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer,
 	xassert(buffer);
 	rc = unpack32(&job->magic, buffer);
 	if (rc != SLURM_SUCCESS) {
-		error("(%s: %d: %s) unpack32 of magic failed. Return code: %d", THIS_FILE,
-				__LINE__, __FUNCTION__, rc);
+		error("(%s: %d: %s) unpack32 of magic failed. Return code: %d",
+				THIS_FILE, __LINE__, __FUNCTION__, rc);
 		goto unpack_error;
 	}
 
 	if (job->magic == CRAY_NULL_JOBINFO_MAGIC) {
-			debug2("(%s: %d: %s) Nothing to unpack.",
-					THIS_FILE, __LINE__, __FUNCTION__);
-			return SLURM_SUCCESS;
+		debug2("(%s: %d: %s) Nothing to unpack.",
+				THIS_FILE, __LINE__, __FUNCTION__);
+		return SLURM_SUCCESS;
 	}
 
 	xassert(job->magic == CRAY_JOBINFO_MAGIC);
@@ -616,7 +616,7 @@ int switch_p_unpack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer,
 	}
 	if (num_cookies != job->num_cookies) {
 		error("(%s: %d: %s) Wrong number of cookies received.  Expected: %"
-		PRIu32 "Received: %" PRIu32, THIS_FILE, __LINE__, __FUNCTION__,
+				PRIu32 "Received: %" PRIu32, THIS_FILE, __LINE__, __FUNCTION__,
 				job->num_cookies, num_cookies);
 		goto unpack_error;
 	}
@@ -628,7 +628,7 @@ int switch_p_unpack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer,
 	}
 	if (num_cookies != job->num_cookies) {
 		error("(%s: %d: %s) Wrong number of cookie IDs received.  Expected: %"
-		PRIu32 "Received: %" PRIu32, THIS_FILE, __LINE__, __FUNCTION__,
+				PRIu32 "Received: %" PRIu32, THIS_FILE, __LINE__, __FUNCTION__,
 				job->num_cookies, num_cookies);
 		goto unpack_error;
 	}
@@ -656,9 +656,9 @@ int switch_p_unpack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer,
 
 	return SLURM_SUCCESS;
 
-unpack_error:
+	unpack_error:
 	error("(%s:%d: %s) Unpacking error", THIS_FILE, __LINE__,
-				__FUNCTION__);
+			__FUNCTION__);
 	if (job->cookies) {
 		xfree(job->cookies);
 	}
@@ -743,8 +743,8 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 	if (debug_flags & DEBUG_FLAG_SWITCH) {
 		info("(%s:%d: %s) Job ID (in JOB): %" PRIu32
 				"Job ID (in Switch jobinfo): %" PRIu32,
-							THIS_FILE, __LINE__, __FUNCTION__, job->jobid,
-							sw_job->jobid);
+				THIS_FILE, __LINE__, __FUNCTION__, job->jobid,
+				sw_job->jobid);
 	}
 	// Dummy variables to satisfy alpsc_write_placement_file
 	int controlNid = 0, numBranches = 0;
@@ -852,7 +852,7 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 			}
 		}
 		free(lin);
-		 TEMP_FAILURE_RETRY(fclose(f));
+		TEMP_FAILURE_RETRY(fclose(f));
 
 		if (total_mem == 0) {
 			error("(%s: %d: %s) Scanning /proc/meminfo results in MemTotal=0",
@@ -877,7 +877,7 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 
 		cpu_scaling =
 				(((double) num_app_cpus / (double) total_cpus) * (double) 100)
-						+ 0.5;
+				+ 0.5;
 		if (cpu_scaling > 100) {
 			error(
 					"(%s: %d: %s) Cpu scaling out of bounds: %d.  "
@@ -1011,7 +1011,7 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 	}
 	if (sw_job->step_layout->node_cnt != cnt) {
 		error("(%s: %d: %s) list_str_to_array returned count %"
-		PRIu32 "does not match expected count %d", THIS_FILE, __LINE__,
+				PRIu32 "does not match expected count %d", THIS_FILE, __LINE__,
 				__FUNCTION__, cnt, sw_job->step_layout->node_cnt);
 	}
 
@@ -1120,8 +1120,8 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 		goto error_free_alpsc_peInfo_t;
 	}
 	if (err_msg) {
-		info("(%s: %d: %s) alpsc_write_placement_file: %s", THIS_FILE, __LINE__,
-				__FUNCTION__, err_msg);
+		info("(%s: %d: %s) alpsc_write_placement_file: %s", THIS_FILE,
+				__LINE__, __FUNCTION__, err_msg);
 		free(err_msg);
 	}
 
@@ -1209,7 +1209,7 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 	return SLURM_SUCCESS;
 
 #ifdef HAVE_NATIVE_CRAY
-error_free_alpsc_peInfo_t:
+	error_free_alpsc_peInfo_t:
 	_free_alpsc_peInfo(alpsc_peInfo);
 	return SLURM_ERROR;
 #endif
@@ -1372,7 +1372,8 @@ int switch_p_job_postfini(stepd_step_rec_t *job)
 	return SLURM_SUCCESS;
 }
 
-int switch_p_job_attach(switch_jobinfo_t *jobinfo, char ***env, uint32_t nodeid,
+int switch_p_job_attach(switch_jobinfo_t *jobinfo, char ***env,
+		uint32_t nodeid,
 		uint32_t procid, uint32_t nnodes, uint32_t nprocs, uint32_t rank)
 {
 	return SLURM_SUCCESS;
@@ -1475,8 +1476,8 @@ extern int switch_p_job_step_complete(switch_jobinfo_t *jobinfo,
 					__LINE__, __FUNCTION__, err_msg);
 			free(err_msg);
 		} else {
-			error("(%s: %d: %s) alpsc_release_cookies failed: No error message "
-					"present.", THIS_FILE, __LINE__, __FUNCTION__);
+			error("(%s: %d: %s) alpsc_release_cookies failed: No error message"
+					" present.", THIS_FILE, __LINE__, __FUNCTION__);
 		}
 		return SLURM_ERROR;
 
@@ -1658,7 +1659,8 @@ static int _list_str_to_array(char *list, int *cnt, int32_t **numbers)
 	 */
 	item_ptr = *numbers = xmalloc(num_items * sizeof(uint32_t));
 	if (item_ptr == NULL ) {
-		error("(%s: %d: %s) xmalloc failed", THIS_FILE, __LINE__, __FUNCTION__);
+		error("(%s: %d: %s) xmalloc failed", THIS_FILE, __LINE__,
+				__FUNCTION__);
 		hostlist_destroy(hl);
 		return -1;
 	}
@@ -1791,7 +1793,8 @@ static int _get_cpu_total(void)
 	f = fopen("/sys/devices/system/cpu/online", "r");
 
 	if (f == NULL ) {
-		error("(%s: %d: %s) Failed to open file /sys/devices/system/cpu/online:"
+		error("(%s: %d: %s) Failed to open file "
+				/sys/devices/system/cpu/online:"
 				" %m\n", THIS_FILE, __LINE__, __FUNCTION__);
 		return -1;
 	}
@@ -1806,35 +1809,35 @@ static int _get_cpu_total(void)
 				if (token1) {
 					number1 = strtol(token1, &endptr, 10);
 					if ((number1 == LONG_MIN)|| (number1 == LONG_MAX)){
-					error("(%s: %d: %s) Error: %m", THIS_FILE, __LINE__,
-							__FUNCTION__);
-					free(lin);
-					TEMP_FAILURE_RETRY(fclose(f));
-					return -1;
-				} else if (endptr == token1) {
-					error("(%s: %d: %s) Error: Not a number: %s\n",
-							THIS_FILE, __LINE__, __FUNCTION__, endptr);
-					free(lin);
-					TEMP_FAILURE_RETRY(fclose(f));
-					return -1;
-				}
-
-					token2 = strtok_r(NULL, "-", &saveptr1);
-					if (token2) {
-						number2 = strtol(token2, &endptr, 10);
-						if ((number2 == LONG_MIN)|| (number2 == LONG_MAX)){
-						error("(%s: %d: %s) Error: %m", THIS_FILE,
-								__LINE__, __FUNCTION__);
+						error("(%s: %d: %s) Error: %m", THIS_FILE, __LINE__,
+								__FUNCTION__);
 						free(lin);
 						TEMP_FAILURE_RETRY(fclose(f));
 						return -1;
-					} else if (endptr == token2) {
-						error("(%s: %d: %s) Error: Not a number: '%s'\n",
+					} else if (endptr == token1) {
+						error("(%s: %d: %s) Error: Not a number: %s\n",
 								THIS_FILE, __LINE__, __FUNCTION__, endptr);
 						free(lin);
 						TEMP_FAILURE_RETRY(fclose(f));
 						return -1;
 					}
+
+					token2 = strtok_r(NULL, "-", &saveptr1);
+					if (token2) {
+						number2 = strtol(token2, &endptr, 10);
+						if ((number2 == LONG_MIN)|| (number2 == LONG_MAX)){
+							error("(%s: %d: %s) Error: %m", THIS_FILE,
+									__LINE__, __FUNCTION__);
+							free(lin);
+							TEMP_FAILURE_RETRY(fclose(f));
+							return -1;
+						} else if (endptr == token2) {
+							error("(%s: %d: %s) Error: Not a number: '%s'\n",
+									THIS_FILE, __LINE__, __FUNCTION__, endptr);
+							free(lin);
+							TEMP_FAILURE_RETRY(fclose(f));
+							return -1;
+						}
 
 						total += number2 - number1 + 1;
 					} else {
@@ -1926,8 +1929,8 @@ static int _release_port(uint32_t real_port)
 
 	if ((real_port < MIN_PORT) || (real_port >= MAX_PORT)) {
 		error("(%s: %d: %s) Port %" PRIu32 "outside of valid range %" PRIu32
-		": %" PRIu32, THIS_FILE, __LINE__, __FUNCTION__, real_port, MIN_PORT,
-				MAX_PORT);
+				": %" PRIu32, THIS_FILE, __LINE__, __FUNCTION__, real_port,
+				MIN_PORT, MAX_PORT);
 		return -1;
 	}
 
