@@ -35,9 +35,9 @@
  *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA.
 \*****************************************************************************/
 
- /*
-  * Copyright 2013 Cray Inc. All Rights Reserved.
-  */
+/*
+ * Copyright 2013 Cray Inc. All Rights Reserved.
+ */
 
 #if     HAVE_CONFIG_H
 #include "config.h"
@@ -348,7 +348,7 @@ int switch_p_build_jobinfo(switch_jobinfo_t *switch_job,
 	}
 	if (step_layout->node_cnt != cnt) {
 		error("(%s: %d: %s) list_str_to_array returned count %"
-		PRIu32 "does not match expected count %d", THIS_FILE, __LINE__,
+				PRIu32 "does not match expected count %d", THIS_FILE, __LINE__,
 				__FUNCTION__, cnt, job->step_layout->node_cnt);
 	}
 
@@ -603,9 +603,9 @@ int switch_p_unpack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer,
 	}
 
 	if (job->magic == CRAY_NULL_JOBINFO_MAGIC) {
-			debug2("(%s: %d: %s) Nothing to unpack.",
-			       THIS_FILE, __LINE__, __FUNCTION__);
-			return SLURM_SUCCESS;
+		debug2("(%s: %d: %s) Nothing to unpack.",
+		       THIS_FILE, __LINE__, __FUNCTION__);
+		return SLURM_SUCCESS;
 	}
 
 	xassert(job->magic == CRAY_JOBINFO_MAGIC);
@@ -669,7 +669,7 @@ int switch_p_unpack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer,
 
 	return SLURM_SUCCESS;
 
-unpack_error:
+	unpack_error:
 	error("(%s:%d: %s) Unpacking error", THIS_FILE, __LINE__,
 	      __FUNCTION__);
 	if (job->cookies) {
@@ -868,7 +868,7 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 			}
 		}
 		free(lin);
-		 TEMP_FAILURE_RETRY(fclose(f));
+		TEMP_FAILURE_RETRY(fclose(f));
 
 		if (total_mem == 0) {
 			error("(%s: %d: %s) Scanning /proc/meminfo results in"
@@ -893,7 +893,7 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 		}
 
 		cpu_scaling = (((double) num_app_cpus / (double) total_cpus) *
-			(double) 100) + 0.5;
+				(double) 100) + 0.5;
 		if (cpu_scaling > 100) {
 			error("(%s: %d: %s) Cpu scaling out of bounds: %d."
 			      " Reducing to 100%%",
