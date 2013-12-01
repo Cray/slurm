@@ -111,7 +111,8 @@ const uint32_t plugin_version   = 100;
 unsigned int numa_bitmask_weight(const struct bitmask *bmp);
 
 static int _get_numa_nodes(char *path, int *cnt, int **numa_array);
-static int _get_cpu_masks(char *path, cpu_set_t **cpuMasks);
+static int _get_cpu_masks(int num_numa_nodes, int32_t *numa_array,
+						  cpu_set_t **cpuMasks);
 
 /*
  * init() is called when the plugin is loaded, before any other functions
@@ -433,7 +434,7 @@ extern int task_p_post_step (stepd_step_rec_t *job)
 		return SLURM_ERROR;
 	}
 
-	rc = _get_cpu_masks(cnt, path, &cpuMasks);
+	rc = _get_cpu_masks(cnt, numa_nodes, &cpuMasks);
 	if (rc < 0) {
 		error("(%s: %d: %s) get_cpu_masks failed. Return code: %d", THIS_FILE,
 				__LINE__, __FUNCTION__, rc);
@@ -598,8 +599,8 @@ static int _get_cpu_masks(int num_numa_nodes, int32_t *numa_array,
 	cpu_set_t *cpusetptr;
 
 	if (numa_available()) {
-		error("(%s: %d: %s) alpsc_configure_nic failed: %s", THIS_FILE,
-								__LINE__, __FUNCTION__, err_msg);
+		error("(%s: %d: %s) Libnuma not available: %s", THIS_FILE,
+								__LINE__, __FUNCTION__);
 		return -1;
 	}
 
@@ -635,7 +636,7 @@ static int _get_cpu_masks(int num_numa_nodes, int32_t *numa_array,
 	 * none of them.
 	 */
 	for (j=0; j < collective->size; j++) {
-		if (numa_bitmask_isbitset(collective->maskp, j)) {
+		if (numa_bitmask_isbitset(collective, j)) {
 			at_least_one_cpu = 1;
 		}
 	}
@@ -660,7 +661,7 @@ static int _get_cpu_masks(int num_numa_nodes, int32_t *numa_array,
 
 		for (i =0; i < num_numa_nodes; i++) {
 			for (j = 0; j < (numa_node_cpus[i]->size / (sizeof(unsigned long) * 8)); j++) {
-				info("%6lx", bm_numa_node_cpus_pptr[i]->maskp[j]);
+				info("%6lx", numa_node_cpus[i]->maskp[j]);
 			}
 			info("|");
 		}
