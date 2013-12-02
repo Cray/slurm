@@ -37,12 +37,6 @@
 #
 %define slurm_with() %{expand:%%{?slurm_with_%{1}:1}%%{!?slurm_with_%{1}:0}}
 
-# Define some defaults for rpmbuild
-%define _prefix /opt/slurm/%{version}-%{release}
-%define _sysconfdir /etc/opt/slurm/
-%define _mandir %{_prefix}/share/man
-%define _infodir %{_prefix}/share/info
-
 # This needs to be defined for incremental builds
 %define intranamespace_name slurm
 
@@ -102,8 +96,8 @@
 %endif
 
 Name: slurm
-Version: 13.12.0
-Release: 0pre1
+Version: 14.03.0
+Release: 0pre4
 
 Summary: Simple Linux Utility for Resource Management
 
@@ -139,10 +133,6 @@ BuildRequires: ncurses-devel
 BuildRequires: pkgconfig
 %endif
 
-#Added the next two lines to try and work around issues. JDS 2013-7-31
-BuildRequires: -post-build-checks
-BuildRequires: pkg-config
-
 # not sure if this is always an actual rpm or not so leaving the requirement out
 #%if %{slurm_with blcr}
 #BuildRequires: blcr
@@ -165,7 +155,6 @@ BuildRequires: cray-MySQL-devel-enterprise
 Requires: cray-MySQL-devel-enterprise
 %endif
 
-# Add requirements for build
 %if %{slurm_with cray}
 BuildRequires: cray-MySQL-devel-enterprise
 BuildRequires: cray-libalpscomm_cn-devel
@@ -177,7 +166,7 @@ BuildRequires: cray-libjob-devel
 BuildRequires: gtk2-devel
 BuildRequires: glib2-devel
 BuildRequires: -post-build-checks
-
+BuildRequires: pkg-config
 %endif
 
 %ifnos aix5.3
@@ -196,7 +185,7 @@ partition management, job management, scheduling and accounting modules
 #  Allow override of sysconfdir via _slurm_sysconfdir.
 #  Note 'global' instead of 'define' needed here to work around apparent
 #   bug in rpm macro scoping (or something...)
-%{!?_slurm_sysconfdir: %global _slurm_sysconfdir /etc/opt/slurm/}
+%{!?_slurm_sysconfdir: %global _slurm_sysconfdir /etc/slurm}
 %define _sysconfdir %_slurm_sysconfdir
 
 #  Allow override of datadir via _slurm_datadir.
@@ -259,16 +248,10 @@ helpful interface to SLURM through Perl
 %package devel
 Summary: Development package for SLURM
 Group: Development/System
-Requires: slurm-libs
+Requires: slurm
 %description devel
 Development package for SLURM.  This package includes the header files
 and static libraries for the SLURM API
-
-%package libs
-Summary: SLURM libraries
-Group: Development/System
-%description libs
-SLURM libraries, for building and running programs using the SLURM API.
 
 %if %{slurm_with auth_none}
 %package auth-none
@@ -491,8 +474,7 @@ DESTDIR="$RPM_BUILD_ROOT" make install-contrib
 %if %{slurm_with cray} || %{slurm_with cray_alps}
    rm -f $RPM_BUILD_ROOT/%{_libdir}/libpmi*
    install -D -m644 contribs/cray/opt_modulefiles_slurm $RPM_BUILD_ROOT/opt/modulefiles/slurm/%{version}-%{release}
-   echo -e '#%Module\nset ModulesVersion "%{version}-%{release}"' > $RPM_BUILD_ROOT/opt/modulefiles/slurm/.version 
-   mkdir -p $RPM_BUILD_ROOT/var/spool/slurm
+   echo -e '#%Module\nset ModulesVersion "%{version}-%{release}"' > $RPM_BUILD_ROOT/opt/modulefiles/slurm/.version
 %else
    rm -f contribs/cray/opt_modulefiles_slurm
 %endif
@@ -506,6 +488,7 @@ install -D -m755 etc/cgroup.release_common.example ${RPM_BUILD_ROOT}%{_sysconfdi
 install -D -m755 etc/cgroup.release_common.example ${RPM_BUILD_ROOT}%{_sysconfdir}/cgroup/release_memory
 install -D -m644 etc/slurmdbd.conf.example ${RPM_BUILD_ROOT}%{_sysconfdir}/slurmdbd.conf.example
 install -D -m755 etc/slurm.epilog.clean ${RPM_BUILD_ROOT}%{_sysconfdir}/slurm.epilog.clean
+install -D -m755 contribs/sgather/sgather ${RPM_BUILD_ROOT}%{_bindir}/sgather
 install -D -m755 contribs/sjstat ${RPM_BUILD_ROOT}%{_bindir}/sjstat
 
 # Correct some file permissions
@@ -602,6 +585,11 @@ test -f $RPM_BUILD_ROOT/etc/init.d/slurm			&&
   echo /etc/init.d/slurm				>> $LIST
 test -f $RPM_BUILD_ROOT/usr/sbin/rcslurm			&&
   echo /usr/sbin/rcslurm				>> $LIST
+
+test -f $RPM_BUILD_ROOT/opt/modulefiles/slurm/%{version}-%{release} &&
+  echo /opt/modulefiles/slurm/%{version}-%{release} >> $LIST
+test -f $RPM_BUILD_ROOT/opt/modulefiles/slurm/.version &&
+  echo /opt/modulefiles/slurm/.version >> $LIST
 
 # Make ld.so.conf.d file
 mkdir -p $RPM_BUILD_ROOT/etc/ld.so.conf.d
@@ -751,6 +739,7 @@ rm -rf $RPM_BUILD_ROOT
 %ifos aix5.3
 %{_sbindir}/srun
 %endif
+%{_libdir}/*.so*
 %{_libdir}/slurm/src/*
 %{_mandir}/man1/*
 %{_mandir}/man5/acct_gather.*
@@ -767,11 +756,12 @@ rm -rf $RPM_BUILD_ROOT
 %{_mandir}/man8/spank*
 %dir %{_sysconfdir}
 %dir %{_libdir}/slurm/src
+%dir /etc/ld.so.conf.d
+/etc/ld.so.conf.d/slurm.conf
 %if %{slurm_with cray} || %{slurm_with cray_alps}
 %dir /opt/modulefiles/slurm
-%dir /var/spool/slurm/
-/opt/modulefiles/slurm/.version
-/opt/modulefiles/slurm/%{version}-%{release}
+%endif
+%if %{slurm_with cray}
 %config %{_sysconfdir}/slurm.conf.template
 %{_sbindir}/slurmconfgen.py
 %endif
@@ -802,14 +792,6 @@ rm -rf $RPM_BUILD_ROOT
 %dir %{_libdir}/pkgconfig
 %{_libdir}/pkgconfig/slurm.pc
 #%{_mandir}/man3/slurmdb_*
-#############################################################################
-
-%files libs
-%defattr(-,root,root)
-%dir %attr(0755,root,root)
-%{_libdir}/*.so*
-%dir /etc/ld.so.conf.d
-/etc/ld.so.conf.d/slurm.conf
 #############################################################################
 
 %if %{slurm_with auth_none}
@@ -1030,14 +1012,11 @@ rm -rf $RPM_BUILD_ROOT
 #fi
 
 %post
-if [ -x /sbin/chkconfig ]; then
-    /sbin/chkconfig --add munge
-    /sbin/chkconfig --add slurm
-fi
-
-%post libs
 if [ -x /sbin/ldconfig ]; then
     /sbin/ldconfig %{_libdir}
+    if [ $1 = 1 ]; then
+	[ -x /sbin/chkconfig ] && /sbin/chkconfig --add slurm
+    fi
 fi
 
 %if %{slurm_with bluegene}
@@ -1067,7 +1046,7 @@ if [ "$1" = 0 ]; then
     fi
 fi
 
-%postun libs
+%postun
 if [ "$1" = 0 ]; then
     if [ -x /sbin/ldconfig ]; then
 	/sbin/ldconfig %{_libdir}
