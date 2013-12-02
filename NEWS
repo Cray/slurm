@@ -1,7 +1,7 @@
 This file describes changes in recent versions of SLURM. It primarily
 documents those changes that are of interest to users and admins.
 
-* Changes in Slurm 13.12.0pre5
+* Changes in Slurm 14.03.0pre5
 ==============================
  -- Added squeue format option of "%X" (core specialization count).
  -- Added core specialization web page (just a start for now).
@@ -12,10 +12,16 @@ documents those changes that are of interest to users and admins.
  -- Add ability to clear a node's DRAIN flag using scontrol or sview by setting
     it's state to "UNDRAIN". The node's base state (e.g. "DOWN" or "IDLE") will
     not be changed.
- -- Modify the output of 'scontrol show partition' by displaying DefMemPerCPU=UNLIMITED
-    and MaxMemPerCPU=UNLIMITED when these limits are configured as 0.
+ -- Modify the output of 'scontrol show partition' by displaying
+    DefMemPerCPU=UNLIMITED and MaxMemPerCPU=UNLIMITED when these limits are
+    configured as 0.
+ -- mpirun-mic - Major re-write of the command wrapper for Xeon Phi use.
+ -- Add new configuration parameter of AuthInfo to specify port used by
+    authentication plugin.
+ -- Fixed conditional rpm compiling.
+ -- Corrected slurmstepd ident name when loggind to syslog.
 
-* Changes in Slurm 13.12.0pre4
+* Changes in Slurm 14.03.0pre4
 ==============================
  -- Remove the ThreadID documentation from slurm.conf. This functionality has
     been obsoleted by the LogTimeFormat.
@@ -39,13 +45,14 @@ documents those changes that are of interest to users and admins.
  -- Added configuration parameter FairShareDampeningFactor to offer a greater
     priority range based upon utilization.
  -- Change MaxArraySize and job's array_task_id from 16-bit to 32-bit field.
+    Additional Slurm enhancements are be required to support larger job arrays.
  -- Added -S/--core-spec option to salloc, sbatch and srun commands to reserve
     specialized cores for system use. Modify scontrol and sview to get/set
-    the new field
+    the new field. No enforcement exists yet for these new options.
     struct job_info / slurm_job_info_t: Added core_spec
     struct job_descriptorjob_desc_msg_t: Added core_spec
 
-* Changes in Slurm 13.12.0pre3
+* Changes in Slurm 14.03.0pre3
 ==============================
  -- Do not set SLURM_NODEID environment variable on front-end systems.
  -- Convert bitmap functions to use int32_t instead of int in data structures
@@ -71,7 +78,7 @@ documents those changes that are of interest to users and admins.
     "Job submit/allocate failed"
  -- Modify slurmctld message retry logic to support Cray cold-standby SDB.
 
-* Changes in Slurm 13.12.0pre2
+* Changes in Slurm 14.03.0pre2
 ==============================
  -- Added "JobAcctGatherParams" configuration parameter. Value of "NoShare"
     disables accounting for shared memory.
@@ -96,7 +103,7 @@ documents those changes that are of interest to users and admins.
     configured in use and avalable. 'scontrol show licenses'.
  -- MySQL - Made Slurm compatible with 5.6
 
-* Changes in Slurm 13.12.0pre1
+* Changes in Slurm 14.03.0pre1
 ==============================
  -- sview - improve scalability
  -- Add task pointer to the task_post_term() function in task plugins. The
@@ -148,6 +155,14 @@ documents those changes that are of interest to users and admins.
  -- Add notification if using proctrack/cgroup and task/cgroup when oom hits.
  -- Corrections to advanced reservation logic with overlapping jobs.
  -- job_submit/lua - add cpus_per_task field to those available.
+ -- Add cpu_load to the node information available using the Perl API.
+ -- Correct a job's GRES allocation data in accounting records for non-Cray
+    systems.
+ -- Substantial performance improvement for systems with Shared=YES or FORCE
+    and large numbers of running jobs (replace bubble sort with quick sort).
+ -- proctrack/cgroup - Add locking to prevent race condition where one job step
+    is ending for a user or job at the same time another job stepsis starting
+    and the user or job container is deleted from under the starting job step.
 
 * Changes in Slurm 2.6.4
 ========================

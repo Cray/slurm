@@ -1,4 +1,4 @@
-.TH "slurm.conf" "5" "October 2013" "slurm.conf 13.12" "Slurm configuration file"
+.TH "slurm.conf" "5" "October 2013" "slurm.conf 14.03" "Slurm configuration file"
 
 .SH "NAME"
 slurm.conf \- Slurm configuration file
@@ -252,6 +252,16 @@ This enables the HDF5 plugin. The directory where the profile files
 are stored and which values are collected are configured in the
 acct_gather.conf file.
 .RE
+
+.TP
+\fBAuthInfo\fR
+Additional information to be used for authentication of communications
+between the Slurm daemons (slurmctld and slurmd) and the Slurm
+clients.  The interpretation of this option is specific to the
+configured \fBAuthType\fR.  In the case of \fIauth/munge\fR, the value
+of this parameter can specify the socket of a MUNGE daemon other than
+the default MUNGE daemon.  If not set, the default authentication
+information will be used.
 
 .TP
 \fBAuthType\fR
@@ -3463,6 +3473,8 @@ should be used for job allocations.
 Sharing of resources is typically useful only when using gang scheduling
 (\fBPreemptMode=suspend\fR or \fBPreemptMode=kill\fR).
 Possible values for \fBShared\fR are "EXCLUSIVE", "FORCE", "YES", and "NO".
+Note that a value of "YES" or "FORCE" can negatively impact performance
+for systems with many thousands of running jobs.
 The default value is "NO".
 For more information see the following web pages:
 .br
