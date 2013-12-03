@@ -218,6 +218,8 @@ extern int task_p_pre_launch (stepd_step_rec_t *job)
 
 	debug("task_p_pre_launch: %u.%u, task %d",
 	      job->jobid, job->stepid, job->envtp->procid);
+
+#ifdef HAVE_NATIVE_CRAY
 	/*
 	 * Send the rank to the application's PMI layer via an environment variable.
 	 */
@@ -244,7 +246,7 @@ extern int task_p_pre_launch (stepd_step_rec_t *job)
 		error("%s: Failed to set %s", __func__, LLI_STATUS_OFFS_ENV);
 		return SLURM_ERROR;
 	}
-
+#endif
 	return SLURM_SUCCESS;
 }
 
@@ -254,6 +256,7 @@ extern int task_p_pre_launch (stepd_step_rec_t *job)
  */
 extern int task_p_pre_launch_priv (stepd_step_rec_t *job)
 {
+#ifdef HAVE_NATIVE_CRAY
 	char llifile[LLI_STATUS_FILE_BUF_SIZE];
 	int rv, fd;
 	
@@ -294,6 +297,7 @@ extern int task_p_pre_launch_priv (stepd_step_rec_t *job)
 	info("Created file %s", llifile);
 	
 	TEMP_FAILURE_RETRY(close(fd));
+#endif
 	return SLURM_SUCCESS;
 }
 
@@ -305,6 +309,7 @@ extern int task_p_pre_launch_priv (stepd_step_rec_t *job)
 extern int task_p_post_term (stepd_step_rec_t *job,
 		stepd_step_task_info_t *task)
 {
+#ifdef HAVE_NATIVE_CRAY
 	char llifile[LLI_STATUS_FILE_BUF_SIZE];
 	char status;
 	int rv, fd;
@@ -360,7 +365,7 @@ extern int task_p_post_term (stepd_step_rec_t *job,
 			job->envtp->procid);
 		slurm_terminate_job_step(job->jobid, job->stepid);
 	}
-	
+#endif
 	return SLURM_SUCCESS;
 }
 
@@ -370,6 +375,7 @@ extern int task_p_post_term (stepd_step_rec_t *job,
  */
 extern int task_p_post_step (stepd_step_rec_t *job)
 {
+#ifdef HAVE_NATIVE_CRAY
 	char llifile[LLI_STATUS_FILE_BUF_SIZE];
 	int rc, cnt;
 	char *errMsg = NULL, path[PATH_MAX];
@@ -468,10 +474,11 @@ extern int task_p_post_step (stepd_step_rec_t *job)
 				__FUNCTION__, errMsg);
 		free(errMsg);
 	}
-
+#endif
 	return SLURM_SUCCESS;
 }
 
+#ifdef HAVE_NATIVE_CRAY
 /*
  * Function: get_numa_nodes
  * Description:
@@ -717,3 +724,4 @@ static int _get_cpu_masks(int num_numa_nodes, int32_t *numa_array,
 
 	return 0;
 }
+#endif
