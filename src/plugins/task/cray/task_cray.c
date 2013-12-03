@@ -599,7 +599,7 @@ static int _get_cpu_masks(int num_numa_nodes, int32_t *numa_array,
 	cpu_set_t *cpusetptr;
 
 	if (numa_available()) {
-		error("(%s: %d: %s) Libnuma not available: %s", THIS_FILE,
+		error("(%s: %d: %s) Libnuma not available", THIS_FILE,
 								__LINE__, __FUNCTION__);
 		return -1;
 	}
@@ -613,13 +613,16 @@ static int _get_cpu_masks(int num_numa_nodes, int32_t *numa_array,
 	 * bm_collective: Collects all of the CPUs as a precaution.
 	 */
 	numa_node_cpus = xmalloc(num_numa_nodes * sizeof(struct bitmask *));
-	remaining_numa_node_cpus = xmalloc(num_numa_nodes * sizeof(struct bitmask *));
+	remaining_numa_node_cpus = xmalloc(num_numa_nodes *
+			sizeof(struct bitmask *));
 	collective = numa_allocate_cpumask();
 
 	for (i = 0; i < num_numa_nodes; i++) {
 		numa_node_cpus[i] = numa_allocate_cpumask();
 		remaining_numa_node_cpus[i] = numa_allocate_cpumask();
-		numa_node_to_cpus(numa_array[i], numa_node_cpus[i]);
+		// Had to hack this due to a Cray re-definition of numa_node_to_cpus
+		numa_node_to_cpus(numa_array[i], numa_node_cpus[i]->maskp,
+				numa_node_cpus[i]->size / 8);
 		for (j = 0; j <
 		    (numa_node_cpus[i]->size / sizeof(unsigned long)); j++) {
 			(remaining_numa_node_cpus[i]->maskp[j]) =
