@@ -631,7 +631,7 @@ static int _get_cpu_masks(int num_numa_nodes, int32_t *numa_array,
 		numa_node_to_cpus(numa_array[i], numa_node_cpus[i]->maskp,
 				numa_node_cpus[i]->size / 8);
 		for (j = 0; j <
-		    (numa_node_cpus[i]->size / sizeof(unsigned long)); j++) {
+		    (numa_node_cpus[i]->size / (sizeof(unsigned long) *8)); j++) {
 			(remaining_numa_node_cpus[i]->maskp[j]) =
 					(numa_node_cpus[i]->maskp[j]) &
 					(numa_all_cpus_ptr->maskp[j]);
@@ -654,7 +654,8 @@ static int _get_cpu_masks(int num_numa_nodes, int32_t *numa_array,
 	if (!at_least_one_cpu) {
 		for (i = 0; i < num_numa_nodes; i++) {
 			for (j = 0; j <
-			    (remaining_numa_node_cpus[i]->size / sizeof(unsigned long));
+			    (remaining_numa_node_cpus[i]->size /
+			    		(sizeof(unsigned long) *8));
 			    j++) {
 				(remaining_numa_node_cpus[i]->maskp[j]) =
 						(numa_all_cpus_ptr->maskp[j]);
