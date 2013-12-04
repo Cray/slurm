@@ -1,10 +1,8 @@
 # Makefile for checkpoint/blcr plugin
-
+pkglibexecdir = $(libexecdir)/$(PACKAGE)
 AUTOMAKE_OPTIONS = foreign
 
 PLUGIN_FLAGS = -module -avoid-version --export-dynamic
-
-pkglibexecdir = $(libexecdir)/$(PACKAGE)
 
 if WITH_BLCR
 
