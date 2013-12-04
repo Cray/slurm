@@ -603,7 +603,7 @@ static int _get_cpu_masks(int num_numa_nodes, int32_t *numa_array,
 
 	struct bitmask **remaining_numa_node_cpus = NULL, *collective;
 	unsigned long **numa_node_cpus = NULL;
-	int i, j, at_least_one_cpu = 0;
+	int i, j, at_least_one_cpu = 0, rc = 0;
 	cpu_set_t *cpusetptr;
 
 	if (numa_available()) {
@@ -714,7 +714,6 @@ static int _get_cpu_masks(int num_numa_nodes, int32_t *numa_array,
 	numa_free_cpumask(collective);
 	for (i =0; i < num_numa_nodes; i++) {
 		xfree(numa_node_cpus[i]);
-		numa_free_cpumask(numa_node_cpus[i]);
 		numa_free_cpumask(remaining_numa_node_cpus[i]);
 	}
 	xfree(numa_node_cpus);
