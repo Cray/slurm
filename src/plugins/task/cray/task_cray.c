@@ -55,6 +55,7 @@
 #include <errno.h>
 #include <numa.h>
 #include "limits.h"
+#include <sched.h>
 
 #include "slurm/slurm_errno.h"
 #include "src/common/slurm_xlator.h"
@@ -110,7 +111,8 @@ const uint32_t plugin_version   = 100;
 unsigned int numa_bitmask_weight(const struct bitmask *bmp);
 
 static int _get_numa_nodes(char *path, int *cnt, int **numa_array);
-static int _get_cpu_masks(char *path, cpu_set_t **cpuMasks);
+static int _get_cpu_masks(int num_numa_nodes, int32_t *numa_array,
+						  cpu_set_t **cpuMasks);
 
 /*
  * init() is called when the plugin is loaded, before any other functions
@@ -215,7 +217,9 @@ extern int task_p_pre_launch (stepd_step_rec_t *job)
 	int rc;
 
 	debug("task_p_pre_launch: %u.%u, task %d",
-			job->jobid, job->stepid, job->envtp->procid);
+	      job->jobid, job->stepid, job->envtp->procid);
+
+#ifdef HAVE_NATIVE_CRAY
 	/*
 	 * Send the rank to the application's PMI layer via an environment
 	 * variable.
@@ -243,7 +247,7 @@ extern int task_p_pre_launch (stepd_step_rec_t *job)
 		error("%s: Failed to set %s", __func__, LLI_STATUS_OFFS_ENV);
 		return SLURM_ERROR;
 	}
-
+#endif
 	return SLURM_SUCCESS;
 }
 
@@ -253,6 +257,7 @@ extern int task_p_pre_launch (stepd_step_rec_t *job)
  */
 extern int task_p_pre_launch_priv (stepd_step_rec_t *job)
 {
+#ifdef HAVE_NATIVE_CRAY
 	char llifile[LLI_STATUS_FILE_BUF_SIZE];
 	int rv, fd;
 
@@ -293,6 +298,7 @@ extern int task_p_pre_launch_priv (stepd_step_rec_t *job)
 	info("Created file %s", llifile);
 
 	TEMP_FAILURE_RETRY(close(fd));
+#endif
 	return SLURM_SUCCESS;
 }
 
@@ -304,6 +310,7 @@ extern int task_p_pre_launch_priv (stepd_step_rec_t *job)
 extern int task_p_post_term (stepd_step_rec_t *job,
 		stepd_step_task_info_t *task)
 {
+#ifdef HAVE_NATIVE_CRAY
 	char llifile[LLI_STATUS_FILE_BUF_SIZE];
 	char status;
 	int rv, fd;
@@ -359,7 +366,7 @@ extern int task_p_post_term (stepd_step_rec_t *job,
 			job->envtp->procid);
 		slurm_terminate_job_step(job->jobid, job->stepid);
 	}
-
+#endif
 	return SLURM_SUCCESS;
 }
 
@@ -369,6 +376,7 @@ extern int task_p_post_term (stepd_step_rec_t *job,
  */
 extern int task_p_post_step (stepd_step_rec_t *job)
 {
+#ifdef HAVE_NATIVE_CRAY
 	char llifile[LLI_STATUS_FILE_BUF_SIZE];
 	int rc, cnt;
 	char *err_msg = NULL, path[PATH_MAX];
@@ -436,7 +444,7 @@ extern int task_p_post_step (stepd_step_rec_t *job)
 		return SLURM_ERROR;
 	}
 
-	rc = _get_cpu_masks(path, &cpuMasks);
+	rc = _get_cpu_masks(cnt, numa_nodes, &cpuMasks);
 	if (rc < 0) {
 		error("(%s: %d: %s) get_cpu_masks failed. Return code: %d",
 		      THIS_FILE, __LINE__, __FUNCTION__, rc);
@@ -451,7 +459,7 @@ extern int task_p_post_step (stepd_step_rec_t *job)
 	rc = alpsc_compact_mem(&err_msg, cnt, numa_nodes, cpuMasks, NULL);
 
 	xfree(numa_nodes);
-	CPU_FREE(cpuMasks);
+	xfree(cpuMasks);
 
 	if (rc != 1) {
 		if (err_msg) {
@@ -470,10 +478,11 @@ extern int task_p_post_step (stepd_step_rec_t *job)
 		     __FUNCTION__, err_msg);
 		free(err_msg);
 	}
-
+#endif
 	return SLURM_SUCCESS;
 }
 
+#ifdef HAVE_NATIVE_CRAY
 /*
  * Function: get_numa_nodes
  * Description:
@@ -573,89 +582,147 @@ static int _get_numa_nodes(char *path, int *cnt, int32_t **numa_array) {
  * Function: get_cpu_masks
  * Description:
  *
- *  Returns a cpu_set_t containing the masks of the CPUs within the NUMA nodes
- *  that are in use by the application.
+ *  Returns cpuMasks which contains an array of a cpu_set_t cpumask one per
+ *  NUMA node id within the numaNodes array; the cpumask identifies
+ *  which CPUs are within that NUMA node.
  *
- *  IN char* path -- The path to the directory containing the files containing
- *                   information about NUMA nodes.
- *  OUT cpu_set_t **cpuMasks -- Pointer to the CPUS used by the application.
- *                              Must be freed via CPU_FREE() by the caller.
+ *  It does the following.
+ *  0.  Uses the cpuset.mems file to determine the total number of Numa Nodes
+ *      and their individual index numbers.
+ *  1.  Uses numa_node_to_cpus to get the bitmask of CPUs for each Numa Node.
+ *  2.  Obtains the bitmask of CPUs for the cpuset from the cpuset.cpus file.
+ *  3.  Bitwise-ANDs the bitmasks from steps #1 and #2 to obtain the CPUs
+ *      allowed per Numa Node bitmask.
+ *
+ *  IN int num_numa_nodes -- Number of NUMA nodes in numa_array
+ *  IN int32_t *numa_array -- Array of NUMA nodes length num_numa_nodes
+ *  OUT cpu_set_t **cpuMasks -- An array of cpu_set_t's one per NUMA node
+ *                              The caller must free *cpuMasks via xfree().
  * RETURN
  *  0 on success and -1 on failure.
  */
-static int _get_cpu_masks(char *path, cpu_set_t **cpuMasks) {
-	struct bitmask *bm;
-	int i, rc, cnt;
-	char buffer[PATH_MAX];
-	FILE *f = NULL;
-	char *lin = NULL;
-	int lsz;
-	size_t sz;
+#define NUM_INTS_TO_HOLD_ALL_CPUS (numa_all_cpus_ptr->size / (sizeof(unsigned long) * 8))
+static int _get_cpu_masks(int num_numa_nodes, int32_t *numa_array,
+						  cpu_set_t **cpuMasks) {
 
-	rc = snprintf(buffer, sizeof(buffer), "%s/%s", path, "cpus");
-	if (rc < 0) {
-		error("(%s: %d: %s) snprintf failed. Return code: %d",
-		      THIS_FILE, __LINE__, __FUNCTION__, rc);
+	struct bitmask **remaining_numa_node_cpus = NULL, *collective;
+	unsigned long **numa_node_cpus = NULL;
+	int i, j, at_least_one_cpu = 0, rc = 0;
+	cpu_set_t *cpusetptr;
+
+	if (numa_available()) {
+		error("(%s: %d: %s) Libnuma not available", THIS_FILE,
+								__LINE__, __FUNCTION__);
 		return -1;
 	}
 
-	f = fopen(buffer, "r");
-	if (f == NULL ) {
-		error("Failed to open file %s: %m\n", buffer);
-		return -1;
-	}
-
-	lsz = getline(&lin, &sz, f);
-	if (lsz > 0) {
-		if (lin[strlen(lin) - 1] == '\n') {
-			lin[strlen(lin) - 1] = '\0';
+	/*
+	 * numa_node_cpus: The CPUs available to the NUMA node.
+	 * numa_all_cpus_ptr: all CPUs on which the calling task may execute.
+	 * remaining_numa_node_cpus: Bitwise-AND of the above two to get all of
+	 *                              the CPUs that the task can run on in this
+	 *                              NUMA node.
+	 * collective: Collects all of the CPUs as a precaution.
+	 */
+	remaining_numa_node_cpus = xmalloc(num_numa_nodes *
+			sizeof(struct bitmask *));
+	collective = numa_allocate_cpumask();
+	numa_node_cpus = xmalloc(num_numa_nodes * sizeof(unsigned long*));
+	for (i = 0; i < num_numa_nodes; i++) {
+		remaining_numa_node_cpus[i] = numa_allocate_cpumask();
+		numa_node_cpus[i] = xmalloc(sizeof(unsigned long) * NUM_INTS_TO_HOLD_ALL_CPUS);
+		rc = numa_node_to_cpus(numa_array[i], numa_node_cpus[i], NUM_INTS_TO_HOLD_ALL_CPUS);
+		if (rc) {
+			error("(%s: %d: %s) numa_node_to_cpus. Return code: %d",
+							THIS_FILE, __LINE__, __FUNCTION__, rc);
 		}
-		bm = numa_parse_cpustring(lin);
-		if (bm == NULL ) {
-			error("(%s: %d: %s) Error numa_parse_nodestring",
-			      THIS_FILE, __LINE__, __FUNCTION__);
-			free(lin);
-			return -1;
+		for (j = 0; j < NUM_INTS_TO_HOLD_ALL_CPUS; j++) {
+			(remaining_numa_node_cpus[i]->maskp[j]) =
+					(numa_node_cpus[i][j]) &
+					(numa_all_cpus_ptr->maskp[j]);
+			collective->maskp[j] |=
+								(remaining_numa_node_cpus[i]->maskp[j]);
 		}
-	} else {
-		error("(%s: %d: %s) Reading %s failed.", THIS_FILE, __LINE__,
-		      __FUNCTION__, buffer);
-		return -1;
 	}
-	free(lin);
 
-	cnt = numa_bitmask_weight(bm);
-	if (cnt == 0) {
-		error("(%s: %d: %s)Error no CPUs found.", THIS_FILE, __LINE__,
-		      __FUNCTION__);
-		return -1;
+	/*
+	 * Ensure that we have not masked off all of the CPUs.
+	 * If we have, just re-enable them all.  Better to clear them all than
+	 * none of them.
+	 */
+	for (j=0; j < collective->size; j++) {
+		if (numa_bitmask_isbitset(collective, j)) {
+			at_least_one_cpu = 1;
+		}
+	}
+
+	if (!at_least_one_cpu) {
+		for (i = 0; i < num_numa_nodes; i++) {
+			for (j = 0; j <
+			    (remaining_numa_node_cpus[i]->size /
+			    		(sizeof(unsigned long) *8));
+			    j++) {
+				(remaining_numa_node_cpus[i]->maskp[j]) =
+						(numa_all_cpus_ptr->maskp[j]);
+			}
+		}
+
 	}
 
 	if (debug_flags & DEBUG_FLAG_TASK) {
-		info("Bitmask size: %lu\nSizeof(*(bm->maskp)):%zd\n"
-		     "Bitmask %#lx\nBitmask weight(number of bits set): %u\n",
-		     bm->size, sizeof(*(bm->maskp)), *(bm->maskp), cnt);
-	}
-
-	*cpuMasks = CPU_ALLOC(cnt);
-
-	if (*cpuMasks == NULL ) {
-		error("(%s: %d: %s)Error out of memory.\n", THIS_FILE, __LINE__,
-		      __FUNCTION__);
-		return -1;
-	}
-
-	for (i = 0; i < bm->size; i++) {
-		if (*(bm->maskp) & ((long unsigned) 1 << i)) {
-			if (debug_flags & DEBUG_FLAG_TASK) {
-				info("(%s: %d: %s)CPU %d is present.\n",
-				     THIS_FILE, __LINE__, __FUNCTION__, i);
+		for (i =0; i < num_numa_nodes; i++) {
+			for (j = 0; j < NUM_INTS_TO_HOLD_ALL_CPUS; j++) {
+				info("%6lx", numa_node_cpus[i][j]);
 			}
-			CPU_SET(i, *cpuMasks);
+			info("|");
+		}
+		info("\t Bitmask: Allowed CPUs for NUMA Node\n");
+
+		for (i =0; i < num_numa_nodes; i++) {
+			for (j = 0; j < NUM_INTS_TO_HOLD_ALL_CPUS; j++) {
+				info("%6lx", numa_all_cpus_ptr->maskp[j]);
+			}
+			info("|");
+		}
+		info("\t Bitmask: Allowed CPUs for for CPUSET\n");
+
+		for (i =0; i < num_numa_nodes; i++) {
+			for (j = 0; j < NUM_INTS_TO_HOLD_ALL_CPUS; j++) {
+				info("%6lx", remaining_numa_node_cpus[i]->maskp[j]);
+			}
+			info("|");
+		}
+		info("\t Bitmask: Allowed CPUs between CPUSet and NUMA Node\n");
+	}
+
+
+	// Convert bitmasks to cpu_set_t types
+	cpusetptr = xmalloc(num_numa_nodes * sizeof(cpu_set_t));
+
+	for (i=0; i < num_numa_nodes; i++) {
+		CPU_ZERO(&cpusetptr[i]);
+		for (j=0; j < remaining_numa_node_cpus[i]->size; j++) {
+			if (numa_bitmask_isbitset(remaining_numa_node_cpus[i], j)) {
+				CPU_SET(j, &cpusetptr[i]);
+			}
+		}
+		if (debug_flags & DEBUG_FLAG_TASK) {
+			info("CPU_COUNT() of set:    %d\n", CPU_COUNT(&cpusetptr[i]));
 		}
 	}
 
-	numa_free_cpumask(bm);
+	*cpuMasks = cpusetptr;
+
+	// Freeing Everything
+	numa_free_cpumask(collective);
+	for (i =0; i < num_numa_nodes; i++) {
+		xfree(numa_node_cpus[i]);
+		numa_free_cpumask(remaining_numa_node_cpus[i]);
+	}
+	xfree(numa_node_cpus);
+	xfree(numa_node_cpus);
+	xfree(remaining_numa_node_cpus);
 
 	return 0;
 }
+#endif
