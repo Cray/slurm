@@ -597,11 +597,12 @@ static int _get_numa_nodes(char *path, int *cnt, int32_t **numa_array) {
  * RETURN
  *  0 on success and -1 on failure.
  */
+#define NUM_INTS_TO_HOLD_ALL_CPUS (numa_all_cpus_ptr->size / (sizeof(unsigned long) * 8))
 static int _get_cpu_masks(int num_numa_nodes, int32_t *numa_array,
 						  cpu_set_t **cpuMasks) {
 
-	struct bitmask **numa_node_cpus = NULL,
-			**remaining_numa_node_cpus = NULL, *collective;
+	struct bitmask **remaining_numa_node_cpus = NULL, *collective;
+	unsigned long **numa_node_cpus = NULL,
 	int i, j, at_least_one_cpu = 0;
 	cpu_set_t *cpusetptr;
 
@@ -612,28 +613,28 @@ static int _get_cpu_masks(int num_numa_nodes, int32_t *numa_array,
 	}
 
 	/*
-	 * bm_numa_node_cpus: The CPUs available to the NUMA node.
+	 * numa_node_cpus: The CPUs available to the NUMA node.
 	 * numa_all_cpus_ptr: all CPUs on which the calling task may execute.
-	 * bm_remaining_numa_node_cpus: Bitwise-AND of the above two to get all of
+	 * remaining_numa_node_cpus: Bitwise-AND of the above two to get all of
 	 *                              the CPUs that the task can run on in this
 	 *                              NUMA node.
-	 * bm_collective: Collects all of the CPUs as a precaution.
+	 * collective: Collects all of the CPUs as a precaution.
 	 */
-	numa_node_cpus = xmalloc(num_numa_nodes * sizeof(struct bitmask *));
 	remaining_numa_node_cpus = xmalloc(num_numa_nodes *
 			sizeof(struct bitmask *));
 	collective = numa_allocate_cpumask();
-
+	numa_node_cpus = xmalloc(num_numa_nodes * sizeof(unsigned long*));
 	for (i = 0; i < num_numa_nodes; i++) {
-		numa_node_cpus[i] = numa_allocate_cpumask();
 		remaining_numa_node_cpus[i] = numa_allocate_cpumask();
-		// Had to hack this due to a Cray re-definition of numa_node_to_cpus
-		numa_node_to_cpus(numa_array[i], numa_node_cpus[i]->maskp,
-				numa_node_cpus[i]->size / 8);
-		for (j = 0; j <
-		    (numa_node_cpus[i]->size / (sizeof(unsigned long) *8)); j++) {
+		numa_node_cpus[i] = xmalloc(sizeof(unsigned long) * NUM_INTS_TO_HOLD_ALL_CPUS);
+		rc = numa_node_to_cpus(numa_array[i], numa_node_cpus[i], NUM_INTS_TO_HOLD_ALL_CPUS);
+		if (rc) {
+			error("(%s: %d: %s) numa_node_to_cpus. Return code: %d",
+							THIS_FILE, __LINE__, __FUNCTION__, rc);
+		}
+		for (j = 0; j < NUM_INTS_TO_HOLD_ALL_CPUS; j++) {
 			(remaining_numa_node_cpus[i]->maskp[j]) =
-					(numa_node_cpus[i]->maskp[j]) &
+					(numa_node_cpus[i][j]) &
 					(numa_all_cpus_ptr->maskp[j]);
 			collective->maskp[j] |=
 								(remaining_numa_node_cpus[i]->maskp[j]);
@@ -666,13 +667,8 @@ static int _get_cpu_masks(int num_numa_nodes, int32_t *numa_array,
 
 	if (debug_flags & DEBUG_FLAG_TASK) {
 		for (i =0; i < num_numa_nodes; i++) {
-			info("%6lu|", numa_node_cpus[i]->size);
-		}
-		info("\t Bitmask Size: \n");
-
-		for (i =0; i < num_numa_nodes; i++) {
-			for (j = 0; j < (numa_node_cpus[i]->size / (sizeof(unsigned long) * 8)); j++) {
-				info("%6lx", numa_node_cpus[i]->maskp[j]);
+			for (j = 0; j < NUM_INTS_TO_HOLD_ALL_CPUS; j++) {
+				info("%6lx", numa_node_cpus[i][j]);
 			}
 			info("|");
 		}
@@ -680,7 +676,7 @@ static int _get_cpu_masks(int num_numa_nodes, int32_t *numa_array,
 
 
 		for (i =0; i < num_numa_nodes; i++) {
-			for (j = 0; j < (numa_node_cpus[i]->size / (sizeof(unsigned long) * 8)); j++) {
+			for (j = 0; j < NUM_INTS_TO_HOLD_ALL_CPUS; j++) {
 				info("%6lx", numa_all_cpus_ptr->maskp[j]);
 			}
 			info("|");
@@ -688,7 +684,7 @@ static int _get_cpu_masks(int num_numa_nodes, int32_t *numa_array,
 		info("\t Bitmask: Allowed CPUs for for CPUSET\n");
 
 		for (i =0; i < num_numa_nodes; i++) {
-			for (j = 0; j < (numa_node_cpus[i]->size / (sizeof(unsigned long) * 8)); j++) {
+			for (j = 0; j < NUM_INTS_TO_HOLD_ALL_CPUS; j++) {
 				info("%6lx", remaining_numa_node_cpus[i]->maskp[j]);
 			}
 			info("|");
@@ -717,9 +713,11 @@ static int _get_cpu_masks(int num_numa_nodes, int32_t *numa_array,
 	// Freeing Everything
 	numa_free_cpumask(collective);
 	for (i =0; i < num_numa_nodes; i++) {
+		xfree(numa_node_cpus[i]);
 		numa_free_cpumask(numa_node_cpus[i]);
 		numa_free_cpumask(remaining_numa_node_cpus[i]);
 	}
+	xfree(numa_node_cpus);
 	xfree(numa_node_cpus);
 	xfree(remaining_numa_node_cpus);
 
