@@ -602,7 +602,7 @@ static int _get_cpu_masks(int num_numa_nodes, int32_t *numa_array,
 						  cpu_set_t **cpuMasks) {
 
 	struct bitmask **remaining_numa_node_cpus = NULL, *collective;
-	unsigned long **numa_node_cpus = NULL,
+	unsigned long **numa_node_cpus = NULL;
 	int i, j, at_least_one_cpu = 0;
 	cpu_set_t *cpusetptr;
 
