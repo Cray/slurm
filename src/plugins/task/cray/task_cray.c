@@ -456,7 +456,7 @@ extern int task_p_post_step (stepd_step_rec_t *job)
 	rc = alpsc_compact_mem(&errMsg, cnt, numa_nodes, cpuMasks, NULL);
 
 	xfree(numa_nodes);
-	CPU_FREE(cpuMasks);
+	xfree(cpuMasks);
 
 	if (rc != 1) {
 		if (errMsg) {
