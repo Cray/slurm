@@ -138,7 +138,7 @@ extern int fini (void)
  * task_p_slurmd_batch_request()
  */
 extern int task_p_slurmd_batch_request (uint32_t job_id,
-		batch_job_launch_msg_t *req)
+					batch_job_launch_msg_t *req)
 {
 	debug("task_p_slurmd_batch_request: %u", job_id);
 	return SLURM_SUCCESS;
@@ -148,11 +148,11 @@ extern int task_p_slurmd_batch_request (uint32_t job_id,
  * task_p_slurmd_launch_request()
  */
 extern int task_p_slurmd_launch_request (uint32_t job_id,
-		launch_tasks_request_msg_t *req,
-		uint32_t node_id)
+					 launch_tasks_request_msg_t *req,
+					 uint32_t node_id)
 {
 	debug("task_p_slurmd_launch_request: %u.%u %u",
-			job_id, req->job_step_id, node_id);
+	      job_id, req->job_step_id, node_id);
 	return SLURM_SUCCESS;
 }
 
@@ -160,8 +160,8 @@ extern int task_p_slurmd_launch_request (uint32_t job_id,
  * task_p_slurmd_reserve_resources()
  */
 extern int task_p_slurmd_reserve_resources (uint32_t job_id,
-		launch_tasks_request_msg_t *req,
-		uint32_t node_id)
+					    launch_tasks_request_msg_t *req,
+					    uint32_t node_id)
 {
 	debug("task_p_slurmd_reserve_resources: %u %u", job_id, node_id);
 	return SLURM_SUCCESS;
