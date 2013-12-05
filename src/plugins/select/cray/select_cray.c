@@ -2,6 +2,7 @@
  *  select_cray.c - node selection plugin for cray systems.
  *****************************************************************************
  *  Copyright (C) 2013 SchedMD LLC
+ *  Copyright 2013 Cray Inc. All Rights Reserved.
  *  Written by Danny Auble <da@schedmd.com>
  *
  *  This file is part of SLURM, a resource management program.
@@ -39,6 +40,8 @@
 
 #define _GNU_SOURCE 1
 
+#define _GNU_SOURCE 1
+
 #ifdef HAVE_CONFIG_H
 #  include "config.h"
 #  if HAVE_STDINT_H
@@ -63,7 +66,9 @@
 #include "src/slurmctld/locks.h"
 #include "other_select.h"
 
+#ifdef HAVE_NATIVE_CRAY
 #include "alpscomm_sn.h"
+#endif
 
 /**
  * struct select_jobinfo - data specific to Cray node selection plugin
@@ -93,6 +98,7 @@ typedef struct {
 	uint32_t jobid;
 	char *nodelist;
 	bool step;
+	uint32_t user_id;
 } nhc_info_t;
 
 #define NODEINFO_MAGIC 0x85ad
@@ -151,12 +157,6 @@ static void _update_app(struct job_record *job_ptr,
 			alpsc_ev_app_state_e state);
 #endif
 
-/* All current (2011) XT/XE installations have a maximum dimension of 3,
- * smaller systems deploy a 2D Torus which has no connectivity in
- * X-dimension.  We know the highest system dimensions possible here
- * are 3 so we set it to that.  Do not use SYSTEM_DIMENSIONS since
- * that could easily be wrong if built on a non Cray system. */
-static int select_cray_dim_size[3] = {-1};
 static uint32_t debug_flags = 0;
 
 /*
@@ -197,11 +197,11 @@ extern int select_p_select_jobinfo_free(select_jobinfo_t *jobinfo);
 static int _run_nhc(nhc_info_t *nhc_info)
 {
 #ifdef HAVE_NATIVE_CRAY
-	int argc = 11, status = 1, wait_rc, i = 0;
+	int argc = 13, status = 1, wait_rc, i = 0;
 	char *argv[argc];
 	pid_t cpid;
 	char *jobid_char = NULL, *apid_char = NULL, *nodelist_nids = NULL,
-		*exit_char = NULL;
+		*exit_char = NULL, *user_char = NULL;
 	DEF_TIMERS;
 
 	START_TIMER;
@@ -209,6 +209,7 @@ static int _run_nhc(nhc_info_t *nhc_info)
 	apid_char = xstrdup_printf("%"PRIu64"", nhc_info->apid);
 	exit_char = xstrdup_printf("%u", nhc_info->exit_code);
 	jobid_char = xstrdup_printf("%u", nhc_info->jobid);
+	user_char = xstrdup_printf("%u", nhc_info->user_id);
 	nodelist_nids = cray_nodelist2nids(NULL, nhc_info->nodelist);
 
 	argv[i++] = "/opt/cray/nodehealth/default/bin/xtcleanup_after";
@@ -218,6 +219,11 @@ static int _run_nhc(nhc_info_t *nhc_info)
 	argv[i++] = exit_char;
 	argv[i++] = "-r";
 	argv[i++] = jobid_char;
+	/* When the -u option is added to xtcleanup_after uncomment
+	   these lines.
+	*/
+	/* argv[i++] = "-u"; */
+	/* argv[i++] = user_char; */
 	argv[i++] = "-m";
 	argv[i++] = nhc_info->step ? "application" : "reservation";
 	argv[i++] = nodelist_nids;
@@ -272,10 +278,11 @@ static int _run_nhc(nhc_info_t *nhc_info)
 		info("_run_nhc jobid %u and apid %"PRIu64" completed took: %s",
 		     nhc_info->jobid, nhc_info->apid, TIME_STR);
 
- fini:
+fini:
 	xfree(apid_char);
 	xfree(exit_char);
 	xfree(jobid_char);
+	xfree(user_char);
 	xfree(nodelist_nids);
 
 	return status;
@@ -409,7 +416,7 @@ static void *_aeld_event_loop(void *args)
 	fds[0].fd = sessionfd;
 	fds[0].events = POLLIN | POLLPRI | POLLRDHUP;
 	while ((rv = TEMP_FAILURE_RETRY(poll(fds, 1, AELD_EVENT_INTERVAL)))
-		!= -1) {
+	       != -1) {
 		// There was activity on the file descriptor, get state
 		if (rv > 0) {
 			rv = alpsc_ev_get_session_state(&errmsg, session);
@@ -444,7 +451,7 @@ static void *_aeld_event_loop(void *args)
 			if (rv > 0) {
 				_handle_aeld_error(
 					"alpsc_ev_set_application_info",
-						   errmsg, rv, &session);
+					errmsg, rv, &session);
 				_start_session(&session, &sessionfd);
 				fds[0].fd = sessionfd;
 			}
@@ -487,13 +494,13 @@ static void _initialize_event(alpsc_ev_app_t *event,
 			return;
 		}
 		hlit = hostlist_iterator_create(hl);
-	    if (hlit == NULL) {
+		if (hlit == NULL) {
 			hostlist_destroy(hl);
 			return;
 		}
 
 		event->nodes = xmalloc(step_ptr->step_layout->node_cnt
-				* sizeof(int32_t));
+				       * sizeof(int32_t));
 
 		while ((node = hostlist_next(hlit)) != NULL) {
 			rv = sscanf(node, "nid%"SCNd32,
@@ -510,7 +517,7 @@ static void _initialize_event(alpsc_ev_app_t *event,
 		hostlist_iterator_destroy(hlit);
 		hostlist_destroy(hl);
 	} else {
-	    // TODO: do we have to worry about batch scripts?
+		// TODO: do we have to worry about batch scripts?
 	}
 	return;
 }
@@ -646,7 +653,7 @@ static void _update_app(struct job_record *job_ptr,
 			if (app_list[i].apid == apid) {
 				// Found it, update the state
 				app_list[i].state =
-				    (state == ALPSC_EV_SUSPEND) ?
+					(state == ALPSC_EV_SUSPEND) ?
 					ALPSC_EV_SUSPEND : ALPSC_EV_START;
 				break;
 			}
@@ -692,6 +699,7 @@ static void *_job_fini(void *args)
 	nhc_info.jobid = job_ptr->job_id;
 	nhc_info.nodelist = xstrdup(job_ptr->nodes);
 	nhc_info.exit_code = 1; /* hard code to 1 to always run */
+	nhc_info.user_id = job_ptr->user_id;
 	unlock_slurmctld(job_read_lock);
 
 	/* run NHC */
@@ -742,6 +750,7 @@ static void *_step_fini(void *args)
 	nhc_info.apid = SLURM_ID_HASH(step_ptr->job_ptr->job_id,
 				      step_ptr->step_id);
 	nhc_info.exit_code = step_ptr->exit_code;
+	nhc_info.user_id = step_ptr->job_ptr->user_id;
 
 	if (!step_ptr->step_layout || !step_ptr->step_layout->node_list) {
 		if (step_ptr->job_ptr)
@@ -847,7 +856,7 @@ extern int init ( void )
 #ifdef HAVE_NATIVE_CRAY
 	// Spawn the aeld thread, only in slurmctld.
 	if (run_in_daemon("slurmctld")) {
-	    _spawn_cleanup_thread(NULL, _aeld_event_loop);
+		_spawn_cleanup_thread(NULL, _aeld_event_loop);
 	}
 #endif
 
@@ -1051,7 +1060,7 @@ extern int select_p_job_suspend(struct job_record *job_ptr, bool indf_susp)
 	if (aeld_running) {
 		i = list_iterator_create(job_ptr->step_list);
 		while ((step_ptr = (struct step_record *)list_next(i))
-			!= NULL) {
+		       != NULL) {
 			_update_app(job_ptr, step_ptr, ALPSC_EV_SUSPEND);
 		}
 		list_iterator_destroy(i);
@@ -1071,7 +1080,7 @@ extern int select_p_job_resume(struct job_record *job_ptr, bool indf_susp)
 	if (aeld_running) {
 		i = list_iterator_create(job_ptr->step_list);
 		while ((step_ptr = (struct step_record *)list_next(i))
-			!= NULL) {
+		       != NULL) {
 			_update_app(job_ptr, step_ptr, ALPSC_EV_RESUME);
 		}
 		list_iterator_destroy(i);
@@ -1445,7 +1454,7 @@ extern char *select_p_select_jobinfo_xstrdup(select_jobinfo_t *jobinfo,
 	}
 
 	switch (mode) {
-	/* See comment in select_p_select_jobinfo_sprint() regarding format. */
+		/* See comment in select_p_select_jobinfo_sprint() regarding format. */
 	default:
 		xstrcat(buf, other_select_jobinfo_xstrdup(
 				jobinfo->other_jobinfo, mode));
@@ -1506,55 +1515,11 @@ extern bitstr_t * select_p_resv_test(bitstr_t *avail_bitmap, uint32_t node_cnt,
 
 extern void select_p_ba_init(node_info_msg_t *node_info_ptr, bool sanity_check)
 {
-	int i, j, offset;
-	int dims = slurmdb_setup_cluster_dims();
-
-	if (select_cray_dim_size[0] == -1) {
-		node_info_t *node_ptr;
-
-		/* init the rest of the dim sizes. All current (2011)
-		 * XT/XE installations have a maximum dimension of 3,
-		 * smaller systems deploy a 2D Torus which has no
-		 * connectivity in X-dimension.  Just incase they
-		 * decide to change it where we only get 2 instead of
-		 * 3 we will initialize it later. */
-		for (i = 1; i < dims; i++)
-			select_cray_dim_size[i] = -1;
-		for (i = 0; i < node_info_ptr->record_count; i++) {
-			node_ptr = &(node_info_ptr->node_array[i]);
-			if (!node_ptr->node_addr ||
-			    (strlen(node_ptr->node_addr) != dims))
-				continue;
-			for (j = 0; j < dims; j++) {
-				offset = select_char2coord(
-					node_ptr->node_addr[j]);
-				select_cray_dim_size[j] =
-					MAX((offset+1),
-					    select_cray_dim_size[j]);
-			}
-		}
-	}
-
-	/*
-	 * Override the generic setup of dim_size made in _setup_cluster_rec()
-	 * FIXME: use a better way, e.g. encoding the 3-dim triplet as a
-	 *        string which gets stored in a database (event_table?) entry.
-	 */
-	if (working_cluster_rec) {
-		xfree(working_cluster_rec->dim_size);
-		working_cluster_rec->dim_size = xmalloc(sizeof(int) * dims);
-		for (j = 0; j < dims; j++)
-			working_cluster_rec->dim_size[j] =
-				select_cray_dim_size[j];
-	}
-
 	other_ba_init(node_info_ptr, sanity_check);
 }
 
 extern int *select_p_ba_get_dims(void)
 {
-	if (select_cray_dim_size[0] != -1)
-		return select_cray_dim_size;
 	return NULL;
 }
 

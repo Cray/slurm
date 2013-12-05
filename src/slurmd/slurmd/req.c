@@ -1637,7 +1637,7 @@ _abort_job(uint32_t job_id, uint32_t slurm_rc)
 	resp.job_id       = job_id;
 	resp.job_rc       = 1;
 	resp.slurm_rc     = slurm_rc;
-	resp.node_name    = NULL;	/* unused */
+	resp.node_name    = conf->node_name;
 	resp.jobacct      = NULL;       /* unused */
 	resp_msg.msg_type = REQUEST_COMPLETE_BATCH_SCRIPT;
 	resp_msg.data     = &resp;
@@ -4340,6 +4340,7 @@ _build_env(job_env_t *job_env)
 	setenvf(&env, "SLURM_CONF", conf->conffile);
 	slurm_mutex_unlock(&conf->config_mutex);
 
+	setenvf(&env, "SLURM_CLUSTER_NAME", "%s", conf->cluster_name);
 	setenvf(&env, "SLURM_JOB_ID", "%u", job_env->jobid);
 	setenvf(&env, "SLURM_JOB_UID",   "%u", job_env->uid);
 

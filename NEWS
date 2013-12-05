@@ -20,6 +20,9 @@ documents those changes that are of interest to users and admins.
     authentication plugin.
  -- Fixed conditional rpm compiling.
  -- Corrected slurmstepd ident name when loggind to syslog.
+ -- Fixed sh5util loop when there are no node-step files.
+ -- Add SLURM_CLUSTER_NAME to environment variables passed to PrologSlurmctld,
+    Prolog, EpilogSlurmctld, and Epilog
 
 * Changes in Slurm 14.03.0pre4
 ==============================
@@ -163,6 +166,17 @@ documents those changes that are of interest to users and admins.
  -- proctrack/cgroup - Add locking to prevent race condition where one job step
     is ending for a user or job at the same time another job stepsis starting
     and the user or job container is deleted from under the starting job step.
+ -- Fixed sh5util loop when there are no node-step files.
+ -- Fix race condition on batch job termination that could result in a job exit
+    code of 0xfffffffe if the slurmd on node zero registers its active jobs at
+    the same time that slurmstepd is recording the job's exit code.
+ -- Correct logic returning remaining job dependencies in job information
+    reported by scontrol and squeue. Eliminates vestigial descriptors with
+    no job ID values (e.g. "afterany").
+ -- Improve performance of REQUEST_JOB_INFO_SINGLE RPC by removing unnecessary
+    locks and use hash function to find the desired job.
+ -- jobcomp/filetxt - Reopen the file when slurmctld daemon is reconfigured
+    or gets SIGHUP.
 
 * Changes in Slurm 2.6.4
 ========================

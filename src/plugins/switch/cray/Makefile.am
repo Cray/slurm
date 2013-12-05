@@ -16,4 +16,3 @@ switch_cray_la_SOURCES = switch_cray.c
 switch_cray_la_CPPFLAGS = $(CRAY_SWITCH_CPPFLAGS) $(AM_CPPFLAGS)
 switch_cray_la_LDFLAGS = $(SO_LDFLAGS) $(PLUGIN_FLAGS) $(CRAY_LDFLAGS) $(CRAY_SWITCH_LDFLAGS)
 switch_cray_la_LIBADD = $(CRAY_LDFLAGS)
-

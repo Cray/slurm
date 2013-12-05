@@ -1123,9 +1123,9 @@ static void _slurm_rpc_dump_job_single(slurm_msg_t * msg)
 	int dump_size, rc;
 	slurm_msg_t response_msg;
 	job_id_msg_t *job_id_msg = (job_id_msg_t *) msg->data;
-	/* Locks: Read config job, write node (for hiding) */
+	/* Locks: Read config, job, and node info */
 	slurmctld_lock_t job_read_lock = {
-		READ_LOCK, READ_LOCK, NO_LOCK, WRITE_LOCK };
+		READ_LOCK, READ_LOCK, NO_LOCK, READ_LOCK };
 	uid_t uid = g_slurm_auth_get_uid(msg->auth_cred, NULL);
 
 	START_TIMER;
@@ -1702,6 +1702,20 @@ static void _slurm_rpc_complete_batch_script(slurm_msg_t * msg)
 	_throttle_start(&active_rpc_cnt);
 	lock_slurmctld(job_write_lock);
 	job_ptr = find_job_record(comp_msg->job_id);
+
+	if (job_ptr && job_ptr->batch_host && comp_msg->node_name &&
+	    strcmp(job_ptr->batch_host, comp_msg->node_name)) {
+		/* This can be the result of the slurmd on the batch_host
+		 * failing, but the slurmstepd continuing to run. Then the
+		 * batch job is requeued and started on a different node.
+		 * The end result is one batch complete RPC from each node. */
+		error("Batch completion for job %u sent from wrong node "
+		      "(%s rather than %s), ignored request",
+		      comp_msg->job_id,
+		      comp_msg->node_name, comp_msg->node_name);
+		slurm_send_rc_msg(msg, error_code);
+		return;
+	}
 
 	/* Send batch step info to accounting */
 	if (association_based_accounting && job_ptr) {

@@ -3,6 +3,7 @@
  *	on a cray system
  *****************************************************************************
  *  Copyright (C) 2013 SchedMD LLC
+ *  Copyright 2013 Cray Inc. All Rights Reserved.
  *
  *  This file is part of SLURM, a resource management program.
  *  For details, see <http://slurm.schedmd.com/>.
@@ -53,14 +54,35 @@
 #include <unistd.h>
 #include <sys/param.h>
 #include <errno.h>
-#include <numa.h>
 #include "limits.h"
 #include <sched.h>
+
+#ifdef HAVE_NUMA
+#include <numa.h>
+#endif
 
 #include "slurm/slurm_errno.h"
 #include "src/common/slurm_xlator.h"
 #include "src/slurmd/slurmstepd/slurmstepd_job.h"
 #include "alpscomm_cn.h"
+
+// Filename to write status information to
+// This file consists of job->node_tasks + 1 bytes. Each byte will
+// be either 1 or 0, indicating that that particular event has occured.
+// The first byte indicates the starting LLI message, and the next bytes
+// indicate the exiting LLI messages for each task
+#define LLI_STATUS_FILE	    "/var/opt/cray/alps/spool/status%"PRIu64
+
+// Size of buffer which is guaranteed to hold an LLI_STATUS_FILE
+#define LLI_STATUS_FILE_BUF_SIZE    128
+
+// Offset within status file to write to, different for each task
+#define LLI_STATUS_OFFS_ENV "ALPS_LLI_STATUS_OFFSET"
+static uint32_t debug_flags = 0;
+
+#ifdef HAVE_NATIVE_CRAY
+#include "alpscomm_cn.h"
+#endif
 
 // Filename to write status information to
 // This file consists of job->node_tasks + 1 bytes. Each byte will
@@ -107,12 +129,15 @@ const char plugin_name[]        = "task CRAY plugin";
 const char plugin_type[]        = "task/cray";
 const uint32_t plugin_version   = 100;
 
+#ifdef HAVE_NUMA
 // TODO: Remove this prototype once the prototype appears in numa.h.
 unsigned int numa_bitmask_weight(const struct bitmask *bmp);
+#endif
 
+#ifdef HAVE_NATIVE_CRAY
 static int _get_numa_nodes(char *path, int *cnt, int **numa_array);
-static int _get_cpu_masks(int num_numa_nodes, int32_t *numa_array,
-						  cpu_set_t **cpuMasks);
+static int _get_cpu_masks(char *path, cpu_set_t **cpuMasks);
+#endif
 
 /*
  * init() is called when the plugin is loaded, before any other functions
@@ -202,7 +227,7 @@ extern int task_p_slurmd_release_resources (uint32_t job_id)
 extern int task_p_pre_setuid (stepd_step_rec_t *job)
 {
 	debug("task_p_pre_setuid: %u.%u",
-			job->jobid, job->stepid);
+	      job->jobid, job->stepid);
 
 	return SLURM_SUCCESS;
 }
@@ -214,12 +239,11 @@ extern int task_p_pre_setuid (stepd_step_rec_t *job)
  */
 extern int task_p_pre_launch (stepd_step_rec_t *job)
 {
+#ifdef HAVE_NATIVE_CRAY
 	int rc;
 
 	debug("task_p_pre_launch: %u.%u, task %d",
 	      job->jobid, job->stepid, job->envtp->procid);
-
-#ifdef HAVE_NATIVE_CRAY
 	/*
 	 * Send the rank to the application's PMI layer via an environment
 	 * variable.
@@ -308,7 +332,7 @@ extern int task_p_pre_launch_priv (stepd_step_rec_t *job)
  *	followed by TaskEpilog program (from slurm.conf).
  */
 extern int task_p_post_term (stepd_step_rec_t *job,
-		stepd_step_task_info_t *task)
+			     stepd_step_task_info_t *task)
 {
 #ifdef HAVE_NATIVE_CRAY
 	char llifile[LLI_STATUS_FILE_BUF_SIZE];
@@ -366,6 +390,7 @@ extern int task_p_post_term (stepd_step_rec_t *job,
 			job->envtp->procid);
 		slurm_terminate_job_step(job->jobid, job->stepid);
 	}
+
 #endif
 	return SLURM_SUCCESS;
 }
@@ -463,8 +488,8 @@ extern int task_p_post_step (stepd_step_rec_t *job)
 
 	if (rc != 1) {
 		if (err_msg) {
-			error("(%s: %d: %s) alpsc_compact_mem failed: %s", THIS_FILE,
-			      __LINE__, __FUNCTION__, err_msg);
+			error("(%s: %d: %s) alpsc_compact_mem failed: %s",
+			      THIS_FILE, __LINE__, __FUNCTION__, err_msg);
 			free(err_msg);
 		} else {
 			error("(%s: %d: %s) alpsc_compact_mem failed:"
@@ -483,8 +508,9 @@ extern int task_p_post_step (stepd_step_rec_t *job)
 }
 
 #ifdef HAVE_NATIVE_CRAY
+
 /*
- * Function: get_numa_nodes
+ * Function: _get_numa_nodes
  * Description:
  *  Returns a count of the NUMA nodes that the application is running on.
  *
@@ -579,7 +605,7 @@ static int _get_numa_nodes(char *path, int *cnt, int32_t **numa_array) {
 }
 
 /*
- * Function: get_cpu_masks
+ * Function: _get_cpu_masks
  * Description:
  *
  *  Returns cpuMasks which contains an array of a cpu_set_t cpumask one per
@@ -601,9 +627,10 @@ static int _get_numa_nodes(char *path, int *cnt, int32_t **numa_array) {
  * RETURN
  *  0 on success and -1 on failure.
  */
-#define NUM_INTS_TO_HOLD_ALL_CPUS (numa_all_cpus_ptr->size / (sizeof(unsigned long) * 8))
+#define NUM_INTS_TO_HOLD_ALL_CPUS \
+                        (numa_all_cpus_ptr->size / (sizeof(unsigned long) * 8))
 static int _get_cpu_masks(int num_numa_nodes, int32_t *numa_array,
-						  cpu_set_t **cpuMasks) {
+			  cpu_set_t **cpuMasks) {
 
 	struct bitmask **remaining_numa_node_cpus = NULL, *collective;
 	unsigned long **numa_node_cpus = NULL;
@@ -612,7 +639,7 @@ static int _get_cpu_masks(int num_numa_nodes, int32_t *numa_array,
 
 	if (numa_available()) {
 		error("(%s: %d: %s) Libnuma not available", THIS_FILE,
-								__LINE__, __FUNCTION__);
+		      __LINE__, __FUNCTION__);
 		return -1;
 	}
 
@@ -630,8 +657,10 @@ static int _get_cpu_masks(int num_numa_nodes, int32_t *numa_array,
 	numa_node_cpus = xmalloc(num_numa_nodes * sizeof(unsigned long*));
 	for (i = 0; i < num_numa_nodes; i++) {
 		remaining_numa_node_cpus[i] = numa_allocate_cpumask();
-		numa_node_cpus[i] = xmalloc(sizeof(unsigned long) * NUM_INTS_TO_HOLD_ALL_CPUS);
-		rc = numa_node_to_cpus(numa_array[i], numa_node_cpus[i], NUM_INTS_TO_HOLD_ALL_CPUS);
+		numa_node_cpus[i] = xmalloc(sizeof(unsigned long) *
+				                    NUM_INTS_TO_HOLD_ALL_CPUS);
+		rc = numa_node_to_cpus(numa_array[i], numa_node_cpus[i],
+				               NUM_INTS_TO_HOLD_ALL_CPUS);
 		if (rc) {
 			error("(%s: %d: %s) numa_node_to_cpus. Return code: %d",
 							THIS_FILE, __LINE__, __FUNCTION__, rc);

@@ -2,8 +2,8 @@
  *  switch_cray.c - Library for managing a switch on a Cray system.
  *****************************************************************************
  *  Copyright (C) 2013 SchedMD LLC
+ *  Copyright 2013 Cray Inc. All Rights Reserved.
  *  Written by Danny Auble <da@schedmd.com>
- *  CODE-OCEC-09-009. All rights reserved.
  *
  *  This file is part of SLURM, a resource management program.
  *  For details, see <http://slurm.schedmd.com/>.
@@ -35,9 +35,6 @@
  *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA.
 \*****************************************************************************/
 
-/*
- * Copyright 2013 Cray Inc. All Rights Reserved.
- */
 
 #if     HAVE_CONFIG_H
 #include "config.h"
@@ -59,14 +56,15 @@
 #include <linux/limits.h>
 #include <sched.h>
 #include <math.h>
-#include <job.h>
 
 #include "slurm/slurm.h"
 #include "slurm/slurm_errno.h"
 #include "src/common/slurm_xlator.h"
 #include "src/common/pack.h"
 #include "src/common/gres.h"
+
 #ifdef HAVE_NATIVE_CRAY
+#include <job.h> /* Cray's job module component */
 #include "alpscomm_cn.h"
 #include "alpscomm_sn.h"
 #endif
@@ -156,16 +154,13 @@ typedef struct slurm_cray_jobinfo {
 
 static void _print_jobinfo(slurm_cray_jobinfo_t *job);
 static int _list_str_to_array(char *list, int *cnt, int32_t **numbers);
-static void _recursive_rmdir(const char *dirnm);
 #ifdef HAVE_NATIVE_CRAY
+static void _recursive_rmdir(const char *dirnm);
 static int _get_first_pe(uint32_t nodeid, uint32_t task_count,
-		uint32_t **host_to_task_map, int32_t *first_pe);
+			 uint32_t **host_to_task_map, int32_t *first_pe);
 static int _get_cpu_total(void);
 static int _assign_port(uint32_t *ret_port);
 static int _release_port(uint32_t real_port);
-#endif
-
-#ifdef HAVE_NATIVE_CRAY
 static void _free_alpsc_pe_info(alpsc_peInfo_t alpsc_pe_info);
 
 static void _print_alpsc_pe_info(alpsc_peInfo_t alps_info)
@@ -186,7 +181,7 @@ static void _print_alpsc_pe_info(alpsc_peInfo_t alps_info)
 
 static void _print_jobinfo(slurm_cray_jobinfo_t *job)
 {
-	int i, j, rc, cnt;
+	int i, j, rc, cnt = 0;
 	int32_t *nodes;
 
 	if (!job || (job->magic == CRAY_NULL_JOBINFO_MAGIC)) {
@@ -293,7 +288,7 @@ int switch_p_libstate_clear(void)
  * switch functions for job step specific credential
  */
 int switch_p_alloc_jobinfo(switch_jobinfo_t **switch_job, uint32_t job_id,
-		uint32_t step_id)
+			   uint32_t step_id)
 {
 	slurm_cray_jobinfo_t *new;
 
@@ -323,7 +318,7 @@ int switch_p_build_jobinfo(switch_jobinfo_t *switch_job,
 {
 
 #ifdef HAVE_NATIVE_CRAY
-	int i, rc, cnt;
+	int i, rc, cnt = 0;
 	uint32_t port = 0;
 	int num_cookies = 2;
 	char *err_msg = NULL;
@@ -349,8 +344,9 @@ int switch_p_build_jobinfo(switch_jobinfo_t *switch_job,
 	}
 	if (step_layout->node_cnt != cnt) {
 		error("(%s: %d: %s) list_str_to_array returned count %"
-				PRIu32 "does not match expected count %d", THIS_FILE, __LINE__,
-				__FUNCTION__, cnt, job->step_layout->node_cnt);
+		      PRIu32 "does not match expected count %d",
+		      THIS_FILE, __LINE__,
+		      __FUNCTION__, cnt, job->step_layout->node_cnt);
 	}
 
 	/*
@@ -670,7 +666,7 @@ int switch_p_unpack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer,
 
 	return SLURM_SUCCESS;
 
-	unpack_error:
+unpack_error:
 	error("(%s:%d: %s) Unpacking error", THIS_FILE, __LINE__,
 	      __FUNCTION__);
 	if (job->cookies) {
@@ -724,7 +720,7 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 
 #ifdef HAVE_NATIVE_CRAY
 	slurm_cray_jobinfo_t *sw_job = (slurm_cray_jobinfo_t *) job->switch_job;
-	int rc, num_ptags, cmd_index, num_app_cpus, i, j, cnt;
+	int rc, num_ptags, cmd_index, num_app_cpus, i, j, cnt = 0;
 	int mem_scaling, cpu_scaling;
 	int total_cpus = 0;
 	uint32_t total_mem = 0;
@@ -793,7 +789,7 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 	apid_dir = xstrdup_printf(LEGACY_SPOOL_DIR "%" PRIu64, sw_job->apid);
 	if (NULL == apid_dir) {
 		error("(%s: %d: %s) xstrdup_printf failed", THIS_FILE, __LINE__,
-				__FUNCTION__);
+		      __FUNCTION__);
 		return SLURM_ERROR;
 	}
 
@@ -878,6 +874,11 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 			return SLURM_ERROR;
 		}
 
+		/* If the submission didn't come from srun (API style)
+		 * perhaps they didn't fill in things correctly.
+		 */
+		if (!job->cpus_per_task)
+			job->cpus_per_task = 1;
 		/*
 		 * Scaling
 		 * For the CPUS round the scaling to the nearest integer.
@@ -885,7 +886,6 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 		 * 100%.
 		 * If the scaling is zero, then return an error.
 		 */
-
 		num_app_cpus = job->node_tasks * job->cpus_per_task;
 		if (num_app_cpus <= 0) {
 			error("(%s: %d: %s) num_app_cpus <=0: %d",
@@ -894,7 +894,7 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 		}
 
 		cpu_scaling = (((double) num_app_cpus / (double) total_cpus) *
-				(double) 100) + 0.5;
+			       (double) 100) + 0.5;
 		if (cpu_scaling > 100) {
 			error("(%s: %d: %s) Cpu scaling out of bounds: %d."
 			      " Reducing to 100%%",
@@ -1074,15 +1074,16 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 
 		// Deferred support
 		/*
-		 ap.cmdIndex = ;
-		 ap.peCmdMapArray = ;
-		 ap.firstPeHere = ;
+		  ap.cmdIndex = ;
+		  ap.peCmdMapArray = ;
+		  ap.firstPeHere = ;
 
-		 ap.pesHere = pesHere; // These need to be MPMD specific.
-		 */
+		  ap.pesHere = pesHere; // These need to be MPMD specific.
+		*/
 
-		error("(%s: %d: %s) MPMD Applications are not currently supported.",
-				THIS_FILE, __LINE__, __FUNCTION__);
+		error("(%s: %d: %s) MPMD Applications are not currently "
+		      "supported.",
+		      THIS_FILE, __LINE__, __FUNCTION__);
 		goto error_free_alpsc_pe_info_t;
 	}
 
@@ -1098,10 +1099,10 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 	alpsc_pe_info.nodeCpuArray = xmalloc(size);
 	memset(alpsc_pe_info.nodeCpuArray, 0, size);
 	if (sw_job->step_layout->node_cnt &&
-			(alpsc_pe_info.nodeCpuArray == NULL )) {
+	    (alpsc_pe_info.nodeCpuArray == NULL )) {
 		free(alpsc_pe_info.peCmdMapArray);
 		error("(%s: %d: %s) failed to calloc nodeCpuArray.", THIS_FILE,
-				__LINE__, __FUNCTION__);
+		      __LINE__, __FUNCTION__);
 		goto error_free_alpsc_pe_info_t;
 	}
 
@@ -1127,8 +1128,9 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 	alpsc_branch_info.targ = 0;
 
 	rc = alpsc_write_placement_file(&err_msg, sw_job->apid, cmd_index,
-			&alpsc_pe_info, control_nid, control_soc, num_branches,
-			&alpsc_branch_info);
+					&alpsc_pe_info, control_nid,
+					control_soc, num_branches,
+					&alpsc_branch_info);
 	if (rc != 1) {
 		if (err_msg) {
 			error("(%s: %d: %s) alpsc_write_placement_file failed:"
@@ -1188,7 +1190,7 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 	 * information.
 	 */
 	rc = env_array_overwrite_fmt(&job->env, "PMI_CONTROL_PORT", "%" PRIu32,
-			sw_job->port);
+				     sw_job->port);
 	if (rc == 0) {
 		info("Failed to set env variable PMI_CONTROL_PORT");
 		return SLURM_ERROR;
@@ -1407,7 +1409,7 @@ int switch_p_job_attach(switch_jobinfo_t *jobinfo, char ***env, uint32_t nodeid,
 }
 
 extern int switch_p_get_jobinfo(switch_jobinfo_t *switch_job, int key,
-		void *resulting_data)
+				void *resulting_data)
 {
 	slurm_seterrno(EINVAL);
 	return SLURM_ERROR;
@@ -1446,7 +1448,7 @@ extern int switch_p_build_node_info(switch_node_info_t *switch_node)
 }
 
 extern int switch_p_pack_node_info(switch_node_info_t *switch_node, Buf buffer,
-		uint16_t protocol_version)
+				   uint16_t protocol_version)
 {
 	return 0;
 }
@@ -1483,7 +1485,7 @@ extern int switch_p_job_step_complete(switch_jobinfo_t *jobinfo,
 
 	if (!job || (job->magic == CRAY_NULL_JOBINFO_MAGIC)) {
 		debug2("(%s: %d: %s) switch_job was NULL", THIS_FILE, __LINE__,
-				__FUNCTION__);
+		       __FUNCTION__);
 		return SLURM_SUCCESS;
 	}
 
@@ -1494,7 +1496,7 @@ extern int switch_p_job_step_complete(switch_jobinfo_t *jobinfo,
 
 	/* Release the cookies */
 	rc = alpsc_release_cookies(&err_msg, (int32_t *) job->cookie_ids,
-			(int32_t) job->num_cookies);
+				   (int32_t) job->num_cookies);
 
 	if (rc != 0) {
 
@@ -1718,6 +1720,7 @@ static int _list_str_to_array(char *list, int *cnt, int32_t **numbers)
 	return ret;
 }
 
+#ifdef HAVE_NATIVE_CRAY
 /*
  * Recursive directory delete
  *
@@ -1782,7 +1785,7 @@ static void _recursive_rmdir(const char *dirnm)
 	}
 	free(fnm);
 	closedir(dirp);
-	fileDel: st = unlink(dirnm);
+fileDel: st = unlink(dirnm);
 	if (st < 0 && errno == EISDIR)
 		st = rmdir(dirnm);
 	if (st < 0 && errno != ENOENT) {
@@ -1791,7 +1794,6 @@ static void _recursive_rmdir(const char *dirnm)
 	}
 }
 
-#ifdef HAVE_NATIVE_CRAY
 /*
  * Function: get_cpu_total
  * Description:
