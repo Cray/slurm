@@ -541,7 +541,7 @@ void switch_p_free_jobinfo(switch_jobinfo_t *switch_job)
 }
 
 int switch_p_pack_jobinfo(switch_jobinfo_t *switch_job, Buf buffer,
-		uint16_t protocol_version)
+			  uint16_t protocol_version)
 {
 
 	slurm_cray_jobinfo_t *job = (slurm_cray_jobinfo_t *) switch_job;
@@ -1454,7 +1454,7 @@ extern int switch_p_pack_node_info(switch_node_info_t *switch_node, Buf buffer,
 }
 
 extern int switch_p_unpack_node_info(switch_node_info_t *switch_node,
-		Buf buffer, uint16_t protocol_version)
+				     Buf buffer, uint16_t protocol_version)
 {
 	return SLURM_SUCCESS;
 }
@@ -1465,7 +1465,7 @@ extern int switch_p_free_node_info(switch_node_info_t **switch_node)
 }
 
 extern char*switch_p_sprintf_node_info(switch_node_info_t *switch_node,
-		char *buf, size_t size)
+				       char *buf, size_t size)
 {
 	if ((buf != NULL )&& size) {
 		buf[0] = '\0';
@@ -1476,7 +1476,7 @@ extern char*switch_p_sprintf_node_info(switch_node_info_t *switch_node,
 }
 
 extern int switch_p_job_step_complete(switch_jobinfo_t *jobinfo,
-		char *nodelist)
+				      char *nodelist)
 {
 #ifdef HAVE_NATIVE_CRAY
 	slurm_cray_jobinfo_t *job = (slurm_cray_jobinfo_t *) jobinfo;
@@ -1534,7 +1534,7 @@ extern int switch_p_job_step_complete(switch_jobinfo_t *jobinfo,
 }
 
 extern int switch_p_job_step_part_comp(switch_jobinfo_t *jobinfo,
-		char *nodelist)
+				       char *nodelist)
 {
 	return SLURM_SUCCESS;
 }
@@ -1545,7 +1545,7 @@ extern bool switch_p_part_comp(void)
 }
 
 extern int switch_p_job_step_allocated(switch_jobinfo_t *jobinfo,
-		char *nodelist)
+				       char *nodelist)
 {
 	return SLURM_SUCCESS;
 }
