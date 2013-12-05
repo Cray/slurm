@@ -110,9 +110,11 @@ AC_DEFUN([X_AC_CRAY],
         [AC_LANG_PROGRAM(
 	   [[#include <job.h>
              #include <alpscomm_sn.h>
+	     #include <alpscomm_cn.h>
 	   ]],
 	   [[ job_getjidcnt();
 	      alpsc_release_cookies((char **)0, 0, 0);
+	      alpsc_flush_lustre((char **)0);
 	   ]]
 	)],
         [have_cray_files="yes"],

@@ -3,6 +3,7 @@
  *	on a cray system
  *****************************************************************************
  *  Copyright (C) 2013 SchedMD LLC
+ *  Copyright 2013 Cray Inc. All Rights Reserved.
  *
  *  This file is part of SLURM, a resource management program.
  *  For details, see <http://slurm.schedmd.com/>.
@@ -33,9 +34,6 @@
  *  with SLURM; if not, write to the Free Software Foundation, Inc.,
  *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA.
 \*****************************************************************************/
-/*
- * Copyright 2013 Cray Inc. All Rights Reserved.
- */
 
 #if     HAVE_CONFIG_H
 #  include "config.h"
@@ -53,13 +51,19 @@
 #include <unistd.h>
 #include <sys/param.h>
 #include <errno.h>
-#include <numa.h>
 #include "limits.h"
+
+#ifdef HAVE_NUMA
+#include <numa.h>
+#endif
 
 #include "slurm/slurm_errno.h"
 #include "src/common/slurm_xlator.h"
 #include "src/slurmd/slurmstepd/slurmstepd_job.h"
+
+#ifdef HAVE_NATIVE_CRAY
 #include "alpscomm_cn.h"
+#endif
 
 // Filename to write status information to
 // This file consists of job->node_tasks + 1 bytes. Each byte will
@@ -106,11 +110,15 @@ const char plugin_name[]        = "task CRAY plugin";
 const char plugin_type[]        = "task/cray";
 const uint32_t plugin_version   = 100;
 
+#ifdef HAVE_NUMA
 // TODO: Remove this prototype once the prototype appears in numa.h.
 unsigned int numa_bitmask_weight(const struct bitmask *bmp);
+#endif
 
+#ifdef HAVE_NATIVE_CRAY
 static int _get_numa_nodes(char *path, int *cnt, int **numa_array);
 static int _get_cpu_masks(char *path, cpu_set_t **cpuMasks);
+#endif
 
 /*
  * init() is called when the plugin is loaded, before any other functions
@@ -136,7 +144,7 @@ extern int fini (void)
  * task_p_slurmd_batch_request()
  */
 extern int task_p_slurmd_batch_request (uint32_t job_id,
-		batch_job_launch_msg_t *req)
+					batch_job_launch_msg_t *req)
 {
 	debug("task_p_slurmd_batch_request: %u", job_id);
 	return SLURM_SUCCESS;
@@ -146,11 +154,11 @@ extern int task_p_slurmd_batch_request (uint32_t job_id,
  * task_p_slurmd_launch_request()
  */
 extern int task_p_slurmd_launch_request (uint32_t job_id,
-		launch_tasks_request_msg_t *req,
-		uint32_t node_id)
+					 launch_tasks_request_msg_t *req,
+					 uint32_t node_id)
 {
 	debug("task_p_slurmd_launch_request: %u.%u %u",
-			job_id, req->job_step_id, node_id);
+	      job_id, req->job_step_id, node_id);
 	return SLURM_SUCCESS;
 }
 
@@ -158,8 +166,8 @@ extern int task_p_slurmd_launch_request (uint32_t job_id,
  * task_p_slurmd_reserve_resources()
  */
 extern int task_p_slurmd_reserve_resources (uint32_t job_id,
-		launch_tasks_request_msg_t *req,
-		uint32_t node_id)
+					    launch_tasks_request_msg_t *req,
+					    uint32_t node_id)
 {
 	debug("task_p_slurmd_reserve_resources: %u %u", job_id, node_id);
 	return SLURM_SUCCESS;
@@ -200,7 +208,7 @@ extern int task_p_slurmd_release_resources (uint32_t job_id)
 extern int task_p_pre_setuid (stepd_step_rec_t *job)
 {
 	debug("task_p_pre_setuid: %u.%u",
-			job->jobid, job->stepid);
+	      job->jobid, job->stepid);
 
 	return SLURM_SUCCESS;
 }
@@ -212,10 +220,11 @@ extern int task_p_pre_setuid (stepd_step_rec_t *job)
  */
 extern int task_p_pre_launch (stepd_step_rec_t *job)
 {
+#ifdef HAVE_NATIVE_CRAY
 	int rc;
 
 	debug("task_p_pre_launch: %u.%u, task %d",
-			job->jobid, job->stepid, job->envtp->procid);
+	      job->jobid, job->stepid, job->envtp->procid);
 	/*
 	 * Send the rank to the application's PMI layer via an environment
 	 * variable.
@@ -243,7 +252,7 @@ extern int task_p_pre_launch (stepd_step_rec_t *job)
 		error("%s: Failed to set %s", __func__, LLI_STATUS_OFFS_ENV);
 		return SLURM_ERROR;
 	}
-
+#endif
 	return SLURM_SUCCESS;
 }
 
@@ -253,6 +262,7 @@ extern int task_p_pre_launch (stepd_step_rec_t *job)
  */
 extern int task_p_pre_launch_priv (stepd_step_rec_t *job)
 {
+#ifdef HAVE_NATIVE_CRAY
 	char llifile[LLI_STATUS_FILE_BUF_SIZE];
 	int rv, fd;
 
@@ -293,6 +303,7 @@ extern int task_p_pre_launch_priv (stepd_step_rec_t *job)
 	info("Created file %s", llifile);
 
 	TEMP_FAILURE_RETRY(close(fd));
+#endif
 	return SLURM_SUCCESS;
 }
 
@@ -302,8 +313,9 @@ extern int task_p_pre_launch_priv (stepd_step_rec_t *job)
  *	followed by TaskEpilog program (from slurm.conf).
  */
 extern int task_p_post_term (stepd_step_rec_t *job,
-		stepd_step_task_info_t *task)
+			     stepd_step_task_info_t *task)
 {
+#ifdef HAVE_NATIVE_CRAY
 	char llifile[LLI_STATUS_FILE_BUF_SIZE];
 	char status;
 	int rv, fd;
@@ -360,6 +372,7 @@ extern int task_p_post_term (stepd_step_rec_t *job,
 		slurm_terminate_job_step(job->jobid, job->stepid);
 	}
 
+#endif
 	return SLURM_SUCCESS;
 }
 
@@ -369,6 +382,7 @@ extern int task_p_post_term (stepd_step_rec_t *job,
  */
 extern int task_p_post_step (stepd_step_rec_t *job)
 {
+#ifdef HAVE_NATIVE_CRAY
 	char llifile[LLI_STATUS_FILE_BUF_SIZE];
 	int rc, cnt;
 	char *err_msg = NULL, path[PATH_MAX];
@@ -455,8 +469,8 @@ extern int task_p_post_step (stepd_step_rec_t *job)
 
 	if (rc != 1) {
 		if (err_msg) {
-			error("(%s: %d: %s) alpsc_compact_mem failed: %s", THIS_FILE,
-			      __LINE__, __FUNCTION__, err_msg);
+			error("(%s: %d: %s) alpsc_compact_mem failed: %s",
+			      THIS_FILE, __LINE__, __FUNCTION__, err_msg);
 			free(err_msg);
 		} else {
 			error("(%s: %d: %s) alpsc_compact_mem failed:"
@@ -470,12 +484,14 @@ extern int task_p_post_step (stepd_step_rec_t *job)
 		     __FUNCTION__, err_msg);
 		free(err_msg);
 	}
-
+#endif
 	return SLURM_SUCCESS;
 }
 
+#ifdef HAVE_NATIVE_CRAY
+
 /*
- * Function: get_numa_nodes
+ * Function: _get_numa_nodes
  * Description:
  *  Returns a count of the NUMA nodes that the application is running on.
  *
@@ -570,7 +586,7 @@ static int _get_numa_nodes(char *path, int *cnt, int32_t **numa_array) {
 }
 
 /*
- * Function: get_cpu_masks
+ * Function: _get_cpu_masks
  * Description:
  *
  *  Returns a cpu_set_t containing the masks of the CPUs within the NUMA nodes
@@ -656,6 +672,6 @@ static int _get_cpu_masks(char *path, cpu_set_t **cpuMasks) {
 	}
 
 	numa_free_cpumask(bm);
-
 	return 0;
 }
+#endif
