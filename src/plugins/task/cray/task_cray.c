@@ -61,21 +61,6 @@
 #include "slurm/slurm_errno.h"
 #include "src/common/slurm_xlator.h"
 #include "src/slurmd/slurmstepd/slurmstepd_job.h"
-#include "alpscomm_cn.h"
-
-// Filename to write status information to
-// This file consists of job->node_tasks + 1 bytes. Each byte will
-// be either 1 or 0, indicating that that particular event has occured.
-// The first byte indicates the starting LLI message, and the next bytes
-// indicate the exiting LLI messages for each task
-#define LLI_STATUS_FILE	    "/var/opt/cray/alps/spool/status%"PRIu64
-
-// Size of buffer which is guaranteed to hold an LLI_STATUS_FILE
-#define LLI_STATUS_FILE_BUF_SIZE    128
-
-// Offset within status file to write to, different for each task
-#define LLI_STATUS_OFFS_ENV "ALPS_LLI_STATUS_OFFSET"
-static uint32_t debug_flags = 0;
 
 #ifdef HAVE_NATIVE_CRAY
 #include "alpscomm_cn.h"
@@ -133,7 +118,8 @@ unsigned int numa_bitmask_weight(const struct bitmask *bmp);
 
 #ifdef HAVE_NATIVE_CRAY
 static int _get_numa_nodes(char *path, int *cnt, int **numa_array);
-static int _get_cpu_masks(char *path, cpu_set_t **cpuMasks);
+static int _get_cpu_masks(int num_numa_nodes, int32_t *numa_array,
+			              cpu_set_t **cpuMasks);
 #endif
 
 /*
@@ -627,7 +613,7 @@ static int _get_numa_nodes(char *path, int *cnt, int32_t **numa_array) {
 #define NUM_INTS_TO_HOLD_ALL_CPUS \
                         (numa_all_cpus_ptr->size / (sizeof(unsigned long) * 8))
 static int _get_cpu_masks(int num_numa_nodes, int32_t *numa_array,
-			  cpu_set_t **cpuMasks) {
+			              cpu_set_t **cpuMasks) {
 
 	struct bitmask **remaining_numa_node_cpus = NULL, *collective;
 	unsigned long **numa_node_cpus = NULL;
