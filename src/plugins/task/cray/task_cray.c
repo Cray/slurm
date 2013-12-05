@@ -119,7 +119,7 @@ unsigned int numa_bitmask_weight(const struct bitmask *bmp);
 #ifdef HAVE_NATIVE_CRAY
 static int _get_numa_nodes(char *path, int *cnt, int **numa_array);
 static int _get_cpu_masks(int num_numa_nodes, int32_t *numa_array,
-			              cpu_set_t **cpuMasks);
+			  cpu_set_t **cpuMasks);
 #endif
 
 /*
@@ -613,7 +613,7 @@ static int _get_numa_nodes(char *path, int *cnt, int32_t **numa_array) {
 #define NUM_INTS_TO_HOLD_ALL_CPUS \
                         (numa_all_cpus_ptr->size / (sizeof(unsigned long) * 8))
 static int _get_cpu_masks(int num_numa_nodes, int32_t *numa_array,
-			              cpu_set_t **cpuMasks) {
+			  cpu_set_t **cpuMasks) {
 
 	struct bitmask **remaining_numa_node_cpus = NULL, *collective;
 	unsigned long **numa_node_cpus = NULL;
@@ -641,9 +641,9 @@ static int _get_cpu_masks(int num_numa_nodes, int32_t *numa_array,
 	for (i = 0; i < num_numa_nodes; i++) {
 		remaining_numa_node_cpus[i] = numa_allocate_cpumask();
 		numa_node_cpus[i] = xmalloc(sizeof(unsigned long) *
-				                    NUM_INTS_TO_HOLD_ALL_CPUS);
+			                    NUM_INTS_TO_HOLD_ALL_CPUS);
 		rc = numa_node_to_cpus(numa_array[i], numa_node_cpus[i],
-				               NUM_INTS_TO_HOLD_ALL_CPUS);
+			               NUM_INTS_TO_HOLD_ALL_CPUS);
 		if (rc) {
 			error("(%s: %d: %s) numa_node_to_cpus. Return code: %d",
 							THIS_FILE, __LINE__, __FUNCTION__, rc);
@@ -652,8 +652,8 @@ static int _get_cpu_masks(int num_numa_nodes, int32_t *numa_array,
 			(remaining_numa_node_cpus[i]->maskp[j]) =
 					(numa_node_cpus[i][j]) &
 					(numa_all_cpus_ptr->maskp[j]);
-			collective->maskp[j] |=
-								(remaining_numa_node_cpus[i]->maskp[j]);
+			collective->maskp[j] |= 
+			  (remaining_numa_node_cpus[i]->maskp[j]);
 		}
 	}
 
