@@ -25,6 +25,8 @@ documents those changes that are of interest to users and admins.
     Prolog, EpilogSlurmctld, and Epilog
  -- Add the idea of running a prolog right when an allocation happens
     instead of when running on the node for the first time.
+ -- If user runs 'scontrol reconfig' but hostnames or the host count changes
+    the slurmctld throws a fatal error.
 
 * Changes in Slurm 14.03.0pre4
 ==============================
@@ -179,6 +181,17 @@ documents those changes that are of interest to users and admins.
     locks and use hash function to find the desired job.
  -- jobcomp/filetxt - Reopen the file when slurmctld daemon is reconfigured
     or gets SIGHUP.
+ -- Remove notice of CVE with very old/deprecated versions of Slurm in
+    news.html.
+ -- Fix if hwloc_get_nbobjs_by_type() returns zero core count (set to 1).
+ -- Added ApbasilTimeout parameter to the cray.conf configuration file.
+ -- Handle in the API if parts of the node structure are NULL.
+ -- Fix srun hang when IO fails to start at launch.
+ -- Fix for GRES bitmap not matching the GRES count resulting in abort
+    (requires manual resetting of GRES count, changes to gres.conf file,
+    and slurmd restarts).
+ -- Modify sview to better support job arrays.
+ -- Modify squeue to support longer job ID values (for many job array tasks).
 
 * Changes in Slurm 2.6.4
 ========================
