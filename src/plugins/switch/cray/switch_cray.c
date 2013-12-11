@@ -240,6 +240,7 @@ static void _print_jobinfo(slurm_cray_jobinfo_t *job)
 			}
 		}
 		info("  ------");
+		xfree(nodes);
 	}
 	info("--END Jobinfo--");
 }
@@ -925,8 +926,8 @@ extern int switch_p_job_init(stepd_step_rec_t *job)
 		 * flag.
 		 */
 		mem_scaling = ((((double) job->step_mem /
-				 ((double) total_mem / 1024)) * (double) 100))
-			+ 0.5;
+				((double) total_mem / 1024)) * (double) 100))
+				+ 0.5;
 		if (mem_scaling > 100) {
 			info("(%s: %d: %s) Memory scaling out of bounds: %d. "
 			     "Reducing to 100%%.",
@@ -1650,10 +1651,12 @@ static int _get_first_pe(uint32_t nodeid, uint32_t task_count,
  * Description:
  * 	Convert the list string into an array of integers.
  *
- * IN list -- The list string
- * OUT cnt  -- The number of numbers in the list string
+ * IN list     -- The list string
+ * OUT cnt     -- The number of numbers in the list string
  * OUT numbers -- Array of integers;  Caller is responsible to xfree()
- *                 this.
+ *                this.
+ *
+ * N.B. Caller is responsible to xfree() numbers.
  *
  * RETURNS
  * Returns 0 on success and -1 on failure.
