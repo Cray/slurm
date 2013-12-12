@@ -185,7 +185,7 @@ partition management, job management, scheduling and accounting modules
 #  Allow override of sysconfdir via _slurm_sysconfdir.
 #  Note 'global' instead of 'define' needed here to work around apparent
 #   bug in rpm macro scoping (or something...)
-%{!?_slurm_sysconfdir: %global _slurm_sysconfdir /etc/slurm}
+%{!?_slurm_sysconfdir: %global _slurm_sysconfdir /etc/opt/slurm}
 %define _sysconfdir %_slurm_sysconfdir
 
 #  Allow override of datadir via _slurm_datadir.
